@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <csignal>
 #include <cstring>
+#include <fcntl.h>
 #include <spawn.h>
 #include <stdexcept>
 #include <sys/socket.h>
@@ -17,6 +18,10 @@ RendererProcess::RendererProcess(const std::string& executable, std::chrono::mil
     throw std::invalid_argument("Expected absolute renderer executable and positive deadline");
   int pair[2];
   if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, pair)) throw std::runtime_error("socketpair failed");
+  // Keep the child endpoint above stdio even when the caller closed fd 0/1/2.
+  const int child_endpoint = fcntl(pair[1], F_DUPFD_CLOEXEC, 4);
+  if (child_endpoint < 0) { close(pair[0]); close(pair[1]); throw std::runtime_error("Renderer descriptor duplication failed"); }
+  close(pair[1]); pair[1] = child_endpoint;
   posix_spawn_file_actions_t actions;
   int error = posix_spawn_file_actions_init(&actions);
   if (error) { close(pair[0]); close(pair[1]); throw std::runtime_error("spawn actions failed"); }

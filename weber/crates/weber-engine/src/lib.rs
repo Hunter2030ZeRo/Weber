@@ -70,6 +70,19 @@ impl Engine {
                 }
                 Ok(result["value"].to_string().into_bytes())
             }
+            "tick" => {
+                if self.loaded {
+                    self.runtime.block_on(async {
+                        match tokio::time::timeout(Duration::from_millis(2), self.page.run_autonomous_event_loop_turn()).await {
+                            Ok(result) => result.map(|_| ()),
+                            Err(_) => Ok(()),
+                        }
+                    })?;
+                    // Browser-side navigation mediation is not wired yet.
+                    let _blocked_navigation = self.page.take_pending_navigation();
+                }
+                Ok(b"null".to_vec())
+            }
             "capturePng" => {
                 if !self.loaded { return Err("No document loaded".into()); }
                 // Diagnostic bring-up only. Raw frames are a separate engine API task.

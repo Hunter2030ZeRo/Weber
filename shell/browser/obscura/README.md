@@ -15,6 +15,11 @@ Requests are capped at 1 MiB and replies at 64 MiB before allocation. Capture
 replies are raw PNG bytes; other success replies are JSON and errors are UTF-8.
 PNG remains diagnostic and has not been replaced by raw frame presentation.
 
+While idle, the renderer pumps Obscura every 16 ms with a 2 ms cooperative
+turn budget so browser timers continue without requests. Browser-mediated
+navigation is pending; queued script navigation is discarded explicitly. This
+is a bring-up schedule, not an efficiency claim.
+
 Each command has one deadline shared across send and receive. Corrupt frames,
 sequence mismatches, disconnects and timeouts close the channel and terminate/
 reap that proxy's child. Valid engine errors leave the channel usable. There is

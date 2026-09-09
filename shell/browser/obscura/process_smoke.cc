@@ -36,6 +36,10 @@ void Real(const std::string& path) {
   Check(Text(first->Command(query)) == "\"Separate Obscura renderer\"", "Real DOM mismatch");
   first->Command(R"json({"method":"evaluate","source":"document.querySelector('h1').textContent='changed'; null"})json");
   Check(Text(second.Command(query)) == "\"Separate Obscura renderer\"", "Renderer documents leaked");
+  first->Command(R"json({"method":"evaluate","source":"globalThis.idleTimer=0; setTimeout(()=>globalThis.idleTimer=123,20); null"})json");
+  std::this_thread::sleep_for(300ms);
+  Check(Text(first->Command(R"json({"method":"evaluate","source":"globalThis.idleTimer"})json")) == "123",
+        "Renderer timer did not progress while browser was idle");
   const auto png = first->Command(R"json({"method":"capturePng"})json");
   Check(png.size() > 100 && png[0] == 137 && png[1] == 'P' && png[2] == 'N' && png[3] == 'G', "Missing renderer pixels");
   Fails([&] { first->Command(R"json({"method":"evaluate","source":"throw new Error('visible failure')"})json"); });
@@ -78,6 +82,20 @@ void Fake(const std::string& fixture) {
       }
       Check(std::chrono::steady_clock::now() - start < 3s, "Unbounded renderer failure");
     }
+    // Descriptor remapping must also work in a process with no stdio handles.
+    const pid_t probe = fork();
+    Check(probe >= 0, "fork failed");
+    if (probe == 0) {
+      close(0); close(1); close(2);
+      try {
+        { RendererProcess process((root / "fragment").string(), 200ms);
+          if (Text(process.Command("{}")) != "ok") _exit(10); }
+        _exit(0);
+      } catch (...) { _exit(11); }
+    }
+    int status = 0;
+    Check(waitpid(probe, &status, 0) == probe && WIFEXITED(status) && WEXITSTATUS(status) == 0,
+          "Renderer descriptor remapping failed with closed stdio");
   } catch (...) { std::filesystem::remove_all(root); throw; }
   std::filesystem::remove_all(root);
   std::cout << "Transport deadlines, startup failures, frame bounds, sequence checks, fragmentation and child cleanup passed\n";
