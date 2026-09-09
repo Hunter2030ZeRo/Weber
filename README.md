@@ -117,10 +117,25 @@ The separate native smoke test checks nonblank pixels presented to the native
 surface, the real Obscura DOM, and round-trip IPC.
 See CI for native build results; do not infer a passing build from source alone.
 
+Verified on Linux in [CI run 34347995911](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34347995911),
+for code commit `ee4922ca8f770eba5a509a40b0e224fae6db4489`:
+
+- Node.js protocol/API/bridge tests: 16 passed.
+- Bun protocol/API/bridge tests: 16 passed.
+- Rust manifest/launcher tests: 6 passed.
+- TOML-only switching launched actual Node, Bun, and a compiled Rust process.
+  The Rust process in this launcher test is a CLI probe, not a GUI test.
+- Native host and Rust example: release build passed.
+- Real Obscura native-window test: nonblank surface presentation, DOM access,
+  JavaScript error propagation, renderer-to-Node round-trip IPC and window close
+  passed. The IPC test also checks that a pending renderer timer cannot stall
+  the host. A full GUI run of the Rust callback example and Bun GUI backend is
+  not covered by this test.
+
 ## Current limits
 
-- Native code and Bun execution need independent validation. The authoring
-  environment had Node.js, but no Rust/Bun toolchain or desktop display.
+- Windows/macOS builds, real hardware input/IME, and broad application rendering
+  still need independent validation. The passing Linux test uses Xvfb.
 - The presentation path encodes and decodes PNG frames at up to approximately
   30 ticks/second. This is a bring-up path, not the intended efficient renderer.
   No comparative performance or memory claims have been measured.
@@ -137,15 +152,14 @@ See CI for native build results; do not infer a passing build from source alone.
 
 ## Next integration gates
 
-1. Obtain a native release build and run the real-engine smoke test on a display.
-2. Import Electron source and history into a dedicated migration branch, keeping
+1. Import Electron source and history into a dedicated migration branch, keeping
    its MIT notices. Port the selected public API contracts to an engine boundary;
    its `content::WebContents` implementation cannot simply link against Obscura.
-3. Replace the temporary PNG path with a raw pixel/dirty-region Obscura embedding
+2. Replace the temporary PNG path with a raw pixel/dirty-region Obscura embedding
    API, and move page work off the GUI event loop.
-4. Add isolated renderer processes, complete input/IME/accessibility, multiwindow
+3. Add isolated renderer processes, complete input/IME/accessibility, multiwindow
    lifecycle, OS integration, and cross-platform packaging.
-5. Benchmark equal application workloads for memory, startup, input latency and
+4. Benchmark equal application workloads for memory, startup, input latency and
    rendering fidelity before making Electron/Tauri comparisons.
 
 ## Upstream
