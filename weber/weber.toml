@@ -1,0 +1,15 @@
+schema = 1
+backend = "node" # "node", "bun", or "native"; selected at application startup
+
+[app]
+frontend = "examples/javascript/index.html"
+channels = ["system.info"]
+
+[node]
+entry = "examples/javascript/main.mjs"
+
+[bun]
+entry = "examples/javascript/main.mjs"
+
+[native]
+binary = "target/release/examples/native"

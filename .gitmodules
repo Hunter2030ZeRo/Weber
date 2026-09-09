@@ -1,0 +1,4 @@
+
+[submodule "weber/vendor/obscura"]
+    path = weber/vendor/obscura
+    url = https://github.com/Hunter2030ZeRo/obscura-for-weber.git
