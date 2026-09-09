@@ -1,0 +1,31 @@
+name: Electron full-build preflight
+on:
+  push:
+    branches: [codex/electron-obscura]
+    paths: ['weber/mvp/**', '.github/workflows/electron-build-preflight.yml']
+permissions:
+  contents: read
+jobs:
+  inspect-build-environment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Measure actual build resources and source dependencies
+        run: python3 weber/mvp/build_preflight.py --root . --output preflight.json
+      - name: Check acceptance script syntax
+        run: |
+          node --check weber/mvp/run.mjs
+          node --check weber/mvp/app/main.cjs
+          node --check weber/mvp/app/preload.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-full-build-preflight
+          path: preflight.json
+      - name: Require resources for full upstream baseline build
+        run: |
+          python3 - <<'PY'
+          import json
+          report = json.load(open('preflight.json'))
+          if not report['resource_prerequisites_met']:
+              raise SystemExit('BLOCKED: runner does not meet documented full upstream build resource prerequisites; this is not an MVP build/test result')
+          PY

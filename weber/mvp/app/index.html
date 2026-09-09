@@ -1,0 +1,8 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Weber MVP contract</title></head>
+<body style="background:#184ca0;color:white"><h1>Electron application contract</h1>
+<input id="text" aria-label="Text entry"><button id="button">Invoke backend</button><output id="result"></output>
+<script>
+document.getElementById('button').addEventListener('click', async () => {
+  document.getElementById('result').textContent = String(await window.mvp.sum(3, 4));
+});
+</script></body></html>
