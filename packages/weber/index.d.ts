@@ -3,29 +3,39 @@ export type Json = null | boolean | number | string | Json[] | { [key: string]: 
 export interface WindowOptions {
   width?: number; height?: number; title?: string; show?: boolean; allowedChannels?: string[];
 }
-export interface WebContents {
+export interface WebContents extends EventEmitter {
+  readonly id: number;
+  isDestroyed(): boolean;
   executeJavaScript(source: string): Promise<Json>;
-  getURL(): Promise<string>;
+  getURL(): string;
 }
 export interface WeberWindow extends EventEmitter {
-  id?: number;
+  readonly id: number;
+  isDestroyed(): boolean;
   ready: Promise<WeberWindow>;
   webContents: WebContents;
-  loadFile(path: string): Promise<null>;
+  loadFile(path: string): Promise<void>;
   loadURL(url: string): Promise<never>;
   setTitle(title: string): Promise<null>;
   show(): Promise<null>; hide(): Promise<null>; close(): Promise<null>;
 }
 export interface Application extends EventEmitter {
+  isReady(): boolean;
   whenReady(): Promise<void>; quit(): Promise<void>; dispose(): void;
 }
 export interface IpcMain {
   handle(channel: string, handler: (event: { sender: WebContents }, payload: Json) => Json | Promise<Json>): void;
+  handleOnce(channel: string, handler: (event: { sender: WebContents }, payload: Json) => Json | Promise<Json>): void;
   removeHandler(channel: string): void;
 }
 export interface WeberApplication {
   app: Application;
-  BrowserWindow: new (options?: WindowOptions) => WeberWindow;
+  BrowserWindow: {
+    new (options?: WindowOptions): WeberWindow;
+    getAllWindows(): WeberWindow[];
+    fromId(id: number): WeberWindow | null;
+    fromWebContents(contents: WebContents): WeberWindow | null;
+  };
   ipcMain: IpcMain;
 }
 export function createApplication(options?: { hostPath?: string; hostArgs?: string[]; timeout?: number }): WeberApplication;

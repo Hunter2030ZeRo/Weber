@@ -18,6 +18,13 @@ integration and installers, multiple windows, and process isolation/security.
 These are release requirements, not implemented capabilities. Performance
 comparisons must preserve equivalent functionality and security.
 
+The [Electron compatibility ledger](docs/electron-compatibility.md) tracks actual
+API behavior and remaining differences. Window IDs and registry lookups are now
+synchronous; webContents supports synchronous getURL for explicit loadFile,
+destruction state/events and did-finish-load. ipcMain.handleOnce consumes its
+registration before invoking user code. These changes do not provide preload,
+Electron module resolution, multiwindow support or VS Code compatibility.
+
 ## Implemented source
 
 - A Rust host using Obscura's `Page`, `winit` windows, and `softbuffer` presentation.
