@@ -1,0 +1,145 @@
+{
+  "chromium_dependency_tree_present": false,
+  "cpu_count": 4,
+  "disk_total_bytes": 154894188544,
+  "documented_baseline_free_disk_bytes": 100000000000,
+  "documented_baseline_memory_bytes": 8000000000,
+  "effective_memory_bytes": 16766414848,
+  "free_disk_bytes": 104184918016,
+  "mvp_complete": false,
+  "requirement_source": "https://chromium.googlesource.com/chromium/src/+/HEAD/docs/linux/build_instructions.md",
+  "resource_prerequisites_met": true,
+  "source_commit": "66de181c435f38f535e8179a2d3cf03612027348",
+  "source_files_with_chromium_references": 397,
+  "source_reference_samples": [
+    {
+      "path": "shell/browser/api/electron_api_web_contents.cc",
+      "references": 343
+    },
+    {
+      "path": "shell/browser/electron_browser_client.cc",
+      "references": 227
+    },
+    {
+      "path": "shell/browser/api/electron_api_web_contents.h",
+      "references": 152
+    },
+    {
+      "path": "shell/browser/electron_browser_client.h",
+      "references": 116
+    },
+    {
+      "path": "shell/browser/api/electron_api_app.cc",
+      "references": 74
+    },
+    {
+      "path": "shell/renderer/api/electron_api_web_frame.cc",
+      "references": 70
+    },
+    {
+      "path": "shell/browser/electron_browser_context.cc",
+      "references": 69
+    },
+    {
+      "path": "shell/browser/ui/inspectable_web_contents.cc",
+      "references": 69
+    },
+    {
+      "path": "shell/browser/electron_permission_manager.cc",
+      "references": 60
+    },
+    {
+      "path": "shell/browser/file_system_access/file_system_access_permission_context.cc",
+      "references": 57
+    },
+    {
+      "path": "shell/browser/ui/inspectable_web_contents.h",
+      "references": 56
+    },
+    {
+      "path": "shell/browser/web_contents_permission_helper.cc",
+      "references": 48
+    },
+    {
+      "path": "shell/browser/ui/webui/accessibility_ui.cc",
+      "references": 45
+    },
+    {
+      "path": "shell/renderer/renderer_client_base.cc",
+      "references": 45
+    },
+    {
+      "path": "shell/browser/native_window_views.cc",
+      "references": 44
+    },
+    {
+      "path": "shell/browser/api/electron_api_web_frame_main.cc",
+      "references": 41
+    },
+    {
+      "path": "shell/browser/web_contents_zoom_controller.cc",
+      "references": 40
+    },
+    {
+      "path": "shell/browser/api/electron_api_session.cc",
+      "references": 37
+    },
+    {
+      "path": "shell/browser/extensions/electron_extensions_browser_client.h",
+      "references": 37
+    },
+    {
+      "path": "shell/browser/hid/electron_hid_delegate.cc",
+      "references": 36
+    },
+    {
+      "path": "shell/browser/electron_browser_main_parts.cc",
+      "references": 34
+    },
+    {
+      "path": "shell/browser/usb/electron_usb_delegate.cc",
+      "references": 34
+    },
+    {
+      "path": "shell/browser/extensions/electron_extensions_browser_client.cc",
+      "references": 33
+    },
+    {
+      "path": "shell/browser/api/electron_api_app.h",
+      "references": 31
+    },
+    {
+      "path": "shell/browser/api/electron_api_utility_process.cc",
+      "references": 31
+    },
+    {
+      "path": "shell/browser/hid/electron_hid_delegate.h",
+      "references": 30
+    },
+    {
+      "path": "shell/browser/osr/osr_render_widget_host_view.cc",
+      "references": 29
+    },
+    {
+      "path": "shell/browser/usb/electron_usb_delegate.h",
+      "references": 28
+    },
+    {
+      "path": "shell/browser/preload_code_cache.cc",
+      "references": 27
+    },
+    {
+      "path": "shell/browser/electron_browser_context.h",
+      "references": 26
+    }
+  ],
+  "tools": {
+    "autoninja": null,
+    "clang++": "/usr/bin/clang++",
+    "gclient": null,
+    "git": "/usr/bin/git",
+    "gn": null,
+    "ninja": "/usr/local/bin/ninja",
+    "python3": "/usr/bin/python3"
+  }
+}
