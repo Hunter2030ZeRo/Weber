@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["crates/weber-host"]
+exclude = ["vendor/obscura"]
+
+[patch.crates-io]
+taffy = { path = "vendor/obscura/vendor/taffy" }
+cosmic-text = { path = "vendor/obscura/vendor/cosmic-text" }
+
+[profile.release]
+panic = "unwind"

@@ -1,0 +1,12 @@
+{
+  "name": "weber-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "example:node": "node examples/javascript/main.mjs",
+    "example:bun": "bun examples/javascript/main.mjs",
+    "build:native": "cargo build --release -p weber-host"
+  },
+  "engines": { "node": ">=22" }
+}

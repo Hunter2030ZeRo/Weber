@@ -1,0 +1,6 @@
+[submodule "vendor/obscura"]
+	path = vendor/obscura
+	url = https://github.com/Hunter2030ZeRo/obscura-for-weber.git
+[submodule "upstream/electron"]
+	path = upstream/electron
+	url = https://github.com/electron/electron.git
