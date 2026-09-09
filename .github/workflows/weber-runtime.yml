@@ -44,7 +44,7 @@ jobs:
         run: cargo build --release --manifest-path weber/Cargo.toml -p weber-engine
       - name: Compile Chromium-free desktop host
         run: |
-          cmake -S weber -B out/runtime -DWEBER_ENGINE_LIBRARY="$PWD/weber/target/release/libweber_engine.a"
+          cmake -S weber -B out/runtime -DCMAKE_BUILD_TYPE=Release -DWEBER_ENGINE_LIBRARY="$PWD/weber/target/release/libweber_engine.a"
           cmake --build out/runtime --parallel 2
       - name: Test renderer process boundary
         id: boundary
@@ -99,17 +99,27 @@ jobs:
         run: |
           xvfb-run -a bun weber/electron-runtime/test-live.cjs
           cp weber-electron-live-result.json out/bun-live.json
+      - name: Test original Electron menus on native GTK
+        id: menus
+        continue-on-error: true
+        env:
+          WEBER_DESKTOP_HOST: ${{ github.workspace }}/out/runtime/weber-desktop-host
+          WEBER_OBSCURA_RENDERER: ${{ github.workspace }}/out/runtime/obscura/weber-obscura-renderer
+        run: |
+          node --test weber/electron-runtime/test-menu-binding.cjs weber/electron-runtime/test-platform-app.cjs
+          xvfb-run -a python3 weber/electron-runtime/test-menu-live.py node
       - name: Compare the same application with pinned Electron
         id: benchmark
+        timeout-minutes: 6
         continue-on-error: true
         env:
           WEBER_DESKTOP_HOST: ${{ github.workspace }}/out/runtime/weber-desktop-host
           WEBER_OBSCURA_RENDERER: ${{ github.workspace }}/out/runtime/obscura/weber-obscura-renderer
         run: |
           npm install --prefix "$RUNNER_TEMP/electron-baseline" electron@42.0.0
-          node "$RUNNER_TEMP/electron-baseline/node_modules/electron/install.js"
+          timeout 180 node "$RUNNER_TEMP/electron-baseline/node_modules/electron/install.js"
           test -x "$RUNNER_TEMP/electron-baseline/node_modules/electron/dist/electron"
-          node --test weber/benchmarks/proc-tree.test.cjs
+          node --test weber/benchmarks/proc-tree.test.cjs weber/benchmarks/process-cleanup.test.cjs
           xvfb-run -a node weber/benchmarks/compare.cjs --electron "$RUNNER_TEMP/electron-baseline/node_modules/electron/dist/electron" --node "$(command -v node)" --bootstrap "$PWD/weber/electron-runtime/bootstrap.cjs" --output "$PWD/out/benchmark.json"
       - name: Diagnose unmodified VS Code startup
         id: vscode
@@ -118,12 +128,12 @@ jobs:
       - name: Require every runtime check to pass
         if: always()
         env:
-          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }}
+          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }}
         run: |
           python3 - <<'PY_GATE'
           import os
           outcomes = os.environ['RESULTS'].split()
-          assert len(outcomes) == 7 and all(result == 'success' for result in outcomes), outcomes
+          assert len(outcomes) == 8 and all(result == 'success' for result in outcomes), outcomes
           PY_GATE
       - name: Require measurements and startup diagnostic to complete
         if: always()

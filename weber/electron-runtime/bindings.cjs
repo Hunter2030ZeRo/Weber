@@ -6,7 +6,8 @@
 const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
-const os = require('node:os');
+const { createMenuBinding } = require('./menu-binding.cjs');
+const { attachPlatformApp } = require('./platform-app.cjs');
 
 function unsupported(name) {
   const error = new Error(`Weber has not implemented ${name}`);
@@ -31,12 +32,9 @@ function createBindings(host, appPath, loadInternal) {
   let applicationPath = appPath;
   let name = path.basename(appPath);
   let version = '0.0.0';
-  const appPaths = new Map();
   Object.assign(app, {
     applicationMenu: null,
     commandLine: {
-      hasSwitch: value => process.argv.includes(`--${value}`),
-      getSwitchValue: value => process.argv.find(a => a.startsWith(`--${value}=`))?.slice(value.length + 3) || '',
       appendSwitch: () => unsupported('app.commandLine.appendSwitch after runtime startup'),
     },
     isReady: () => ready,
@@ -47,15 +45,6 @@ function createBindings(host, appPath, loadInternal) {
     setName: value => { name = String(value); },
     getVersion: () => version,
     setVersion: value => { version = String(value); },
-    getPath(key) {
-      if (appPaths.has(key)) return appPaths.get(key);
-      const known = { home: os.homedir(), temp: os.tmpdir(), exe: process.execPath,
-        appData: process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'),
-        userData: path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), name) };
-      if (!(key in known)) return unsupported(`app.getPath(${key})`);
-      return known[key];
-    },
-    setPath: (key, value) => { if (!path.isAbsolute(value)) throw new Error('Path must be absolute'); appPaths.set(key, value); },
     exit(code = 0) {
       if (quitting) return;
       quitting = true;
@@ -78,6 +67,12 @@ function createBindings(host, appPath, loadInternal) {
   });
   let quittingAfterWindows = false;
   Object.defineProperty(app, 'name', { get: () => name, set: value => { name = String(value); } });
+  attachPlatformApp(app, { getName: () => name });
+  const menuBinding = createMenuBinding({ host, windows, app, unsupported });
+  Object.defineProperty(app, 'applicationMenu', {
+    get: () => loadInternal('browser/api/menu').getApplicationMenu(),
+    set: menu => loadInternal('browser/api/menu').setApplicationMenu(menu),
+  });
 
   function startWindow(self, options) {
     if (!ready) throw new Error('Cannot create BrowserWindow before app is ready');
@@ -92,7 +87,7 @@ function createBindings(host, appPath, loadInternal) {
     self._options = options;
     self._parent = options.parent ?? null;
     self._ready = host.request('window.create', { windowId: self.id,
-      options: { ...self._bounds, title: self._title, show: self._visible } });
+      options: { ...self._bounds, title: self._title, show: self._visible, closable: options.closable !== false } });
     self._ready.catch(error => { self.emit('creation-failed', error); app.emit('weber-error', error); });
     windows.set(self.id, self);
   }
@@ -112,6 +107,7 @@ function createBindings(host, appPath, loadInternal) {
     isFocused() { return this._focused && !this._destroyed; },
     isMinimized() { return false; },
     isEnabled() { return !this._destroyed; },
+    isClosable() { return this._options.closable !== false; },
     getBounds() { return { ...this._bounds }; },
     getContentBounds() { return { ...this._bounds }; },
     getSize() { return [this._bounds.width, this._bounds.height]; },
@@ -155,10 +151,11 @@ function createBindings(host, appPath, loadInternal) {
       if (this._destroyed) return;
       this._host('window.close').then(() => finishWindow(this)).catch(error => app.emit('weber-error', error));
     },
-    setMenu(menu) { if (menu !== null) return unsupported('native window menu'); },
+    setMenu(menu) { menuBinding.setWindowMenu(this, menu); },
   });
   for (const method of ['focus', 'blur', 'maximize', 'unmaximize', 'minimize',
-    'restore', 'setFullScreen', 'setAlwaysOnTop', 'setResizable', 'center', 'setBackgroundColor']) {
+    'restore', 'setFullScreen', 'setAlwaysOnTop', 'setResizable', 'center', 'setBackgroundColor',
+    'isMinimizable', 'isFullScreenable']) {
     BaseWindow.prototype[method] = function () { return unsupported(`BaseWindow.${method}`); };
   }
 
@@ -333,7 +330,6 @@ function createBindings(host, appPath, loadInternal) {
         this.emit('did-frame-finish-load', event(this), true, this._rendererPid, this.id);
         this.emit('did-finish-load', event(this));
         this.emit('did-stop-loading', event(this));
-        this.emit('ready-to-show');
       }, error => {
         if (this._destroyed || serial !== this._navigation) return;
         this._loading = false;
@@ -422,6 +418,7 @@ function createBindings(host, appPath, loadInternal) {
   bindings.set('electron_browser_view', { View });
   bindings.set('electron_browser_web_contents_view', { WebContentsView });
   bindings.set('electron_browser_printing', { getPrinterListAsync: () => unsupported('printing') });
+  bindings.set('electron_browser_menu', menuBinding);
   bindings.set('electron_common_command_line', app.commandLine);
   bindings.set('electron_common_environment', { hasVar: key => process.env[key] !== undefined });
 
@@ -441,6 +438,8 @@ function createBindings(host, appPath, loadInternal) {
       win.webContents.emit('render-process-gone', event(win.webContents), {
         reason: 'crashed', exitCode: message.exitCode ?? -1,
       });
+    } else if (type === 'frame-ready') {
+      win.webContents.emit('ready-to-show');
     } else if (type === 'frame-presented') {
       win.webContents.emit('weber-first-frame-presented', message);
     } else if (type === 'frame-error') {

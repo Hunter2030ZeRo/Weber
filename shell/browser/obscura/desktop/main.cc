@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Linux desktop surface for Electron's source-level API adapters. No Chromium.
 #include "../renderer_process.h"
+#include "menu.h"
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 #include <nlohmann/json.hpp>
@@ -45,7 +46,9 @@ void Ui(std::function<void()> function) {
 struct Window {
   int id;
   GtkWidget* window = nullptr;
+  GtkWidget* box = nullptr;
   GtkWidget* area = nullptr;
+  std::unique_ptr<weber::desktop::MenuView> menu;
   std::atomic<bool> closed{false};
   std::mutex mutex;
   std::condition_variable wake;
@@ -57,6 +60,7 @@ struct Window {
   std::atomic<bool> frame_pending{false};
   int width = 800, height = 600;
   unsigned click_count = 1;
+  bool frame_ready = false;
   bool presented = false;
 };
 std::map<int, std::shared_ptr<Window>> windows;
@@ -71,6 +75,7 @@ void Queue(const std::shared_ptr<Window>& window, Json command) {
 void Close(std::shared_ptr<Window> window) {
   if (window->closed.exchange(true)) return;
   window->wake.notify_all();
+  window->menu.reset();
   gtk_widget_destroy(window->window);
   windows.erase(window->id);
   retired.push_back(window);
@@ -98,6 +103,10 @@ void Present(const std::shared_ptr<Window>& window, std::vector<uint8_t> frame) 
     if (!window->closed) {
       window->pixels = std::move(pixels);
       window->frame_width = width; window->frame_height = height;
+      if (!window->frame_ready) {
+        window->frame_ready = true;
+        Emit({{"event", "frame-ready"}, {"windowId", window->id}, {"width", width}, {"height", height}});
+      }
       gtk_widget_queue_draw(window->area);
     }
     window->frame_pending = false;
@@ -251,15 +260,25 @@ void Create(const Json& request) {
   if (window->width < 1 || window->height < 1 || window->width > 8192 || window->height > 8192 ||
       int64_t(window->width) * window->height > 16000000) throw std::runtime_error("Invalid window size");
   window->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+  window->box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   window->area = gtk_drawing_area_new();
   gtk_window_set_title(GTK_WINDOW(window->window), options.value("title", "Weber").c_str());
+  gtk_window_set_deletable(GTK_WINDOW(window->window), options.value("closable", true));
   gtk_window_set_default_size(GTK_WINDOW(window->window), window->width, window->height);
-  gtk_container_add(GTK_CONTAINER(window->window), window->area);
+  gtk_container_add(GTK_CONTAINER(window->window), window->box);
+  gtk_box_pack_end(GTK_BOX(window->box), window->area, TRUE, TRUE, 0);
+  window->menu = std::make_unique<weber::desktop::MenuView>(window->window, window->box, id, Emit);
   gtk_widget_set_can_focus(window->area, TRUE);
   gtk_widget_add_events(window->area, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
       GDK_POINTER_MOTION_MASK | GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK |
       GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK);
   windows[id] = window;
+  for (const char* signal : {"focus-in-event", "focus-out-event"})
+    g_signal_connect(window->window, signal, G_CALLBACK((+[](GtkWidget*, GdkEventFocus* event, gpointer data) -> gboolean {
+      auto* w = static_cast<Window*>(data);
+      Emit({{"event", event->in ? "focus" : "blur"}, {"windowId", w->id}});
+      return FALSE;
+    })), window.get());
   g_signal_connect(window->window, "delete-event", G_CALLBACK((+[](GtkWidget*, GdkEvent*, gpointer data) -> gboolean {
     auto found = windows.find(static_cast<Window*>(data)->id);
     if (found != windows.end()) Emit({{"event", "close-requested"}, {"windowId", found->first}});
@@ -342,6 +361,8 @@ void Dispatch(const Json& request) {
     auto window = found->second;
     if (method == "page.command") { Queue(window, request); return; }
     if (method == "window.close") Close(window);
+    else if (method == "window.setMenu") window->menu->Set(request.at("menu"));
+    else if (method == "window.updateMenu") window->menu->Update(request.at("menu"));
     else if (method == "window.show") gtk_widget_show_all(window->window);
     else if (method == "window.hide") gtk_widget_hide(window->window);
     else if (method == "window.setTitle") gtk_window_set_title(GTK_WINDOW(window->window), request.at("title").get<std::string>().c_str());

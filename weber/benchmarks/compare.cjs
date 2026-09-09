@@ -7,6 +7,8 @@ const { spawn } = require('node:child_process');
 const readline = require('node:readline');
 const { performance } = require('node:perf_hooks');
 const { snapshot, ticksPerSecond, idleCpu } = require('./proc-tree.cjs');
+const { collectProvenance } = require('./provenance.cjs');
+const { trackChild } = require('./process-cleanup.cjs');
 
 function options() {
   const values = { runs: '3', node: process.execPath,
@@ -50,6 +52,9 @@ async function trial(framework, index, config, clockTicks) {
   const started = performance.now();
   const child = spawn(executable, args, { env: environment, shell: false,
     detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  const tracked = trackChild(child);
+  let completedTrial;
+  let failure;
   const exit = new Promise((resolve, reject) => {
     child.once('error', error => {
       exited = { error: error.message };
@@ -69,16 +74,20 @@ async function trial(framework, index, config, clockTicks) {
     stderr.push(chunk);
     while (stderr.join('').length > 16384 && stderr.length > 1) stderr.shift();
   });
-  readline.createInterface({ input: child.stdout }).on('line', line => {
+  const output = readline.createInterface({ input: child.stdout });
+  output.on('line', line => {
     if (!line.startsWith('WEBER_BENCHMARK ')) return;
-    try { messages.push({ ...JSON.parse(line.slice('WEBER_BENCHMARK '.length)), receivedMs: performance.now() }); }
+    try {
+      const message = { ...JSON.parse(line.slice('WEBER_BENCHMARK '.length)), receivedMs: performance.now() };
+      console.log(`[${framework} trial ${index}] ${message.phase}${message.stage ? `: ${message.stage}` : ''}`);
+      messages.push(message);
+    }
     catch (error) { messages.push({ phase: 'error', error: `Invalid benchmark output: ${error.message}` }); }
     for (const wake of waiters.splice(0)) wake();
   });
   const timeout = setTimeout(() => {
     messages.push({ phase: 'error', error: 'Benchmark trial exceeded 130 seconds' });
     for (const wake of waiters.splice(0)) wake();
-    try { process.kill(-child.pid, 'SIGTERM'); } catch {}
   }, 130000);
   async function phase(name) {
     while (true) {
@@ -96,6 +105,7 @@ async function trial(framework, index, config, clockTicks) {
       throw new Error(`Expected pinned Electron 42.0.0; got ${ready.versions.electron}`);
     }
     const startupToLoadAndCaptureMs = ready.receivedMs - started;
+    tracked.observe(snapshot(child.pid));
     child.stdin.write('{"command":"measure"}\n');
     const workload = await phase('workload');
     await phase('idle-ready');
@@ -105,6 +115,7 @@ async function trial(framework, index, config, clockTicks) {
       if (sample > 0) await delay(500);
       const startedAtMs = performance.now();
       const value = snapshot(child.pid);
+      tracked.observe(value);
       samples.push({ ...value, elapsedMs: startedAtMs - startIdle });
     }
     const idleElapsedMs = samples.at(-1).elapsedMs - samples[0].elapsedMs;
@@ -116,9 +127,12 @@ async function trial(framework, index, config, clockTicks) {
     }
     child.stdin.write('{"command":"finish"}\n');
     await phase('complete');
-    const status = await exit;
+    const status = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Application sent complete but did not exit within 5 seconds')), 5000);
+      exit.then(value => { clearTimeout(timer); resolve(value); }, error => { clearTimeout(timer); reject(error); });
+    });
     if (status.code !== 0) throw new Error(`Application exited unsuccessfully: ${JSON.stringify(status)}\n${stderr.join('')}`);
-    return { framework, trial: index, startupToLoadAndCaptureMs,
+    completedTrial = { framework, trial: index, startupToLoadAndCaptureMs,
       versions: ready.versions, rendererPids: ready.rendererPids,
       javascriptRoundTripMs: workload.javascriptRoundTripMs,
       ipcRoundTripMs: workload.ipcRoundTripMs,
@@ -129,10 +143,26 @@ async function trial(framework, index, config, clockTicks) {
         rssBytesMedian: median(samples.map(sample => sample.rssBytes)), samples },
       stderrTail: stderr.join('').slice(-8192),
     };
+    return completedTrial;
+  } catch (error) {
+    failure = error;
+    error.stderrTail = stderr.join('').slice(-8192);
+    throw error;
   } finally {
     clearTimeout(timeout);
     child.stdin.destroy();
-    try { process.kill(-child.pid, 'SIGTERM'); } catch {}
+    try {
+      const cleanup = await tracked.cleanup();
+      if (completedTrial) completedTrial.cleanup = cleanup;
+      if (failure) failure.cleanup = cleanup;
+    } catch (cleanupError) {
+      if (failure) failure.cleanup = cleanupError.cleanup || { error: cleanupError.message };
+      else { cleanupError.stderrTail = stderr.join('').slice(-8192); throw cleanupError; }
+    } finally {
+      output.close();
+      child.stdout.destroy();
+      child.stderr.destroy();
+    }
   }
 }
 
@@ -168,12 +198,14 @@ async function main() {
   }
   const config = options();
   const clockTicks = ticksPerSecond();
+  const provenance = await collectProvenance(config, path.join(__dirname, 'app'));
   const report = { schemaVersion: 1, createdAt: new Date().toISOString(),
+    provenance,
     environment: { platform: process.platform, architecture: process.arch, release: os.release(),
       cpuCount: os.availableParallelism(), clockTicksPerSecond: clockTicks, display: process.env.DISPLAY || null },
     conditions: { pinnedElectron: '42.0.0', trialsPerFramework: config.runs, windows: 2,
       applicationFilesIdentical: true, osSandboxEnabled: false, contextIsolation: true,
-      startupDefinition: 'spawn until both loadFile calls and captures complete, including preload setup',
+      startupDefinition: 'spawn through loadFile, ready-to-show, show, two animation frames and captures for both windows, including preload setup',
       idleDefinition: 'five full descendant-tree samples, 500 ms apart, after 500 ms settling',
       pssDefinition: 'sum of all descendant smaps_rollup Pss; shared mappings apportioned by the kernel',
       rssDefinition: 'sum of all descendant smaps_rollup Rss; shared mappings may be counted more than once',
@@ -192,8 +224,10 @@ async function main() {
       let result;
       try { result = await trial(framework, index + 1, config, clockTicks); }
       catch (error) {
-        report.failure = { framework, trial: index + 1, error: error.stack || String(error) };
+        report.failure = { framework, trial: index + 1, error: error.stack || String(error),
+          cleanup: error.cleanup, stderrTail: error.stderrTail };
         save();
+        if (error.stderrTail) console.error(`Benchmark application stderr:\n${error.stderrTail}`);
         throw error;
       }
       report.trials.push(result);

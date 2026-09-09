@@ -36,10 +36,28 @@ the observed process trees, medians and Weber/Electron ratios. Ratios below one
 mean less time, memory or idle CPU for this workload; they are not a general
 performance result.
 
+The report also records `GITHUB_SHA` when actually provided, SHA-256 and byte
+size for both framework executables, Node, the GTK host and Obscura renderer,
+and hashes for every application file, the bootstrap and compiled Electron
+source manifest. Nearby `CMakeCache.txt` files supply the actual
+`CMAKE_BUILD_TYPE`; a missing cache, missing entry or empty build type is
+reported explicitly. A release build is never inferred from its filename.
+Hashes are computed before the timed trials, which can warm the filesystem
+cache; these measurements are not cold-cache startup measurements.
+
+Between trials the runner verifies its detached process group, allows a short
+normal shutdown interval, and then uses bounded SIGTERM/SIGKILL escalation if
+needed. PID start times prevent signaling a reused process group without proof
+of ownership. The directly spawned child must be reaped before the next trial.
+Previously observed children that move outside the group cause the comparison
+to fail; they are not searched for or signaled as arbitrary external processes.
+Cleanup status is included with each successful trial.
+
 Metrics:
 
-* Startup: parent process spawn until both documents load and both PNG captures
-  finish. It includes application/preload initialization.
+* Startup: parent process spawn until both documents load, emit `ready-to-show`,
+  are shown, pass two animation-frame callbacks and complete PNG capture. Both
+  runtimes use the same sequence. It includes application/preload initialization.
 * JavaScript: 30 serial Promise evaluations through `executeJavaScript`.
 * IPC: 15 serial renderer-to-preload-to-main invocation round trips, observed
   through `executeJavaScript`.

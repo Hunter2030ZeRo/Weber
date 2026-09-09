@@ -59,6 +59,7 @@ async function main() {
     BaseWindow: 'browser/api/base-window', BrowserWindow: 'browser/api/browser-window',
     webContents: 'browser/api/web-contents', View: 'browser/api/view',
     WebContentsView: 'browser/api/web-contents-view', ipcMain: 'browser/api/ipc-main',
+    Menu: 'browser/api/menu', MenuItem: 'browser/api/menu-item',
   };
   api.app = runtime.app;
   for (const [name, id] of Object.entries(apiModules)) {

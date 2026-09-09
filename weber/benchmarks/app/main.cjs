@@ -6,6 +6,7 @@ const path = require('node:path');
 const readline = require('node:readline');
 const { createHash } = require('node:crypto');
 const { performance } = require('node:perf_hooks');
+const { once } = require('node:events');
 
 const prefix = 'WEBER_BENCHMARK ';
 const send = value => process.stdout.write(prefix + JSON.stringify(value) + '\n');
@@ -26,14 +27,25 @@ app.on('window-all-closed', () => {});
 const deadline = setTimeout(() => { send({ phase: 'error', error: 'Benchmark application timed out' }); app.exit(1); }, 120000);
 
 app.whenReady().then(async () => {
-  const options = { width: 768, height: 512, show: true,
+  const options = { width: 768, height: 512, show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true,
       nodeIntegration: false, sandbox: false } };
   const first = new BrowserWindow({ ...options, title: 'Benchmark A' });
   const second = new BrowserWindow({ ...options, title: 'Benchmark B' });
   const windows = [first, second];
+  const firstPaint = windows.map(window => once(window, 'ready-to-show'));
+  send({ phase: 'progress', stage: 'windows-created' });
   await Promise.all(windows.map(window => window.loadFile('index.html')));
+  send({ phase: 'progress', stage: 'documents-loaded' });
+  // Loading completion does not guarantee a compositor surface. Both runtimes
+  // follow the same first-render / show / animation-frame sequence before PNG.
+  await Promise.all(firstPaint);
+  send({ phase: 'progress', stage: 'first-render-ready' });
   for (const window of windows) {
+    const shown = once(window, 'show');
+    window.show();
+    await shown;
+    await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
     const png = (await window.capturePage()).toPNG();
     assert.deepEqual(png.subarray(0, 8), pngMagic);
   }

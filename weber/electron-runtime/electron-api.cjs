@@ -11,3 +11,5 @@ exports.ipcMain = api.ipcMain;
 exports.session = api.session;
 exports.webFrameMain = api.webFrameMain;
 exports.dialog = api.dialog;
+exports.Menu = api.Menu;
+exports.MenuItem = api.MenuItem;

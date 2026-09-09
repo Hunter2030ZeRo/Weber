@@ -6,14 +6,14 @@ contains the original Electron source and ancestry. The new Linux runtime replac
 Chromium native bindings with an Obscura renderer and a GTK desktop host.
 
 Electron's MIT license remains at the repository root; its README is
-[README.electron.md](README.electron.md). Weber additions and their Apache-2.0
-license are under `weber/`. Exact imported revisions are recorded in
+[README.electron.md](README.electron.md). Additional project licensing is under
+`weber/`; individual source SPDX notices remain intact. Exact imported revisions are recorded in
 [weber/UPSTREAM_REVISIONS](weber/UPSTREAM_REVISIONS).
 
 ## Executable implementation
 
-The runtime compiles and executes 14 original, unmodified Electron TypeScript
-modules, including BrowserWindow, BaseWindow, WebContents and IPC helpers. A
+The runtime compiles and executes 19 original, unmodified Electron TypeScript
+modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem and IPC helpers. A
 replacement `process._linkedBinding` layer routes their native operations to a
 separate GTK host. Each window has its own Obscura process. The build uses no
 Chromium checkout, Content, Blink, Viz or Chromium renderer binary. Obscura and
@@ -53,7 +53,7 @@ for patch in weber/patches/obscura/000*.patch; do
   git -C weber/vendor/obscura apply "$PWD/$patch"
 done
 cargo build --release --manifest-path weber/Cargo.toml -p weber-engine
-cmake -S weber -B out/runtime -DWEBER_ENGINE_LIBRARY="$PWD/weber/target/release/libweber_engine.a"
+cmake -S weber -B out/runtime -DCMAKE_BUILD_TYPE=Release -DWEBER_ENGINE_LIBRARY="$PWD/weber/target/release/libweber_engine.a"
 cmake --build out/runtime --parallel 2
 npm ci --prefix weber/electron-runtime
 node weber/electron-runtime/build.cjs
@@ -86,7 +86,11 @@ the TOML selector automatically.
 ## Compatibility, security and performance work
 
 The current binding subset is documented in
-[weber/electron-runtime/README.md](weber/electron-runtime/README.md). Menus, tray,
+[weber/electron-runtime/README.md](weber/electron-runtime/README.md). GTK menu
+integration reuses Electron's template ordering, checkbox/radio policy and click
+dispatch, with native accelerators and window ownership. Its native input check
+must pass on the corresponding commit before it is considered verified. Popup
+menus, icons, sublabels and several built-in roles remain unsupported. Tray,
 clipboard, drag and drop, sessions, MessagePorts, extension hosting, installers,
 Windows/macOS support and full navigation/IME behavior still need implementation.
 Preload exposes copied JSON data and asynchronous function proxies; it does not

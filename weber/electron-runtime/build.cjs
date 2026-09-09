@@ -15,6 +15,7 @@ const entries = [
   'browser/api/web-contents', 'browser/api/view',
   'browser/api/web-contents-view', 'browser/api/ipc-main',
   'browser/ipc-main-internal',
+  'browser/api/menu', 'browser/api/menu-item',
 ];
 const seen = new Set();
 const sources = [];

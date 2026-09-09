@@ -9,7 +9,8 @@ function readStat(pid) {
   const end = source.lastIndexOf(')');
   const fields = source.slice(end + 2).trim().split(/\s+/);
   return { pid, name: source.slice(source.indexOf('(') + 1, end),
-    ppid: Number(fields[1]), ticks: Number(fields[11]) + Number(fields[12]),
+    state: fields[0], ppid: Number(fields[1]), processGroupId: Number(fields[2]),
+    sessionId: Number(fields[3]), ticks: Number(fields[11]) + Number(fields[12]),
     startTicks: fields[19], threads: Number(fields[17]) };
 }
 
@@ -77,4 +78,4 @@ function idleCpu(first, last, elapsedMs, clockTicks) {
   return { stableProcessSet: true, cpuTimeMs, oneCorePercent: cpuTimeMs / elapsedMs * 100 };
 }
 
-module.exports = { snapshot, ticksPerSecond, idleCpu };
+module.exports = { readStat, snapshot, ticksPerSecond, idleCpu };
