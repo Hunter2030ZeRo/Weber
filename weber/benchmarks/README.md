@@ -6,6 +6,10 @@ preload script, and runs the same JavaScript, IPC and DOM/capture operations.
 Functional assertions verify results and that captured pixels change after
 document updates. There is no assertion that Weber must win.
 
+Both windows use `setBounds` to sit side by side at (16, 16) and (816, 16),
+preventing one from covering the other. Use a 1600 x 900 or larger display.
+Requested and framework-reported window bounds are included with each trial.
+
 Electron **42.0.0** is pinned. Its npm release was verified before adding this
 benchmark; the harness also checks the running executable's actual version.
 Install it separately from the framework checkout, then pass its real executable:
@@ -13,7 +17,7 @@ Install it separately from the framework checkout, then pass its real executable
 ```sh
 npm install --prefix /tmp/weber-electron-baseline electron@42.0.0
 node /tmp/weber-electron-baseline/node_modules/electron/install.js
-xvfb-run -a node weber/benchmarks/compare.cjs \
+xvfb-run -a -s '-screen 0 1600x900x24' node weber/benchmarks/compare.cjs \
   --electron /tmp/weber-electron-baseline/node_modules/electron/dist/electron \
   --node /absolute/path/to/node \
   --bootstrap "$PWD/weber/electron-runtime/bootstrap.cjs" \
@@ -61,7 +65,10 @@ Metrics:
 * JavaScript: 30 serial Promise evaluations through `executeJavaScript`.
 * IPC: 15 serial renderer-to-preload-to-main invocation round trips, observed
   through `executeJavaScript`.
-* DOM/capture: ten changes to visible text and geometry, each followed by capture.
+* DOM/capture: ten changes to visible text and geometry, each followed by two
+  animation-frame callbacks and then capture. The timing includes those frame
+  callbacks. The unchanged PNG-hash assertion still requires visible pixel
+  changes; it is not replaced by a retry or fixed delay.
 * Idle: after 500 ms of settling, five process-tree samples 500 ms apart. CPU
   totals process user/system ticks; 100% means one logical CPU. Results are
   omitted when the observed process set changes.
@@ -76,3 +83,9 @@ GPU memory, packaging size, peak memory and cold-cache startup are not measured.
 Xvfb and a shared CI runner differ from an interactive desktop. This small HTML
 workload cannot establish VS Code performance, general web compatibility or
 production security. Keep raw results even when they show regressions.
+
+Reports produced with this sequence have `methodologyVersion: 2`. Earlier
+reports captured immediately after DOM mutation and did not place windows side
+by side. Keep those reports as evidence of the old method. In particular, the
+new DOM/capture numbers cannot be compared against them as if only runtime
+optimizations changed; the timed operation itself now includes two frame waits.

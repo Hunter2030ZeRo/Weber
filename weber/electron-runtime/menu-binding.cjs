@@ -103,9 +103,12 @@ function createMenuBinding({ host, windows, app, unsupported }) {
         altKey: Boolean(modifiers & 1), metaKey: Boolean(modifiers & 4), triggeredByAccelerator: Boolean(message.accelerator) };
       // GTK focus notifications precede menu events; preserve the owning native
       // window as focused while its attached menu temporarily owns keyboard focus.
+      const activatedRoot = window._menu;
       menu._executeCommand(keyboardEvent, message.commandId);
       for (const candidate of windows.values()) {
-        if (candidate._menu === window._menu && !candidate._destroyed && !candidate._closing) {
+        // A user callback can detach or replace the application/window menu.
+        // Refresh only windows still displaying the menu that was activated.
+        if (candidate._menu === activatedRoot && !candidate._destroyed && !candidate._closing) {
           send(candidate, 'window.updateMenu', candidate._menu);
         }
       }

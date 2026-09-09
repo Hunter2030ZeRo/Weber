@@ -104,7 +104,7 @@
          // Inject CSS as a global so getComputedStyle and any CSS-aware shim
 --- /dev/null
 +++ b/crates/obscura-js/src/desktop_bridge.rs
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,166 @@
 +//! Two separate contexts connected only by bounded JSON messages.
 +//! Dispatcher functions are rooted privately in Rust, never on page globals.
 +use deno_core::v8;
@@ -191,15 +191,19 @@
 +        // sharing any JS ops, security token, DOM objects, or global objects.
 +        self.share_deno_context_state_with_realm(&isolated);
 +        let main = self.runtime().main_context();
-+        let token = self.arm_watchdog(std::time::Duration::from_secs(2));
++        let token = crate::cdp_watchdog::arm(self.isolate_handle(), std::time::Duration::from_secs(2));
 +        let compiled = (|| {
 +            let isolated_dispatch = self.compile_desktop_dispatcher(&isolated, isolated_bootstrap)?;
 +            let main_dispatch = self.compile_desktop_dispatcher(&main, main_bootstrap)?;
 +            self.desktop_bridge = Some(DesktopBridge { isolated, main_dispatch, isolated_dispatch });
 +            Ok::<_, String>(())
 +        })();
-+        let timed_out = self.disarm_watchdog(token);
-+        if timed_out { self.desktop_bridge = None; return Err("Bridge bootstrap timed out".into()); }
++        let timed_out = crate::cdp_watchdog::disarm(token);
++        if timed_out {
++            self.cancel_termination();
++            self.desktop_bridge = None;
++            return Err("Bridge bootstrap timed out".into());
++        }
 +        compiled?;
 +        let configured = self.desktop_bridge_command(true, &json!({
 +            "method": "configure", "source": preload_source,
@@ -234,7 +238,9 @@
 +                (self.runtime().main_context(), dispatcher)
 +            }
 +        };
-+        let token = self.arm_watchdog(std::time::Duration::from_secs(2));
++        // Reuse Obscura's per-isolate watchdog service. A native watchdog
++        // thread per bridge hop otherwise dominates short IPC round trips.
++        let token = crate::cdp_watchdog::arm(self.isolate_handle(), std::time::Duration::from_secs(2));
 +        let result = (|| {
 +            let mut entered = self.runtime();
 +            let reply = {
@@ -257,7 +263,8 @@
 +            entered.v8_isolate().perform_microtask_checkpoint();
 +            serde_json::from_str(&reply).map_err(|error| format!("Invalid bridge JSON: {error}"))
 +        })();
-+        if self.disarm_watchdog(token) {
++        if crate::cdp_watchdog::disarm(token) {
++            self.cancel_termination();
 +            self.desktop_bridge = None;
 +            return Err("Bridge execution timed out; renderer restart required".into());
 +        }

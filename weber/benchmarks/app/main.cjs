@@ -33,6 +33,13 @@ app.whenReady().then(async () => {
   const first = new BrowserWindow({ ...options, title: 'Benchmark A' });
   const second = new BrowserWindow({ ...options, title: 'Benchmark B' });
   const windows = [first, second];
+  // The CI display is 1600 x 900. Keep both windows visible side by side so
+  // one window does not cover the other's compositor surface.
+  const requestedWindowBounds = [
+    { x: 16, y: 16, width: options.width, height: options.height },
+    { x: 816, y: 16, width: options.width, height: options.height },
+  ];
+  windows.forEach((window, index) => window.setBounds(requestedWindowBounds[index]));
   const firstPaint = windows.map(window => once(window, 'ready-to-show'));
   send({ phase: 'progress', stage: 'windows-created' });
   await Promise.all(windows.map(window => window.loadFile('index.html')));
@@ -50,7 +57,9 @@ app.whenReady().then(async () => {
     assert.deepEqual(png.subarray(0, 8), pngMagic);
   }
   send({ phase: 'ready', versions: { ...process.versions }, windows: windows.length,
-    viewport: { width: options.width, height: options.height }, rendererPids: windows.map(window => window.webContents.getOSProcessId()) });
+    viewport: { width: options.width, height: options.height }, requestedWindowBounds,
+    reportedWindowBounds: windows.map(window => window.getBounds()),
+    rendererPids: windows.map(window => window.webContents.getOSProcessId()) });
   assert.equal((await receive()).command, 'measure');
   for (const window of windows) {
     assert.equal(await window.webContents.executeJavaScript('document.querySelectorAll(".row").length'), 100);
@@ -72,7 +81,11 @@ app.whenReady().then(async () => {
   let previousHash;
   for (let index = 0; index < 10; index++) {
     const start = performance.now();
-    await first.webContents.executeJavaScript(`document.getElementById('counter').textContent = '${index + 1}'; document.getElementById('indicator').style.width = '${120 + index * 4}px'; true`);
+    await first.webContents.executeJavaScript(`
+      document.getElementById('counter').textContent = '${index + 1}';
+      document.getElementById('indicator').style.width = '${120 + index * 4}px';
+      new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))));
+    `);
     const png = (await first.capturePage()).toPNG();
     domAndCapture.push(performance.now() - start);
     assert.deepEqual(png.subarray(0, 8), pngMagic);

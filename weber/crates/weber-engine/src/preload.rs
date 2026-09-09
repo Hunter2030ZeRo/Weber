@@ -187,6 +187,38 @@ mod tests {
     }
 
     #[test]
+    fn shared_bridge_watchdog_resets_termination_and_discards_interrupted_bridge() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let _guard = runtime.enter();
+        let mut page = Page::new("bridge-watchdog-test".into(),
+            Arc::new(BrowserContext::new("bridge-watchdog-test".into())));
+        let mut driver = Preload::new(&mut page);
+        command(&mut driver, &mut page, json!({"method": "configurePreload", "source": r#"
+            require('electron').contextBridge.exposeInMainWorld('watchdogApi', {
+                hang: () => { while (true) {} },
+                healthy: () => 42,
+            });
+        "#})).unwrap();
+        driver.before_navigation().unwrap();
+        runtime.block_on(page.navigate("about:blank")).unwrap();
+        command(&mut driver, &mut page, json!({"method": "startEvaluation", "id": "interrupted",
+            "source": "watchdogApi.hang()"})).unwrap();
+        let started = std::time::Instant::now();
+        assert!(driver.pump(&mut page).unwrap_err().contains("timed out"));
+        assert!(started.elapsed() < std::time::Duration::from_secs(6));
+        assert!(page.desktop_bridge_has_events(true).unwrap_err().contains("unavailable"));
+        // This direct runtime probe checks termination reset only. The engine
+        // still requires a restart after interruption; old bridge handles must
+        // never become usable again just because V8 can execute a new script.
+        assert_eq!(page.js.as_mut().unwrap().evaluate("6 * 7").unwrap().as_f64(), Some(42.0));
+        driver.before_navigation().unwrap();
+        runtime.block_on(page.navigate("about:blank")).unwrap();
+        let result = evaluate(&mut driver, &mut page, "after-replacement", "watchdogApi.healthy()");
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["value"].as_f64(), Some(42.0));
+    }
+
+    #[test]
     fn isolated_preload_bridges_only_copied_values_and_authorized_functions() {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         let _guard = runtime.enter();

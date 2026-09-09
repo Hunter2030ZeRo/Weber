@@ -123,7 +123,7 @@ jobs:
           timeout 180 node "$RUNNER_TEMP/electron-baseline/node_modules/electron/install.js"
           test -x "$RUNNER_TEMP/electron-baseline/node_modules/electron/dist/electron"
           node --test weber/benchmarks/proc-tree.test.cjs weber/benchmarks/process-cleanup.test.cjs
-          xvfb-run -a node weber/benchmarks/compare.cjs --electron "$RUNNER_TEMP/electron-baseline/node_modules/electron/dist/electron" --node "$(command -v node)" --bootstrap "$PWD/weber/electron-runtime/bootstrap.cjs" --output "$PWD/out/benchmark.json"
+          xvfb-run -a -s '-screen 0 1600x900x24' node weber/benchmarks/compare.cjs --electron "$RUNNER_TEMP/electron-baseline/node_modules/electron/dist/electron" --node "$(command -v node)" --bootstrap "$PWD/weber/electron-runtime/bootstrap.cjs" --output "$PWD/out/benchmark.json"
       - name: Diagnose unmodified VS Code startup
         id: vscode
         continue-on-error: true

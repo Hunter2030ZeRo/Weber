@@ -134,6 +134,7 @@ async function trial(framework, index, config, clockTicks) {
     if (status.code !== 0) throw new Error(`Application exited unsuccessfully: ${JSON.stringify(status)}\n${stderr.join('')}`);
     completedTrial = { framework, trial: index, startupToLoadAndCaptureMs,
       versions: ready.versions, rendererPids: ready.rendererPids,
+      requestedWindowBounds: ready.requestedWindowBounds, reportedWindowBounds: ready.reportedWindowBounds,
       javascriptRoundTripMs: workload.javascriptRoundTripMs,
       ipcRoundTripMs: workload.ipcRoundTripMs,
       domUpdateAndCaptureMs: workload.domUpdateAndCaptureMs,
@@ -199,12 +200,15 @@ async function main() {
   const config = options();
   const clockTicks = ticksPerSecond();
   const provenance = await collectProvenance(config, path.join(__dirname, 'app'));
-  const report = { schemaVersion: 1, createdAt: new Date().toISOString(),
+  const report = { schemaVersion: 1, methodologyVersion: 2, createdAt: new Date().toISOString(),
     provenance,
     environment: { platform: process.platform, architecture: process.arch, release: os.release(),
       cpuCount: os.availableParallelism(), clockTicksPerSecond: clockTicks, display: process.env.DISPLAY || null },
     conditions: { pinnedElectron: '42.0.0', trialsPerFramework: config.runs, windows: 2,
       applicationFilesIdentical: true, osSandboxEnabled: false, contextIsolation: true,
+      windowPlacement: 'setBounds places 768x512 windows at (16,16) and (816,16); requires a 1600x900 or larger display',
+      domUpdateAndCaptureDefinition: 'visible text and geometry mutation, two requestAnimationFrame callbacks, then capturePage and PNG encoding',
+      methodologyChange: 'Version 2 waits two animation frames after every DOM mutation and positions windows side by side. DOM/capture timings are not directly comparable with version 1 as an optimization-only result.',
       startupDefinition: 'spawn through loadFile, ready-to-show, show, two animation frames and captures for both windows, including preload setup',
       idleDefinition: 'five full descendant-tree samples, 500 ms apart, after 500 ms settling',
       pssDefinition: 'sum of all descendant smaps_rollup Pss; shared mappings apportioned by the kernel',

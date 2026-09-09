@@ -216,6 +216,39 @@ test('hidden commands require a permitted accelerator, not a stale mouse activat
   assert.deepEqual(h.errors, []);
 });
 
+test('original click callbacks can detach or replace menus without updating detached native menus', () => {
+  for (const action of ['remove-application', 'replace-application', 'remove-window']) {
+    const h = harness();
+    const first = h.window();
+    const second = h.window();
+    const replacement = h.Menu.buildFromTemplate([{ label: 'Replacement' }]);
+    const menu = h.Menu.buildFromTemplate([{ id: 'change', label: 'Change menu', type: 'checkbox',
+      click(_item, owner) {
+        if (action === 'remove-application') h.Menu.setApplicationMenu(null);
+        else if (action === 'replace-application') h.Menu.setApplicationMenu(replacement);
+        else owner.setMenu(null);
+      },
+    }]);
+    h.Menu.setApplicationMenu(menu);
+    h.requests.length = 0;
+    h.click(first, menu.getMenuItemById('change'));
+    const updates = h.requests.filter(request => request.method === 'window.updateMenu');
+    if (action === 'remove-window') {
+      assert.equal(first._menu, null);
+      assert.equal(second._menu, menu);
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0].windowId, second.id);
+      assert.equal(updates[0].menu.items[0].checked, true);
+    } else {
+      const expected = action === 'replace-application' ? replacement : null;
+      assert.equal(first._menu, expected);
+      assert.equal(second._menu, expected);
+      assert.deepEqual(updates, [], `${action} must not send a post-click update to detached or replacement menus`);
+    }
+    assert.deepEqual(h.errors, []);
+  }
+});
+
 test('disabled or hidden ancestor submenus reject queued descendant mouse commands', () => {
   const h = harness();
   let clicks = 0;
