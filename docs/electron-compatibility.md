@@ -11,7 +11,8 @@ Contracts checked against the official documentation on 2026-09-09:
 [app](https://www.electronjs.org/docs/latest/api/app),
 [ipcMain](https://www.electronjs.org/docs/latest/api/ipc-main).
 These are moving documentation references, not a pinned compatibility version.
-A pinned Electron/VS Code source audit remains required before a release claim.
+The [initial pinned VS Code audit](vscode-audit.md) identifies preload and window
+startup blockers. It is not yet a complete dependency inventory or execution test.
 
 | Surface | Current implementation | Remaining gap |
 | --- | --- | --- |

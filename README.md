@@ -148,6 +148,13 @@ for code commit `ee4922ca8f770eba5a509a40b0e224fae6db4489`:
   the host. A full GUI run of the Rust callback example and Bun GUI backend is
   not covered by this test.
 
+Additional compatibility checks passed in [CI run 34351586089](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34351586089)
+for code commit `6095fbe01aa1da8f5195931dd8de52e4242f34c9`:
+Node and Bun each passed 21 tests, the Rust launcher passed its 6 tests and
+three-backend launch smoke, and the Linux native smoke passed with added
+synchronous identity/URL, load notification, destruction and sequential window
+replacement assertions. This does not test concurrent native windows.
+
 ## Current limits
 
 - Windows/macOS builds, real hardware input/IME, and broad application rendering
