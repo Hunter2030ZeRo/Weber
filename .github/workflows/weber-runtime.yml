@@ -1,0 +1,84 @@
+name: Chromium-free Electron source runtime
+on:
+  push:
+    branches: [codex/obscura-runtime]
+  pull_request:
+    paths: ['weber/**', 'shell/browser/obscura/**', 'shell/renderer/obscura/**', '.github/workflows/weber-runtime.yml']
+permissions:
+  contents: read
+jobs:
+  linux-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+      WEBER_UNSANDBOXED_DEVELOPMENT: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - run: git submodule update --init --depth 1 weber/vendor/obscura
+      - name: Apply retained raw-frame API extension
+        run: git -C weber/vendor/obscura apply "$PWD/weber/patches/obscura/0001-desktop-raw-frame.patch"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            weber -> target
+            weber/runtime-config -> target
+          cache-on-failure: true
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libgtk-3-dev nlohmann-json3-dev cmake xvfb xauth xdotool
+      - name: Test real engine APIs
+        run: cargo test --release --manifest-path weber/Cargo.toml -p weber-engine -- --nocapture
+      - name: Build Obscura static boundary
+        run: cargo build --release --manifest-path weber/Cargo.toml -p weber-engine
+      - name: Compile Chromium-free desktop host
+        run: |
+          cmake -S weber -B out/runtime -DWEBER_ENGINE_LIBRARY="$PWD/weber/target/release/libweber_engine.a"
+          cmake --build out/runtime --parallel 2
+      - name: Test renderer process boundary
+        run: ctest --test-dir out/runtime --output-on-failure
+      - name: Test real GTK windows and X11 input
+        run: xvfb-run -a python3 weber/tests/desktop_test.py out/runtime/weber-desktop-host out/runtime/obscura/weber-obscura-renderer
+      - name: Verify browser host does not link Chromium or V8
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          symbols = subprocess.check_output(['nm', '-C', 'out/runtime/weber-desktop-host'], text=True)
+          assert not any(name in symbols for name in ('v8::', 'content::', 'blink::'))
+          print(subprocess.check_output(['ldd', 'out/runtime/weber-desktop-host'], text=True))
+          PY
+      - name: Test TOML backend selection
+        run: cargo test --manifest-path weber/runtime-config/Cargo.toml
+      - name: Test native Rust backend without Node
+        env:
+          WEBER_DESKTOP_HOST: ${{ github.workspace }}/out/runtime/weber-desktop-host
+          WEBER_OBSCURA_RENDERER: ${{ github.workspace }}/out/runtime/obscura/weber-obscura-renderer
+        run: |
+          cargo build --release --manifest-path weber/native-example/Cargo.toml
+          xvfb-run -a cargo run --manifest-path weber/runtime-config/Cargo.toml -- run --runtime-root weber/electron-runtime --project weber/native-example
+      - name: Compile original Electron API source
+        run: |
+          npm ci --prefix weber/electron-runtime
+          node weber/electron-runtime/build.cjs
+      - name: Test original Electron API on Obscura
+        env:
+          WEBER_DESKTOP_HOST: ${{ github.workspace }}/out/runtime/weber-desktop-host
+          WEBER_OBSCURA_RENDERER: ${{ github.workspace }}/out/runtime/obscura/weber-obscura-renderer
+        run: xvfb-run -a node weber/electron-runtime/test-live.cjs
+      - name: Test original Electron API on Bun
+        env:
+          WEBER_DESKTOP_HOST: ${{ github.workspace }}/out/runtime/weber-desktop-host
+          WEBER_OBSCURA_RENDERER: ${{ github.workspace }}/out/runtime/obscura/weber-obscura-renderer
+        run: xvfb-run -a bun weber/electron-runtime/test-live.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runtime-source-evidence
+          path: |
+            weber/electron-runtime/dist/source-manifest.json
+            weber-electron-live-result.json
+            out/runtime/Testing/Temporary/LastTest.log

@@ -1,0 +1,8 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Original Electron API, Obscura renderer</title>
+<style>body { background: #17212c; color: #fff; font: 22px sans-serif; padding: 40px; }
+button { padding: 14px; font: inherit; } #output { color: #a0edbc; }</style></head>
+<body><h1>Electron source running on Obscura</h1><button id="button">Count</button><p id="output">0</p>
+<script>let count = 0; document.getElementById('button').onclick = () => {
+document.getElementById('output').textContent = String(++count);
+};</script></body></html>

@@ -1,0 +1,3 @@
+[backend]
+kind = 'native'
+executable = 'target/release/weber-native-example'

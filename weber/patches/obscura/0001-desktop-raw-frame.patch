@@ -1,0 +1,67 @@
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -1528,3 +1528,39 @@
++    /// Return the retained viewport as premultiplied RGBA8 for a desktop surface.
++    /// Uses the same layout, resource cache, scroll state and canvas backing
++    /// surfaces as screenshot capture, without PNG compression or decoding.
++    #[cfg(feature = "render")]
++    pub fn render_frame_rgba(
++        &self,
++        viewport: (f32, f32),
++        base_url: Option<&str>,
++        surface_color: [u8; 4],
++    ) -> Option<(u32, u32, Vec<u8>)> {
++        let mut state = self.state.borrow_mut();
++        let effective_base = document_base_url(&state);
++        if viewport != state.viewport || base_url != effective_base.as_deref() {
++            return None;
++        }
++        with_sync_render_loading_disabled(&mut state, |state| {
++            ensure_resolved_scroll(state)?;
++            let ObscuraState {
++                dom, prepared_render, render_resources, resolved_scroll,
++                canvas_surfaces, ..
++            } = state;
++            let (_, scroll) = resolved_scroll.as_ref()?;
++            let canvas_surfaces = RuntimeCanvasSurfaceSource(canvas_surfaces);
++            let pixmap =
++                obscura_render::paint_prepared_with_scroll_and_surface_color_and_canvas_surfaces(
++                    dom.as_ref()?,
++                    prepared_render.as_mut()?,
++                    render_resources,
++                    scroll,
++                    surface_color,
++                    &canvas_surfaces,
++                )?;
++            Some((pixmap.width(), pixmap.height(), pixmap.take()))
++        })
++    }
++
+     #[cfg(feature = "render")]
+     pub fn screenshot_prepared_with_surface_color(
+         &self,
+diff --git a/crates/obscura-browser/src/page.rs b/crates/obscura-browser/src/page.rs
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -3758,3 +3758,20 @@
++    /// Present the live viewport without an encode/decode cycle.
++    /// Pixel bytes are premultiplied RGBA8, row-major, with no row padding.
++    /// Width and height currently follow the CSS viewport (scale factor 1).
++    #[cfg(feature = "render")]
++    pub fn render_frame_rgba(&self) -> Option<(u32, u32, Vec<u8>)> {
++        let js = self.js.as_ref()?;
++        if !js.set_animation_sample(self.live_animation_sample()) {
++            return None;
++        }
++        let base_url = self.resolve_base_url();
++        js.render_frame_rgba(
++            self.viewport,
++            base_url.as_ref().map(|url| url.as_str()),
++            self.capture_surface_color(),
++        )
++    }
++
+     #[cfg(feature = "render")]
+     pub fn screenshot(&self, viewport: (f32, f32)) -> Option<Vec<u8>> {
+         self.screenshot_with_animation_sample(viewport, self.live_animation_sample())

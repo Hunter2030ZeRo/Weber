@@ -1,0 +1,16 @@
+[package]
+name = "weber-runtime-config"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Project backend selection and shell-free launch planning for Weber"
+
+[workspace]
+
+[[bin]]
+name = "weber-backend"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"

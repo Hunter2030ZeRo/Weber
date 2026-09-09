@@ -1,0 +1,11 @@
+[package]
+name = "weber-native-example"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Native Rust main process driving the Weber desktop host without Node or Bun"
+
+[workspace]
+
+[dependencies]
+serde_json = "1"

@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.20)
+project(weber_desktop LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+enable_testing()
+# This runtime build has no Chromium checkout, GN, Content or Blink dependency.
+add_subdirectory(../shell/renderer/obscura obscura)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
+find_package(nlohmann_json 3.2 REQUIRED)
+add_executable(weber-desktop-host ../shell/browser/obscura/desktop/main.cc)
+target_compile_options(weber-desktop-host PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(weber-desktop-host PRIVATE obscura_browser_proxy PkgConfig::GTK nlohmann_json::nlohmann_json)

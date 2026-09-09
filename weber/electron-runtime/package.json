@@ -1,0 +1,9 @@
+{
+  "name": "@weber/electron-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Compile Electron's original JavaScript API onto Weber native bindings",
+  "scripts": { "build": "node build.cjs" },
+  "devDependencies": { "typescript": "5.8.3" }
+}
