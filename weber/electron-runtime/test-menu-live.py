@@ -34,32 +34,41 @@ with tempfile.TemporaryDirectory(prefix="weber-menu-test-") as temporary:
         def xdo(*arguments):
             return subprocess.check_output(["xdotool", *map(str, arguments)], text=True).strip()
 
-        def choose(window, index):
-            # Mouse input opens the actual OS menu bar. GTK keyboard navigation
-            # activates the selected native menu item (no engine JS injection).
+        def menu_item(state, owner, command):
+            return next((item for item in state.get("layouts", {}).get(str(owner), {}).get("items", [])
+                         if item["commandId"] == command and item["mapped"] and item["translated"]
+                         and item["width"] > 0 and item["height"] > 0), None)
+
+        def click_item(owner, command):
+            snapshot = await_state(lambda value: menu_item(value, owner, command))
+            item = menu_item(snapshot, owner, command)
+            print(json.dumps({"input": "mouse-click", "windowId": owner, "item": item}), flush=True)
+            xdo("mousemove", "--sync", item["x"] + item["width"] // 2, item["y"] + item["height"] // 2)
+            xdo("click", 1)
+
+        def choose(window, owner, command):
+            # Use measured GTK screen geometry, then send real X11 mouse events
+            # to BOTH the menu bar and popup item. No activation is injected.
             xdo("windowraise", window)
             xdo("windowfocus", "--sync", window)
-            xdo("mousemove", "--window", window, 18, 12)
-            xdo("click", 1)
-            xdo("key", "Home", *(["Down"] * index), "Return")
+            click_item(owner, state["topCommandId"])
+            click_item(owner, state["commandIds"][command])
 
         try:
             state = await_state(lambda value: value.get("ready"))
             first = xdo("search", "--name", "^Weber menu first$").splitlines()[0]
             second = xdo("search", "--name", "^Weber menu second$").splitlines()[0]
-            choose(first, 0)
+            choose(first, state["firstId"], "click")
             await_state(lambda value: value.get("clicks") == 1 and value.get("windowId") == state["firstId"])
-            choose(second, 0)
+            choose(second, state["secondId"], "click")
             await_state(lambda value: value.get("clicks") == 2 and value.get("windowId") == state["secondId"])
-            choose(second, 1)
+            choose(second, state["secondId"], "enabled")
             await_state(lambda value: value.get("checkbox"))
-            choose(second, 2)
+            choose(second, state["secondId"], "first")
             await_state(lambda value: value.get("radio") == "first")
             xdo("key", "ctrl+shift+y")
             await_state(lambda value: value.get("accelerator") == 1)
-            # The disabled item is skipped by native keyboard navigation, so
-            # five Down presses reach Remove menu from the first enabled item.
-            choose(second, 5)
+            choose(second, state["secondId"], "remove")
             final = await_state(lambda value: value.get("removed"))
             child.wait(timeout=10)
             assert child.returncode == 0

@@ -98,7 +98,9 @@ impl Preload {
         }
         let mut outgoing = Vec::new();
         for _ in 0..4 {
-            let main_events = bridge(page, false, json!({"method": "drain"}))?;
+            let main_events = if page.desktop_bridge_has_events(false)? {
+                bridge(page, false, json!({"method": "drain"}))?
+            } else { Value::Array(Vec::new()) };
             let main_events = main_events.as_array().ok_or("Invalid main bridge events")?;
             for event in main_events {
                 match event.get("type").and_then(Value::as_str) {
@@ -129,7 +131,9 @@ impl Preload {
                     _ => return Err("Unsupported main bridge event".into()),
                 }
             }
-            let isolated_events = bridge(page, true, json!({"method": "drain"}))?;
+            let isolated_events = if page.desktop_bridge_has_events(true)? {
+                bridge(page, true, json!({"method": "drain"}))?
+            } else { Value::Array(Vec::new()) };
             let isolated_events = isolated_events.as_array().ok_or("Invalid isolated bridge events")?;
             for event in isolated_events {
                 match event.get("type").and_then(Value::as_str) {

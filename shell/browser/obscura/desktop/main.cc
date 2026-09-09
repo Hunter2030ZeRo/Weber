@@ -360,6 +360,7 @@ void Dispatch(const Json& request) {
     if (found == windows.end()) throw std::runtime_error("Unknown or destroyed window");
     auto window = found->second;
     if (method == "page.command") { Queue(window, request); return; }
+    if (method == "window.getMenuState") { Reply(request, window->menu->Describe()); return; }
     if (method == "window.close") Close(window);
     else if (method == "window.setMenu") window->menu->Set(request.at("menu"));
     else if (method == "window.updateMenu") window->menu->Update(request.at("menu"));

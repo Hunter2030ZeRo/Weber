@@ -105,7 +105,29 @@ int main() {
     std::this_thread::sleep_for(400ms);
     Frame(Changed(engine), 80, 50); // Paint final animation sample once.
     Unchanged(engine);
-    std::cout << "Damage-aware Obscura frames: idle skip, DOM, timer, resize, canvas, navigation, CSS animation passed\n";
+
+    // An idle cached style graph must wake when WAAPI starts, stay idle while
+    // paused, and return to idle after the final sample or cancellation.
+    engine.Command(R"({"method":"evaluate","source":"globalThis.animation=document.getElementById('box').animate([{opacity:0.15},{opacity:1}],{duration:1000,fill:'both'});animation.pause();animation.currentTime=0;null"})");
+    auto waapi_paused = Changed(engine);
+    Frame(waapi_paused, 80, 50);
+    Unchanged(engine);
+    engine.Command(R"({"method":"evaluate","source":"animation.play();null"})");
+    auto waapi_start = Changed(engine);
+    Frame(waapi_start, 80, 50);
+    std::this_thread::sleep_for(40ms);
+    auto waapi_next = Changed(engine);
+    Frame(waapi_next, 80, 50);
+    Check(waapi_next != waapi_start, "Resumed WAAPI animation did not repaint");
+    engine.Command(R"({"method":"evaluate","source":"animation.finish();null"})");
+    auto waapi_final = Changed(engine);
+    Frame(waapi_final, 80, 50);
+    Check(waapi_final != waapi_paused, "Finished WAAPI animation lost its final pixels");
+    Unchanged(engine);
+    engine.Command(R"({"method":"evaluate","source":"animation.cancel();null"})");
+    Frame(Changed(engine), 80, 50);
+    Unchanged(engine);
+    std::cout << "Damage-aware Obscura frames: idle skip, DOM, timer, resize, canvas, navigation, CSS and WAAPI animation passed\n";
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
     return 1;

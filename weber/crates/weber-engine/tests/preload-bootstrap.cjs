@@ -15,7 +15,7 @@ function realm(name) {
     const result = JSON.parse(dispatcher(JSON.stringify(payload)));
     vm.runInContext('void 0', context);
     return result;
-  }, run(source) { return vm.runInContext(source, context); } };
+  }, peek() { return dispatcher(); }, run(source) { return vm.runInContext(source, context); } };
 }
 function ok(realm, payload) {
   const result = realm.raw(payload);
@@ -75,6 +75,15 @@ contextBridge.exposeInMainWorld('api', {
   attack: () => require('node:fs'),
 });`;
 const p = pair(source);
+assert.equal(p.main.peek(), false);
+assert.equal(p.isolated.peek(), false);
+ok(p.main, {method:'startEvaluation', id:'private-peek', source:'42'});
+assert.equal(p.main.peek(), true);
+assert.equal(p.main.peek(), true, 'probe must not drain an accepted completion');
+const peekEvents = ok(p.main, {method:'drain'});
+assert.equal(peekEvents.length, 1);
+assert.equal(peekEvents[0].id, 'private-peek');
+assert.equal(p.main.peek(), false);
 assert.deepEqual(p.evaluate('api.add(3, 4)').value,7);
 assert.deepEqual(p.evaluate('api.map([1,2,3])').value,[2,3,4]);
 assert.deepEqual(p.evaluate('api.list.map(x=>x*2)').value,[2,4,6]);

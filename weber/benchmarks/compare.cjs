@@ -231,6 +231,16 @@ async function main() {
         throw error;
       }
       report.trials.push(result);
+      const firstSample = result.idle.samples[0];
+      const lastSample = result.idle.samples.at(-1);
+      const firstProcesses = new Map(firstSample.processes.map(value => [`${value.pid}:${value.startTicks}`, value]));
+      console.log(JSON.stringify({ kind: 'process-cost', framework, trial: index + 1,
+        elapsedMs: result.idle.elapsedMs,
+        processes: lastSample.processes.map(value => {
+          const initial = firstProcesses.get(`${value.pid}:${value.startTicks}`);
+          return { pid: value.pid, name: value.name, pssBytes: value.pssBytes,
+            cpuTimeMs: initial ? (value.ticks - initial.ticks) * 1000 / clockTicks : null };
+        }) }));
       report.summary = summarize(report.trials);
       save();
       await delay(300);

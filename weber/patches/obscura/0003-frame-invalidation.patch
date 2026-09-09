@@ -96,3 +96,64 @@ diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
      if state.prepared_render.is_some()
          && !queue_retained_style_mutation(
              &mut state.pending_style_mutations,
+diff --git a/crates/obscura-render/src/paint.rs b/crates/obscura-render/src/paint.rs
+--- a/crates/obscura-render/src/paint.rs
++++ b/crates/obscura-render/src/paint.rs
+@@ -830,6 +830,9 @@
+ pub struct PreparedRender {
+     viewport: (f32, f32),
+     animation_sample: crate::AnimationSample,
++    // Declarative timing is immutable within this prepared style graph. Cache
++    // it here so idle compositor/CSSOM polls do not walk every retained style.
++    has_active_declarative_css_animations: bool,
+     has_active_waapi_animations: bool,
+     active_animation_impact: crate::AnimationEffectImpact,
+     root_font_size: f32,
+@@ -862,15 +865,11 @@
+     /// their active interval; paused and zero-duration animations never do.
+     pub fn has_active_css_animations(&self) -> bool {
+         self.has_active_waapi_animations
+-            || self
+-                .layout
+-                .styles
+-                .values()
+-                .any(css_animation_is_active)
++            || self.has_active_declarative_css_animations
+     }
+ 
+     fn has_active_declarative_css_animations(&self) -> bool {
+-        self.layout.styles.values().any(css_animation_is_active)
++        self.has_active_declarative_css_animations
+     }
+ 
+     /// Advance opacity/transform Web Animations without rebuilding normal-flow
+@@ -2618,20 +2617,19 @@
+         .and_then(|root| laid.styles.get(&root))
+         .and_then(|style| style.font_size)
+         .unwrap_or(16.0);
++    let mut has_active_declarative_css_animations = false;
++    let mut active_animation_impact =
++        animation_timeline.active_waapi_effect_impact(animation_sample.time);
++    for style in laid.styles.values().filter(|style| css_animation_is_active(style)) {
++        has_active_declarative_css_animations = true;
++        active_animation_impact = active_animation_impact.max(style.animation_effect_impact);
++    }
+     Some(PreparedRender {
+         viewport,
+         animation_sample,
++        has_active_declarative_css_animations,
+         has_active_waapi_animations: animation_timeline.has_active_waapi(animation_sample.time),
+-        active_animation_impact: laid
+-            .styles
+-            .values()
+-            .filter(|style| css_animation_is_active(style))
+-            .map(|style| style.animation_effect_impact)
+-            .chain(std::iter::once(
+-                animation_timeline.active_waapi_effect_impact(animation_sample.time),
+-            ))
+-            .max()
+-            .unwrap_or_default(),
++        active_animation_impact,
+         root_font_size,
+         base_url: base_url.map(str::to_string),
+         has_dynamic_fonts: !dynamic_fonts.is_empty(),

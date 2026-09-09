@@ -44,7 +44,7 @@
              runtime_events_enabled: std::cell::Cell::new(false),
              pending_frame_work: std::collections::VecDeque::new(),
              suspended_started_script_ids: Vec::new(),
-@@ -1877,7 +1881,37 @@
+@@ -1877,7 +1881,41 @@
              &format!("globalThis.devicePixelRatio={};", self.device_scale_factor),
          );
  
@@ -79,10 +79,14 @@
 +    {
 +        self.js.as_mut().ok_or("No document loaded")?
 +            .desktop_bridge_command(isolated, request)
++    }
++
++    pub fn desktop_bridge_has_events(&mut self, isolated: bool) -> Result<bool, String> {
++        self.js.as_mut().ok_or("No document loaded")?.desktop_bridge_has_events(isolated)
      }
  
      /// Resolve the document base URL per HTML spec:
-@@ -3248,6 +3282,7 @@
+@@ -3248,6 +3286,7 @@
          if url.scheme() == "about" {
              self.navigate_blank();
              self.init_js();
@@ -90,7 +94,7 @@
              // Preloads (Page.addScriptToEvaluateOnNewDocument, the
              // Runtime.addBinding shim) must run on about:blank too —
              // puppeteer's `browser.newPage()` lands on about:blank and
-@@ -3330,6 +3365,7 @@
+@@ -3330,6 +3369,7 @@
  
          self.dom = Some(dom);
          self.init_js();
@@ -100,7 +104,7 @@
          // Inject CSS as a global so getComputedStyle and any CSS-aware shim
 --- /dev/null
 +++ b/crates/obscura-js/src/desktop_bridge.rs
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,159 @@
 +//! Two separate contexts connected only by bounded JSON messages.
 +//! Dispatcher functions are rooted privately in Rust, never on page globals.
 +use deno_core::v8;
@@ -114,6 +118,39 @@
 +}
 +
 +impl ObscuraJsRuntime {
++    /// Query a private, immutable bootstrap function's queue-length branch.
++    /// This branch performs no user-code evaluation or microtask checkpoint,
++    /// so empty polls do not need JSON allocation or a watchdog thread.
++    pub fn desktop_bridge_has_events(&mut self, isolated: bool) -> Result<bool, String> {
++        let (context, dispatcher) = {
++            let bridge = self.desktop_bridge.as_ref().ok_or("Desktop bridge unavailable")?;
++            if isolated {
++                (bridge.isolated.clone(), bridge.isolated_dispatch.clone())
++            } else {
++                let dispatcher = bridge.main_dispatch.clone();
++                (self.runtime().main_context(), dispatcher)
++            }
++        };
++        let mut entered = self.runtime();
++        let policy = entered.v8_isolate().get_microtasks_policy();
++        // Even if the embedder changes its default policy, this read must not
++        // run an arbitrary queued Promise callback without its watchdog.
++        entered.v8_isolate().set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
++        let result = (|| {
++            let scope = &mut v8::HandleScope::new(entered.v8_isolate());
++            let context = v8::Local::new(scope, &context);
++            let scope = &mut v8::ContextScope::new(scope, context);
++            let scope = &mut v8::TryCatch::new(scope);
++            let function = v8::Local::new(scope, &dispatcher);
++            let receiver = v8::undefined(scope).into();
++            let result = function.call(scope, receiver, &[]).ok_or_else(|| exception_text(scope))?;
++            if !result.is_boolean() { return Err("Invalid private bridge queue probe".into()); }
++            Ok(result.is_true())
++        })();
++        entered.v8_isolate().set_microtasks_policy(policy);
++        result
++    }
++
 +    fn compile_desktop_dispatcher(
 +        &mut self,
 +        context: &v8::Global<v8::Context>,

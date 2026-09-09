@@ -46,6 +46,24 @@ class MenuView {
     syncing_ = false;
   }
 
+  Json Describe() const {
+    Json items = Json::array();
+    for (const auto& [command, widget] : widgets_) {
+      GtkAllocation allocation;
+      gtk_widget_get_allocation(widget, &allocation);
+      auto* toplevel = gtk_widget_get_toplevel(widget);
+      auto* native = gtk_widget_get_window(toplevel);
+      int x = 0, y = 0, origin_x = 0, origin_y = 0;
+      const bool translated = gtk_widget_translate_coordinates(widget, toplevel, 0, 0, &x, &y);
+      if (native) gdk_window_get_origin(native, &origin_x, &origin_y);
+      items.push_back({{"menuId", command.first}, {"commandId", command.second},
+        {"mapped", bool(gtk_widget_get_mapped(widget))}, {"visible", bool(gtk_widget_get_visible(widget))},
+        {"enabled", bool(gtk_widget_get_sensitive(widget))}, {"translated", translated},
+        {"x", origin_x + x}, {"y", origin_y + y}, {"width", allocation.width}, {"height", allocation.height}});
+    }
+    return {{"menuId", root_menu_id_}, {"opens", opens_}, {"activations", activations_}, {"items", items}};
+  }
+
  private:
   struct Activation {
     MenuView* owner;
@@ -146,6 +164,7 @@ class MenuView {
         Build(submenu, item.at("submenu"));
         g_signal_connect(submenu, "show", G_CALLBACK((+[](GtkWidget*, gpointer data) {
           auto* self = static_cast<MenuView*>(data);
+          ++self->opens_;
           self->emit_({{"event", "menu-will-show"}, {"windowId", self->window_id_}});
         })), this);
       } else if (type != "separator") {
@@ -154,6 +173,7 @@ class MenuView {
           auto* activation = static_cast<Activation*>(data);
           auto* self = activation->owner;
           if (self->syncing_) return;
+          ++self->activations_;
           GdkModifierType state{};
           gtk_get_current_event_state(&state);
           auto* current_event = gtk_get_current_event();
@@ -200,6 +220,8 @@ class MenuView {
   GtkAccelGroup* accel_ = nullptr;
   int root_menu_id_ = 0;
   bool syncing_ = false;
+  unsigned opens_ = 0;
+  unsigned activations_ = 0;
   std::map<std::pair<int, int>, GtkWidget*> widgets_;
 };
 

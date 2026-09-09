@@ -341,5 +341,7 @@
       default: fail('Unknown isolated-world dispatcher method');
     }
   }
-  return freeze(input => command(input, dispatch));
+  // Private zero-argument probe: a bounded read of our own queue length.
+  // No JSON conversion, user callbacks, getters, or Promise jobs run here.
+  return freeze(input => input === undefined ? queue.length !== 0 : command(input, dispatch));
 })()

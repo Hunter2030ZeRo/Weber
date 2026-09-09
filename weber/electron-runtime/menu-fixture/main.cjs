@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const state = { ready: false, clicks: 0, checkbox: false, radio: '', accelerator: 0, removed: false };
 let first, second;
+let inspectTimer;
 const report = () => fs.writeFileSync(process.env.WEBER_MENU_RESULT, JSON.stringify(state));
 const fail = error => { state.error = error.stack; report(); app.exit(1); };
 process.on('uncaughtException', fail);
@@ -39,6 +40,7 @@ const menu = Menu.buildFromTemplate([{ label: '&Test', submenu: [
     // operations above are unchanged Electron calls.
     await Promise.all([first._menuReady, second._menuReady]);
     state.removed = true; report();
+    clearInterval(inspectTimer);
     clearTimeout(timeout);
     app.exit(0);
   } },
@@ -55,6 +57,19 @@ app.whenReady().then(async () => {
     second.loadFile(path.join(__dirname, 'index.html')), first._menuReady, second._menuReady]);
   await Promise.all([firstFrame, secondFrame]);
   state.ready = true; state.firstId = first.id; state.secondId = second.id;
+  state.topCommandId = menu.items[0].commandId;
+  state.commandIds = Object.fromEntries(['click', 'enabled', 'first', 'remove'].map(id => [id, menu.getMenuItemById(id).commandId]));
   state.nativeMenu = 'gtk'; state.templatePolicy = 'unmodified Electron Menu and MenuItem';
+  let inspecting = false;
+  inspectTimer = setInterval(async () => {
+    if (inspecting || state.removed) return;
+    inspecting = true;
+    try {
+      const layouts = await Promise.all([first, second].map(win => win._host('window.getMenuState')));
+      state.layouts = { [first.id]: layouts[0], [second.id]: layouts[1] };
+      report();
+    } catch (error) { if (!state.removed) fail(error); }
+    finally { inspecting = false; }
+  }, 50);
   report();
 }).catch(fail);

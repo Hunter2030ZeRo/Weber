@@ -1,0 +1,49 @@
+{
+  "kind": "benchmark-summary-from-ci-log",
+  "commit": "45f90ac625a06ae46c45c53af084028725406356",
+  "workflow_run": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34376507472",
+  "raw_artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34376507472/artifacts/10114247005",
+  "completeBenchmark": true,
+  "fullWorkflowPassed": false,
+  "workflowFailure": "GTK menu input acceptance test timed out",
+  "conditions": {
+    "windows": 2,
+    "trialsPerFramework": 3,
+    "build": "Release",
+    "osSandboxEnabled": false,
+    "display": "Xvfb",
+    "workload": "Identical small local HTML app; hidden -> ready -> show -> two animation frames -> captures",
+    "scope": "Not a VS Code or production desktop benchmark"
+  },
+  "summary": {
+    "electron": {
+      "trials": 3,
+      "startupToLoadAndCaptureMs": 645.0103820000004,
+      "javascriptRoundTripMs": 0.2632040000000302,
+      "ipcRoundTripMs": 0.4635999999998148,
+      "domUpdateAndCaptureMs": 32.812636999999995,
+      "idlePssBytes": 396883968,
+      "idleRssBytes": 923574272,
+      "idleCpuOneCorePercent": 0.47895883246960375
+    },
+    "weber": {
+      "trials": 3,
+      "startupToLoadAndCaptureMs": 334.5814559999999,
+      "javascriptRoundTripMs": 0.9756149999999764,
+      "ipcRoundTripMs": 2.2889379999999733,
+      "domUpdateAndCaptureMs": 40.391080000000045,
+      "idlePssBytes": 192269312,
+      "idleRssBytes": 299454464,
+      "idleCpuOneCorePercent": 10.30496256946111
+    },
+    "weberDividedByElectron": {
+      "startupToLoadAndCaptureMs": 0.5187225901117352,
+      "javascriptRoundTripMs": 3.7066875883340087,
+      "ipcRoundTripMs": 4.93731233822452,
+      "domUpdateAndCaptureMs": 1.230961108063337,
+      "idlePssBytes": 0.484447162148913,
+      "idleRssBytes": 0.32423430695133093,
+      "idleCpuOneCorePercent": 21.515340924660983
+    }
+  }
+}

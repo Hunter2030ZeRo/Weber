@@ -432,6 +432,45 @@ mod tests {
     }
 
     #[test]
+    fn idle_queue_probes_preserve_timer_driven_ipc_progress() {
+        let mut engine = Engine::new().unwrap();
+        command(&mut engine, json!({"method": "configurePreload", "source": r#"
+            const { contextBridge, ipcRenderer } = require('electron');
+            contextBridge.exposeInMainWorld('timerApi', {
+                echo: value => ipcRenderer.invoke('timer:echo', value),
+            });
+        "#})).unwrap();
+        command(&mut engine, json!({"method": "loadURL", "url": "about:blank"})).unwrap();
+        command(&mut engine, json!({"method": "pollEvents"})).unwrap();
+        for _ in 0..100 {
+            assert!(!engine.page.desktop_bridge_has_events(false).unwrap());
+            assert!(!engine.page.desktop_bridge_has_events(true).unwrap());
+        }
+        evaluate(&mut engine,
+            "setTimeout(() => timerApi.echo(21).then(value => globalThis.timerReply = value), 20); null").unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let mut invoked = false;
+        while std::time::Instant::now() < deadline {
+            command(&mut engine, json!({"method": "tick"})).unwrap();
+            let events = command(&mut engine, json!({"method": "pollEvents"})).unwrap();
+            for event in events["events"].as_array().unwrap() {
+                if event["type"] == "ipc-invoke" {
+                    assert!(!invoked, "timer invocation was duplicated");
+                    invoked = true;
+                    assert_eq!(event["channel"], "timer:echo");
+                    command(&mut engine, json!({"method": "resolveIpc", "id": event["id"],
+                        "generation": event["generation"], "ok": true, "value": 42})).unwrap();
+                }
+            }
+            if invoked && evaluate(&mut engine, "globalThis.timerReply === 42").unwrap() == true { break; }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(invoked, "empty queue probes must not stop timers from generating IPC");
+        assert_eq!(evaluate(&mut engine, "timerReply").unwrap().as_f64(), Some(42.0));
+        assert!(!engine.poisoned);
+    }
+
+    #[test]
     fn engine_delivery_budget_reports_every_accepted_evaluation() {
         let mut engine = Engine::new().unwrap();
         command(&mut engine, json!({"method": "loadURL", "url": "about:blank"})).unwrap();
