@@ -1,0 +1,11 @@
+{
+  "version": "1.136.2",
+  "commit": "88e44fa0e00b08f7758b4f6d05632e4fd5e4df6f",
+  "platform": "linux-x64",
+  "release_notes": "https://code.visualstudio.com/updates/v1_136",
+  "tag_api": "https://api.github.com/repos/microsoft/vscode/git/ref/tags/1.136.2",
+  "source_url": "https://update.code.visualstudio.com/1.136.2/linux-x64/stable",
+  "archive_url": "https://vscode.download.prss.microsoft.com/dbazure/download/stable/88e44fa0e00b08f7758b4f6d05632e4fd5e4df6f/code-stable-x64-1788561485.tar.gz",
+  "verified_at": "2026-09-09",
+  "verification": "Official release-note tarball link resolved to this commit-addressed Microsoft archive; GitHub's official version tag points to the same commit. Archive digest is recorded at download time, not claimed as a pre-verified publisher checksum."
+}

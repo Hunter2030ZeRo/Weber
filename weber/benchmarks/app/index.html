@@ -1,0 +1,15 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Desktop framework comparison</title>
+<style>
+body { margin: 24px; color: #20242a; background: #f4f6f8; font: 15px sans-serif; }
+h1 { font-size: 24px; } #counter { font-size: 20px; } #indicator { width: 100px; height: 20px; background: #2356ab; }
+.row { padding: 4px 8px; margin: 2px 0; background: white; border: 1px solid #d8dce0; }
+</style></head><body><h1>Identical two-window workload</h1><p id="counter">0</p><div id="indicator"></div><main id="rows"></main>
+<script>
+for (let index = 0; index < 100; index++) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.textContent = 'Document row ' + index + ': shared content for both rendering engines.';
+  document.getElementById('rows').appendChild(row);
+}
+</script></body></html>

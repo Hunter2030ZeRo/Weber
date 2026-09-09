@@ -16,7 +16,16 @@ async function run() {
   }
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'weber-electron-live-'));
   const resultPath = path.join(temporary, 'result.json');
-  const child = spawn(process.execPath, [path.join(__dirname, 'bootstrap.cjs'), path.join(__dirname, 'fixture')], {
+  const project = path.join(temporary, 'app');
+  fs.cpSync(path.join(__dirname, 'fixture'), project, { recursive: true });
+  const backend = process.versions.bun ? 'bun' : 'node';
+  // This is the same application. Only the TOML backend selection changes.
+  fs.writeFileSync(path.join(project, 'weber.toml'), `[backend]\nkind = '${backend}'\nentry = 'main.cjs'\n`);
+  const launcher = process.env.WEBER_BACKEND_LAUNCHER;
+  const executable = launcher || process.execPath;
+  const args = launcher ? ['run', '--runtime-root', __dirname, '--project', project] :
+    [path.join(__dirname, 'bootstrap.cjs'), project];
+  const child = spawn(executable, args, {
     env: { ...process.env, WEBER_LIVE_RESULT: resultPath }, stdio: 'inherit', shell: false,
   });
   const timeout = setTimeout(() => child.kill('SIGTERM'), 110000);
@@ -26,6 +35,8 @@ async function run() {
     assert.equal(code, 0, report.error);
     assert.equal(report.ok, true, report.error);
     report.originalElectronModules = manifest.sources.length;
+    report.backend = backend;
+    report.tomlLauncher = Boolean(launcher);
     fs.writeFileSync(path.join(root, 'weber-electron-live-result.json'), JSON.stringify(report, null, 2) + '\n');
     console.log(JSON.stringify(report, null, 2));
   } finally {

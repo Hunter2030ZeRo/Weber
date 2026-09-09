@@ -1,92 +1,109 @@
-# Weber — Electron / Obscura migration
+# Weber: Electron source with Obscura
 
-This branch contains Electron's source and ancestry, plus Weber's development
-history. Electron's MIT LICENSE and original source remain at the repository
-root; its original README is README.electron.md. Weber's Apache-2.0 code and
-license live under weber/. See weber/UPSTREAM_REVISIONS for exact source commits.
+Weber aims to run existing Electron applications with substantially lower resource
+use, while preserving their developer experience and visible behavior. This branch
+contains the original Electron source and ancestry. The new Linux runtime replaces
+Chromium native bindings with an Obscura renderer and a GTK desktop host.
 
-The active task is replacing Chromium's engine implementation with Obscura.
-Backend alternatives and agent features are deferred until this route works.
+Electron's MIT license remains at the repository root; its README is
+[README.electron.md](README.electron.md). Weber additions and their Apache-2.0
+license are under `weber/`. Exact imported revisions are recorded in
+[weber/UPSTREAM_REVISIONS](weber/UPSTREAM_REVISIONS).
 
-## Implemented boundary
+## Executable implementation
 
-shell/renderer/obscura contains a C++ adapter calling the actual Obscura engine
-through the statically linked C ABI in weber/crates/weber-engine. It loads local HTML, executes
-JavaScript with a watchdog, changes viewport, and captures PNG output. The
-standalone smoke checks DOM results, exceptions, rendering changes and invalid
-requests. No Chromium libraries are linked into that executable.
+The runtime compiles and executes 14 original, unmodified Electron TypeScript
+modules, including BrowserWindow, BaseWindow, WebContents and IPC helpers. A
+replacement `process._linkedBinding` layer routes their native operations to a
+separate GTK host. Each window has its own Obscura process. The build uses no
+Chromium checkout, Content, Blink, Viz or Chromium renderer binary. Obscura and
+the selected JavaScript backend still use their own JavaScript engines.
 
-This is the first replacement-renderer component, **not a working replacement
-Electron binary**. Electron's existing BrowserWindow/WebContents still use
-Chromium; they are not yet routed to this adapter. The normal BUILD.gn remains
-Chromium-dependent. The separate CMake target tests only the new boundary.
+The original Chromium-dependent GN build and native Electron implementation remain
+as migration reference in this source fork. Build Weber using the CMake/Cargo path
+below; running the upstream GN build does not produce the replacement runtime.
 
-Obscura brings its own V8 build. This library must run in a dedicated replacement
-renderer process, not in Electron's main process alongside Electron's V8.
-A Linux process launcher and bounded private transport now connect the browser-side
-proxy to a dedicated renderer. Native surface integration and OS sandbox remain
-unimplemented. The C ABI itself is not a security boundary.
+[CI for commit 6688e3c](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34373027242)
+passed the following actual execution checks:
 
-## Reproduce the boundary test on Linux
+- Two native GTK windows painted from Obscura raw frames, with real X11 mouse and
+  keyboard input, independent DOMs, JavaScript/Promise evaluation and PNG capture.
+- Original Electron API modules running the same CommonJS application under
+  Node.js 24 and Bun 1.4.2, including separate preload contexts, contextBridge,
+  ipcRenderer.invoke, rejection propagation and window closure.
+- A Rust native application selected through project TOML, using the same native
+  window/Obscura runtime without Node or Bun.
+- Native V8 preload isolation and IPC checks, process transport failures, renderer
+  crash containment, frame invalidation and backend argument/signal handling.
+
+Newer commits additionally exercise TOML selection for the Node/Bun live tests,
+navigation policy, IPC bounds and performance measurements. Consult their CI
+results rather than treating the earlier passing commit as proof of later changes.
+These checks establish a functioning development runtime, not full Electron or
+VS Code compatibility.
+
+## Build and run on Linux
+
+Install Rust, Node.js 24, CMake, a C++17 compiler, pkg-config, GTK3 and fontconfig
+development headers, and nlohmann-json. The CI workflow lists Ubuntu packages.
 
 ```sh
 git submodule update --init --depth 1 weber/vendor/obscura
+for patch in weber/patches/obscura/000*.patch; do
+  git -C weber/vendor/obscura apply "$PWD/$patch"
+done
 cargo build --release --manifest-path weber/Cargo.toml -p weber-engine
-cmake -S shell/renderer/obscura -B out/obscura-boundary -DWEBER_ENGINE_LIBRARY="$PWD/weber/target/release/libweber_engine.a"
-cmake --build out/obscura-boundary
-ctest --test-dir out/obscura-boundary --output-on-failure
+cmake -S weber -B out/runtime -DWEBER_ENGINE_LIBRARY="$PWD/weber/target/release/libweber_engine.a"
+cmake --build out/runtime --parallel 2
+npm ci --prefix weber/electron-runtime
+node weber/electron-runtime/build.cjs
+cargo build --release --manifest-path weber/runtime-config/Cargo.toml
 ```
 
-Requires Rust, C++17, CMake and Obscura's native build dependencies. Only Linux is
-currently tested. An externally set CARGO_TARGET_DIR changes the library path.
-The PNG capture is a diagnostic path, not a performance solution. No comparative
-memory/performance results exist.
+Create `weber.toml` in the application's directory:
 
-## Next engine replacement work
+```toml
+[backend]
+kind = 'node'
+entry = 'main.cjs'
+```
 
-1. Introduce an asynchronous engine-neutral browser-side contract in place of direct
-   content::WebContents dependencies. Preserve Electron's public JS contracts.
-2. Wire the replacement renderer process proxy into that contract, including navigation,
-   frame lifecycle, input, callbacks and failure reporting.
-3. Replace PNG capture with raw-frame/dirty-region presentation to native windows.
-4. Implement isolated preload, message ports and process sandboxing before
-   claiming existing Electron app compatibility.
+Change `kind` to `'bun'` to run the same CommonJS main with Bun. Node also supports
+ES modules. Native Rust applications use `kind = 'native'` and
+`executable = 'target/release/my-application'`; they implement their main backend
+with the [Rust API](weber/native-runtime). A JavaScript main is not automatically
+translated into Rust. See the [selector documentation](weber/runtime-config/README.md)
+and [native example](weber/native-example).
 
-Upstream Electron workflows are preserved under weber/upstream-electron-workflows
-as reference. They are not activated as Weber release jobs. The source import
-workflow refuses to overwrite this branch if it already exists.
+```sh
+WEBER_UNSANDBOXED_DEVELOPMENT=1 weber/runtime-config/target/release/weber-backend run --project /path/to/app --runtime-root weber/electron-runtime
+```
 
-See weber/migration/ENGINE_REPLACEMENT.md for the source-level dependency map.
+The explicit environment switch is required because OS sandboxing is not yet
+implemented. Only run trusted development applications. It is never enabled by
+the TOML selector automatically.
 
-## Verified integration
+## Compatibility, security and performance work
 
-[Migration CI 34354236566](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34354236566)
-built the Rust static library and C++ executable and passed the real Obscura
-boundary test on Linux. Imported source commit:
-`37f9050f2ddc9db1f76a41a8965a28ad879b3ce4`.
-Its two parents are the pinned Electron source commit and Weber implementation
-commit `4cf5f266c4d7967791f0b3678addb78a854915ac`.
-The initial shared-library attempt failed because the prebuilt V8 uses TLS
-relocations incompatible with a shared object; the validated build statically
-links it into the separate executable.
+The current binding subset is documented in
+[weber/electron-runtime/README.md](weber/electron-runtime/README.md). Menus, tray,
+clipboard, drag and drop, sessions, MessagePorts, extension hosting, installers,
+Windows/macOS support and full navigation/IME behavior still need implementation.
+Preload exposes copied JSON data and asynchronous function proxies; it does not
+yet provide Electron's complete preload/structured-clone contract. Separate
+renderer processes and private transport are implemented; a production OS sandbox
+and comprehensive origin/network policy are not.
 
-The [browser-side process proxy](shell/browser/obscura/README.md) describes the
-new process transport and its exact integration limits. The normal Electron
-BrowserWindow/WebContents path still uses Chromium.
+The [comparison harness](weber/benchmarks/README.md) runs identical application
+files in pinned Electron and Weber, records all descendant processes' PSS/RSS,
+startup, IPC, DOM/capture and idle CPU, and preserves results even when Weber is
+slower. This small unsandboxed Linux fixture cannot establish VS Code performance.
+The [VS Code probe](weber/vscode-probe/README.md) runs an unmodified official app
+entry and records its first startup blocker; diagnostic completion is explicitly
+not a VS Code acceptance pass. Neither a compatibility percentage nor a general
+performance advantage is currently claimed.
 
-## Verified separate renderer processes
-
-[CI 34359352048](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34359352048)
-passed all three integration tests on Linux for implementation commit
-`d5e7a36842a437a7f87efac8071feec587f37069`:
-
-- Real C++/Obscura engine boundary: DOM, evaluation/errors and PNG rendering.
-- Transport fixture: startup/request deadlines, invalid startup/sequence/size,
-  fragmented replies, child cleanup and closed-stdio descriptor remapping.
-- Two real Obscura renderer processes: independent DOM, PNG capture, idle timer
-  progress, one-child crash containment and replacement renderer startup.
-
-The browser-side test executable was also checked for absence of V8 symbols.
-These checks validate the standalone renderer/proxy components. They do not
-validate Electron BrowserWindow routing, native multiwindow GUI, OS sandboxing,
-Windows/macOS support or an Electron performance advantage.
+The next compatibility target is a functioning VS Code workbench, followed by
+editing, terminal, extension host, multiwindow and desktop integrations. Obscura's
+agent capabilities should use the same page state and input paths, with explicit
+application authorization rather than a separate uncontrolled browser endpoint.

@@ -23,6 +23,12 @@ target_link_libraries(weber-frame-invalidation-smoke PRIVATE weber_engine Thread
 add_test(NAME real-obscura-frame-invalidation COMMAND weber-frame-invalidation-smoke)
 set_tests_properties(real-obscura-frame-invalidation PROPERTIES TIMEOUT 45)
 
+add_executable(weber-navigation-policy-smoke obscura_engine.cc navigation_policy_smoke.cc)
+target_compile_options(weber-navigation-policy-smoke PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(weber-navigation-policy-smoke PRIVATE weber_engine Threads::Threads ${CMAKE_DL_LIBS} m rt util)
+add_test(NAME real-obscura-navigation-policy COMMAND weber-navigation-policy-smoke)
+set_tests_properties(real-obscura-navigation-policy PROPERTIES TIMEOUT 45)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_library(obscura_wire STATIC ../../common/obscura/wire.cc)
   add_library(obscura_browser_proxy STATIC ../../browser/obscura/renderer_process.cc)

@@ -1,0 +1,46 @@
+diff --git a/crates/obscura-browser/src/page.rs b/crates/obscura-browser/src/page.rs
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -3189,6 +3189,13 @@
+                 &document_referrer,
+             )
+             .await?;
++            // Weber owns desktop navigation policy. Keep an author-requested
++            // destination queued until the browser owner explicitly accepts it;
++            // a crawler-style redirect chain must not reinstall a privileged
++            // preload in an unexpected document before that decision.
++            if self.desktop_preload_scripts.is_some() {
++                break;
++            }
+             if let Some((next_url, next_method, next_body)) = self.take_pending_navigation() {
+                 if cross_scheme_to_file(&current_url, &next_url) {
+                     // SOP gate. A web page must not be able to drive
+@@ -3351,6 +3358,16 @@
+         );
+ 
+         if !response.redirected_from.is_empty() {
++            // The HTTP client has already followed its redirects. Until the
++            // desktop owner can authorize each hop, never install a privileged
++            // preload or execute author scripts on a different final origin.
++            // Headless callers retain the original redirect behavior.
++            if self.desktop_preload_scripts.is_some() && response.url.origin() != url.origin() {
++                self.lifecycle = LifecycleState::Failed;
++                return Err(PageError::NetworkError(
++                    "Cross-origin HTTP redirect requires browser authorization".into(),
++                ));
++            }
+             self.url = Some(response.url.clone());
+         }
+ 
+@@ -4592,6 +4609,11 @@
+     }
+ 
+     pub async fn process_pending_navigation(&mut self) -> Result<bool, PageError> {
++        if self.desktop_preload_scripts.is_some() {
++            // Preserve the request for the desktop owner, including callers
++            // entering through the CDP/agent input path after initial load.
++            return Ok(false);
++        }
+         if let Some((url, method, body)) = self.take_pending_navigation() {
+             let source_url = self
+                 .url

@@ -103,8 +103,21 @@ impl Preload {
             for event in main_events {
                 match event.get("type").and_then(Value::as_str) {
                     Some("bridge-call") => {
-                        bridge(page, true, json!({"method": "call", "id": event["id"],
-                            "functionId": event["functionId"], "args": event["args"]}))?;
+                        // Admission failure belongs to this Promise. A full
+                        // isolated queue must not discard already accepted IPC
+                        // requests or poison the renderer. Native V8 failures
+                        // still propagate; only a valid dispatcher rejection is
+                        // converted into an individual bridge-call rejection.
+                        let reply = page.desktop_bridge_command(true, &json!({"method": "call",
+                            "id": event["id"], "functionId": event["functionId"], "args": event["args"]}))?;
+                        if reply.get("ok").and_then(Value::as_bool) == Some(false) {
+                            let error = reply.get("error").and_then(Value::as_str)
+                                .ok_or("Invalid bridge admission failure")?;
+                            bridge(page, false, json!({"method": "settle", "id": event["id"],
+                                "ok": false, "error": error}))?;
+                        } else if reply.get("ok").and_then(Value::as_bool) != Some(true) {
+                            return Err("Invalid bridge admission reply".into());
+                        }
                     }
                     Some("evaluation-result") => {
                         let id = event.get("id").and_then(Value::as_str).ok_or("Invalid evaluation completion")?;
@@ -240,5 +253,112 @@ mod tests {
         driver.before_navigation().unwrap();
         assert!(runtime.block_on(page.navigate("data:text/html,<script>globalThis.authorRan=true</script>")).is_err());
         assert!(page.js.is_none(), "failed preload must not fall back to a main-world execution path");
+    }
+
+    #[test]
+    fn ipc_overflow_rejects_individual_calls_and_preserves_accepted_tickets() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let _guard = runtime.enter();
+        let mut page = Page::new("isolated-overflow-test".into(),
+            Arc::new(BrowserContext::new("isolated-overflow-test".into())));
+        let mut driver = Preload::new(&mut page);
+        command(&mut driver, &mut page, json!({"method": "configurePreload", "source": r#"
+            const { contextBridge, ipcRenderer } = require('electron');
+            contextBridge.exposeInMainWorld('loadApi', {
+                send: value => ipcRenderer.invoke('load:echo', value),
+            });
+        "#})).unwrap();
+        driver.before_navigation().unwrap();
+        runtime.block_on(page.navigate("about:blank")).unwrap();
+        command(&mut driver, &mut page, json!({"method": "startEvaluation", "id": "overflow",
+            "source": "Promise.all(Array.from({length:300}, (_,value) => loadApi.send(value).then(value=>({ok:true,value}),()=>({ok:false}))))"
+        })).unwrap();
+        let mut accepted = HashSet::new();
+        let mut completion = None;
+        for _ in 0..16 {
+            // A normal admission rejection must not turn this pump into Err.
+            for event in driver.pump(&mut page).unwrap() {
+                if event["type"] == "ipc-invoke" {
+                    assert_eq!(event["channel"], "load:echo");
+                    let value = event["args"][0].as_u64().unwrap();
+                    assert!(accepted.insert(value), "IPC request was emitted twice");
+                    command(&mut driver, &mut page, json!({"method": "resolveIpc",
+                        "generation": event["generation"], "id": event["id"], "ok": true, "value": value})).unwrap();
+                } else if event["type"] == "evaluation-result" {
+                    completion = Some(event);
+                }
+            }
+            if completion.is_some() { break; }
+        }
+        let completion = completion.expect("all accepted and rejected calls must settle");
+        assert_eq!(completion["ok"], true, "{completion}");
+        let results = completion["value"].as_array().unwrap();
+        assert_eq!(results.len(), 300);
+        let mut fulfilled = 0;
+        for result in results {
+            if result["ok"] == true {
+                fulfilled += 1;
+                assert!(accepted.contains(&result["value"].as_u64().unwrap()));
+            }
+        }
+        assert!(fulfilled > 0 && fulfilled < 300, "expected accepted calls and bounded overflow");
+        assert_eq!(fulfilled, accepted.len(), "accepted IPC tickets were lost");
+        assert!(driver.pending_ipc.is_empty());
+        assert!(driver.pending_evaluations.is_empty());
+
+        // Capacity must be released for subsequent requests in the same document.
+        command(&mut driver, &mut page, json!({"method": "startEvaluation", "id": "after-overflow",
+            "source": "loadApi.send(12345)"})).unwrap();
+        let ipc = wait_for(&mut driver, &mut page, "ipc-invoke");
+        command(&mut driver, &mut page, json!({"method": "resolveIpc", "generation": ipc["generation"],
+            "id": ipc["id"], "ok": true, "value": 12345})).unwrap();
+        let result = wait_for(&mut driver, &mut page, "evaluation-result");
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["value"], 12345);
+    }
+
+    #[test]
+    fn isolated_dynamic_import_cannot_execute_in_the_page_realm() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let _guard = runtime.enter();
+        let mut page = Page::new("isolated-import-test".into(),
+            Arc::new(BrowserContext::new("isolated-import-test".into())));
+        let mut driver = Preload::new(&mut page);
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let directory = std::env::temp_dir().join(format!("weber-isolated-import-{}-{unique}", std::process::id()));
+        std::fs::create_dir(&directory).unwrap();
+        let module_path = directory.join("probe.mjs");
+        let html_path = directory.join("index.html");
+        std::fs::write(&module_path, "export default [typeof document,globalThis.realmMarker];").unwrap();
+        std::fs::write(&html_path, "<script>globalThis.realmMarker='main';</script>").unwrap();
+        let module_url = url::Url::from_file_path(&module_path).unwrap();
+        let module_literal = serde_json::to_string(module_url.as_str()).unwrap();
+        let source = format!("globalThis.realmMarker='isolated';
+            require('electron').contextBridge.exposeInMainWorld('probeApi',{{
+                probe:()=>import({module_literal}).then(module=>JSON.parse(JSON.stringify(module.default)))
+                    .catch(error=>({{rejected:String(error)}}))
+            }});");
+        command(&mut driver, &mut page, json!({"method": "configurePreload", "source": source})).unwrap();
+        driver.before_navigation().unwrap();
+        runtime.block_on(page.navigate(url::Url::from_file_path(&html_path).unwrap().as_str())).unwrap();
+        command(&mut driver, &mut page, json!({"method": "startEvaluation", "id": "import",
+            "source": "probeApi.probe()"})).unwrap();
+        let mut completion = None;
+        for _ in 0..64 {
+            let _ = runtime.block_on(async {
+                tokio::time::timeout(std::time::Duration::from_millis(5), page.run_autonomous_event_loop_turn()).await
+            });
+            for event in driver.pump(&mut page).unwrap() {
+                if event["type"] == "evaluation-result" { completion = Some(event); }
+            }
+            if completion.is_some() { break; }
+        }
+        std::fs::remove_dir_all(&directory).unwrap();
+        let completion = completion.expect("isolated import must settle or reject cleanly");
+        assert_eq!(completion["ok"], true, "{completion}");
+        let value = &completion["value"];
+        assert!(value.get("rejected").and_then(Value::as_str).is_some()
+            || *value == json!(["undefined", "isolated"]),
+            "Isolated dynamic import crossed the page context: {value}");
     }
 }

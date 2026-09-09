@@ -39,6 +39,19 @@ static painting; it does not remove the renderer's event-loop wakeups.
 timer-driven changes, resizing, canvas repaint, same-URL navigation and CSS
 animation completion against the actual C ABI engine.
 
+`0004-browser-navigation.patch` keeps author-requested document navigation
+queued in desktop mode, including requests made by startup scripts. The
+browser owner receives `navigation-requested` with the destination, method,
+body and source URL, and must authorize a subsequent `loadURL`. Headless
+Obscura clients retain the original automatic client-navigation chain.
+Cross-origin HTTP redirects currently fail before destination DOM parsing,
+preload installation and author execution. The HTTP client may already have
+followed the network redirect; this is an execution boundary, not a per-hop
+network permission mechanism. A future browser-mediated redirect hook must
+authorize each hop before fetching. `real-obscura-navigation-policy` checks
+that startup author navigation cannot replace the initial document or run
+destination scripts until an explicit browser command accepts it.
+
 The input adapter in `weber-engine/src/desktop.rs` derives from the pinned
 Obscura CDP input implementation under Apache-2.0. There is no separate
 native input dispatcher in the pinned `Page` API. The adapter uses the same

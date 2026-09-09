@@ -107,11 +107,20 @@ Json Decode(const std::vector<uint8_t>& bytes) {
   return Json::parse(bytes.begin(), bytes.end());
 }
 void Work(std::shared_ptr<Window> window, Json create) {
+  bool created = false;
   try {
     RendererProcess renderer(renderer_path, 30000ms);
     renderer.Command(Json{{"method", "viewport"}, {"width", create.value("options", Json::object()).value("width", 800)}, {"height", create.value("options", Json::object()).value("height", 600)}}.dump());
     Reply(create, {{"windowId", window->id}, {"rendererPid", renderer.process_id()}});
+    created = true;
     bool loaded = false;
+    auto drain_events = [&] {
+      const auto batch = Decode(renderer.Command(R"({"method":"pollEvents"})"));
+      if (batch.value("dropped", 0u))
+        Emit({{"event", "engine-event-overflow"}, {"windowId", window->id}});
+      for (const auto& event : batch.at("events"))
+        Emit({{"event", "engine-event"}, {"windowId", window->id}, {"data", event}});
+    };
     auto next_frame = std::chrono::steady_clock::now();
     while (!window->closed && !quitting) {
       Json request;
@@ -124,25 +133,25 @@ void Work(std::shared_ptr<Window> window, Json create) {
       if (!request.is_null()) {
         try {
           const Json& command = request.at("command");
-          auto response = renderer.Command(command.dump());
           const auto method = command.value("method", "");
+          if (method == "loadFile" || method == "loadURL" || method == "navigate") loaded = false;
+          auto response = renderer.Command(command.dump());
           if (method == "loadFile" || method == "loadURL" || method == "navigate") loaded = true;
           if (method == "capturePng") {
             gchar* encoded = g_base64_encode(response.data(), response.size());
             Reply(request, {{"encoding", "base64"}, {"data", encoded}}); g_free(encoded);
           } else Reply(request, Decode(response));
         } catch (const std::exception& error) { Error(request, error.what()); }
+        // Return IPC and evaluation completions immediately after commands;
+        // their latency must not depend on the frame-presentation interval.
+        if (loaded) drain_events();
       }
       const auto now = std::chrono::steady_clock::now();
       if (now >= next_frame) {
-        next_frame = now + 33ms;
+        next_frame = now + 16ms;
         if (loaded) {
           try {
-            const auto batch = Decode(renderer.Command(R"({"method":"pollEvents"})"));
-            if (batch.value("dropped", 0u))
-              Emit({{"event", "engine-event-overflow"}, {"windowId", window->id}});
-            for (const auto& event : batch.at("events"))
-              Emit({{"event", "engine-event"}, {"windowId", window->id}, {"data", event}});
+            drain_events();
           } catch (const std::exception& error) {
             Emit({{"event", "render-process-gone"}, {"windowId", window->id}, {"error", error.what()}});
             Ui([window] { Close(window); });
@@ -162,7 +171,7 @@ void Work(std::shared_ptr<Window> window, Json create) {
       }
     }
   } catch (const std::exception& error) {
-    Error(create, error.what());
+    if (!created) Error(create, error.what());
     Emit({{"event", "render-process-gone"}, {"windowId", window->id}, {"error", error.what()}});
     Ui([window] { Close(window); });
   }
