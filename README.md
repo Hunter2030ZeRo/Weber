@@ -56,3 +56,15 @@ as reference. They are not activated as Weber release jobs. The source import
 workflow refuses to overwrite this branch if it already exists.
 
 See weber/migration/ENGINE_REPLACEMENT.md for the source-level dependency map.
+
+## Verified integration
+
+[Migration CI 34354236566](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34354236566)
+built the Rust static library and C++ executable and passed the real Obscura
+boundary test on Linux. Imported source commit:
+`37f9050f2ddc9db1f76a41a8965a28ad879b3ce4`.
+Its two parents are the pinned Electron source commit and Weber implementation
+commit `4cf5f266c4d7967791f0b3678addb78a854915ac`.
+The initial shared-library attempt failed because the prebuilt V8 uses TLS
+relocations incompatible with a shared object; the validated build statically
+links it into the separate executable.
