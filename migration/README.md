@@ -11,7 +11,7 @@ Backend alternatives and agent features are deferred until this route works.
 ## Implemented boundary
 
 shell/renderer/obscura contains a C++ adapter calling the actual Obscura engine
-through the C ABI in weber/crates/weber-engine. It loads local HTML, executes
+through the statically linked C ABI in weber/crates/weber-engine. It loads local HTML, executes
 JavaScript with a watchdog, changes viewport, and captures PNG output. The
 standalone smoke checks DOM results, exceptions, rendering changes and invalid
 requests. No Chromium libraries are linked into that executable.
@@ -31,7 +31,7 @@ not implemented here. The C ABI itself is not a security boundary.
 ```sh
 git submodule update --init --depth 1 weber/vendor/obscura
 cargo build --release --manifest-path weber/Cargo.toml -p weber-engine
-cmake -S shell/renderer/obscura -B out/obscura-boundary -DWEBER_ENGINE_LIBRARY="$PWD/weber/target/release/libweber_engine.so"
+cmake -S shell/renderer/obscura -B out/obscura-boundary -DWEBER_ENGINE_LIBRARY="$PWD/weber/target/release/libweber_engine.a"
 cmake --build out/obscura-boundary
 ctest --test-dir out/obscura-boundary --output-on-failure
 ```
@@ -54,3 +54,5 @@ memory/performance results exist.
 Upstream Electron workflows are preserved under weber/upstream-electron-workflows
 as reference. They are not activated as Weber release jobs. The source import
 workflow refuses to overwrite this branch if it already exists.
+
+See weber/migration/ENGINE_REPLACEMENT.md for the source-level dependency map.

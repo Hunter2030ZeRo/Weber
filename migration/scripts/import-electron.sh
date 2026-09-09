@@ -39,7 +39,7 @@ git -C "$fork_dir" submodule update --init --depth 1 weber/vendor/obscura
 # Reuse the original checkout's Cargo cache without changing its lockfile.
 export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target"
 cargo build --release --manifest-path "$fork_dir/weber/Cargo.toml" -p weber-engine
-cmake -S "$fork_dir/shell/renderer/obscura" -B "$RUNNER_TEMP/obscura-boundary" -DWEBER_ENGINE_LIBRARY="$CARGO_TARGET_DIR/release/libweber_engine.so"
+cmake -S "$fork_dir/shell/renderer/obscura" -B "$RUNNER_TEMP/obscura-boundary" -DWEBER_ENGINE_LIBRARY="$CARGO_TARGET_DIR/release/libweber_engine.a"
 cmake --build "$RUNNER_TEMP/obscura-boundary" --parallel 2
 ctest --test-dir "$RUNNER_TEMP/obscura-boundary" --output-on-failure
 # Both Electron ancestry and Weber development history remain reachable.
