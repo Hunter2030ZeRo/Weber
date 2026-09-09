@@ -2,7 +2,7 @@ name: Electron baseline dependency bootstrap
 on:
   push:
     branches: [codex/electron-obscura]
-    paths: ['weber/mvp/bootstrap_baseline.sh', '.github/workflows/electron-baseline.yml']
+    paths: ['weber/mvp/bootstrap_baseline.sh', '.github/workflows/electron-baseline.yml', '.github/workflows/package.json', 'package.json', 'yarn.lock']
 permissions:
   contents: read
 jobs:
@@ -11,6 +11,11 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Validate preserved Electron workspaces before source download
+        run: node .yarn/releases/yarn-4.12.0.cjs install --immutable --mode=skip-build
       - name: Reserve disk for upstream dependencies
         run: sudo rm -rf -- /usr/local/lib/android
       - name: Confirm full-build resources
