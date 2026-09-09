@@ -10,6 +10,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Recover unused SDK space on this disposable runner
+        run: |
+          python3 - <<'PY'
+          import shutil, subprocess
+          from pathlib import Path
+          if shutil.disk_usage('.').free < 100_000_000_000:
+              android_sdk = Path('/usr/local/lib/android')
+              if android_sdk.is_dir():
+                  subprocess.run(['sudo', 'rm', '-rf', '--', str(android_sdk)], check=True)
+          PY
       - name: Measure actual build resources and source dependencies
         run: python3 weber/mvp/build_preflight.py --root . --output preflight.json
       - name: Check acceptance script syntax

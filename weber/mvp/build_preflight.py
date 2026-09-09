@@ -13,7 +13,8 @@ parser.add_argument('--root', type=Path, default=Path.cwd())
 parser.add_argument('--output', type=Path, required=True)
 args = parser.parse_args()
 root = args.root.resolve()
-free = shutil.disk_usage(root).free
+disk = shutil.disk_usage(root)
+free = disk.free
 memory = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
 for path in [Path('/sys/fs/cgroup/memory.max'), Path('/sys/fs/cgroup/memory/memory.limit_in_bytes')]:
     try:
@@ -39,6 +40,7 @@ tools = {name: shutil.which(name) for name in ['git', 'python3', 'gn', 'gclient'
 report = {
     'source_commit': subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip(),
     'free_disk_bytes': free,
+    'disk_total_bytes': disk.total,
     'effective_memory_bytes': memory,
     'cpu_count': os.cpu_count(),
     'documented_baseline_free_disk_bytes': 100_000_000_000,
