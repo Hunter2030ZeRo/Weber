@@ -86,13 +86,14 @@ struct Host {
     ack: Option<std::sync::mpsc::SyncSender<()>>,
     announced: bool,
     next_tick: Instant,
+    next_epoch: u64,
     fatal: Option<String>,
 }
 impl Host {
     fn new(startup: Option<(PathBuf, Vec<String>)>, native: Option<NativeHandler>) -> Result<Self> {
         Ok(Self { view: None,
             runtime: tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?,
-            startup, native, ack: None, announced: false, next_tick: Instant::now(), fatal: None })
+            startup, native, ack: None, announced: false, next_tick: Instant::now(), next_epoch: 0, fatal: None })
     }
 
     fn create(&mut self, event_loop: &ActiveEventLoop, params: &Value) -> Result<Value> {
@@ -139,7 +140,10 @@ impl Host {
                 if !path.is_file() { return Err("Expected a file".into()); }
                 let url = url::Url::from_file_path(path).map_err(|_| "Invalid file path")?;
                 view.loaded = false;
-                view.epoch += 1;
+                // Never reuse a document generation after closing/reopening
+                // the single supported window in this host session.
+                self.next_epoch += 1;
+                view.epoch = self.next_epoch;
                 let size = view.window.inner_size().to_logical::<f32>(view.window.scale_factor());
                 view.page.set_viewport((size.width.max(1.0), size.height.max(1.0)));
                 view.page.set_device_scale_factor(view.window.scale_factor() as f32);

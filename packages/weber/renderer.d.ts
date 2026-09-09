@@ -1,4 +1,4 @@
-import type { Json } from './index.js';
+import type { Json } from './index.d.ts';
 declare global {
   interface Window { weber: { invoke(channel: string, payload?: Json): Promise<Json> } }
 }

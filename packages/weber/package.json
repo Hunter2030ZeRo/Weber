@@ -2,7 +2,10 @@
   "name": "@weber/runtime",
   "version": "0.1.0-alpha.1",
   "type": "module",
-  "exports": { ".": { "types": "./index.d.ts", "default": "./index.mjs" } },
+  "exports": {
+    ".": { "types": "./index.d.ts", "default": "./index.mjs" },
+    "./renderer": { "types": "./renderer.d.ts" }
+  },
   "license": "Apache-2.0",
   "engines": { "node": ">=22" }
 }
