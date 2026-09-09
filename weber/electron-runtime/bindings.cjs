@@ -4,6 +4,7 @@
 // These objects replace Electron's native binding boundary. Public BrowserWindow
 // and WebContents JavaScript behavior is loaded from the original Electron tree.
 const { EventEmitter } = require('node:events');
+const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
@@ -185,9 +186,15 @@ function createBindings(host, appPath, loadInternal) {
       this._loading = false;
       this._destroyed = false;
       this._navigation = 0;
+      this._generation = null;
+      this._evaluations = new Map();
+      this._nextEvaluation = 0;
+      this._ipcRequests = new Set();
+      this._deferredEvents = [];
       this._history = [];
       this._historyIndex = -1;
       this._prefs = { contextIsolation: true, nodeIntegration: false, sandbox: true, ...options };
+      this._preloadSource = owner._preloadSource;
       this._rendererPid = 0;
       owner._ready.then(result => { this._rendererPid = result?.rendererPid || 0; }).catch(() => {});
       this.mainFrame = {
@@ -210,12 +217,88 @@ function createBindings(host, appPath, loadInternal) {
       if (command !== 'RENDERER_WEB_FRAME_METHOD') {
         promise = Promise.reject(new Error(`Unsupported internal message ${command}`));
       } else if (method === 'executeJavaScript') {
-        promise = this._command({ method: 'evaluate', source: args[0] });
+        // A pending Promise that invokes ipcMain must yield the renderer's
+        // command loop so its reply can be delivered. Synchronous evaluate
+        // cannot provide that bidirectional progress.
+        promise = this._preloadSource === undefined ?
+          this._command({ method: 'evaluate', source: args[0] }) : this._evaluateTicket(args[0]);
       } else {
         promise = Promise.reject(new Error(`Weber has not implemented webFrame.${method}`));
       }
       promise.then(result => ipc.emit(response, senderEvent, null, result),
         error => ipc.emit(response, senderEvent, error));
+    }
+    _evaluateTicket(source) {
+      if (this._evaluations.size >= 256) return Promise.reject(new Error('Too many pending evaluations'));
+      const id = String(++this._nextEvaluation);
+      const generation = this._generation;
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          this._evaluations.delete(id);
+          reject(new Error('JavaScript evaluation timed out'));
+        }, 15000);
+        this._evaluations.set(id, { resolve, reject, timer, generation });
+        this._command({ method: 'startEvaluation', id, source }).then(ack => {
+          if (ack?.generation !== generation) {
+            const pending = this._evaluations.get(id);
+            if (pending) { clearTimeout(pending.timer); this._evaluations.delete(id); pending.reject(new Error('Document changed during evaluation')); }
+          }
+        }, error => {
+          const pending = this._evaluations.get(id);
+          if (pending) { clearTimeout(pending.timer); this._evaluations.delete(id); pending.reject(error); }
+        });
+      });
+    }
+    _rejectEvaluations(message) {
+      for (const pending of this._evaluations.values()) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error(message));
+      }
+      this._evaluations.clear();
+      this._ipcRequests.clear();
+    }
+    _engineEvent(message) {
+      if (this._destroyed || !message || typeof message !== 'object') return;
+      if (this._loading && ['ipc-invoke', 'evaluation-result'].includes(message.type)) {
+        if (this._deferredEvents.length >= 256) {
+          this._rejectEvaluations('Renderer event queue overflow during navigation');
+          app.emit('weber-error', new Error('Too many renderer events during navigation'));
+        } else this._deferredEvents.push(message);
+        return;
+      }
+      if (message.type === 'evaluation-result') {
+        const pending = this._evaluations.get(message.id);
+        if (!pending || message.generation !== pending.generation || message.generation !== this._generation) return;
+        clearTimeout(pending.timer);
+        this._evaluations.delete(message.id);
+        if (message.ok) pending.resolve(message.value);
+        else pending.reject(new Error(String(message.error || 'JavaScript evaluation failed')));
+      } else if (message.type === 'ipc-invoke') {
+        if (message.generation !== this._generation || typeof message.id !== 'string' ||
+            typeof message.channel !== 'string' || !Array.isArray(message.args) || this._ipcRequests.has(message.id)) return;
+        if (this._ipcRequests.size >= 256) return;
+        this._ipcRequests.add(message.id);
+        const ipc = loadInternal('browser/api/ipc-main').default;
+        const handler = this.ipc._invokeHandlers.get(message.channel) || ipc._invokeHandlers.get(message.channel);
+        const ipcEvent = { type: 'frame', sender: this, senderFrame: this.mainFrame,
+          processId: this._rendererPid, frameId: this.id, frameTreeNodeId: this.id };
+        Promise.resolve().then(() => {
+          if (!handler) throw new Error(`No handler registered for '${message.channel}'`);
+          return handler(ipcEvent, ...message.args);
+        }).then(value => this._resolveIpc(message, true, value), error => this._resolveIpc(message, false, String(error.message || error)));
+      }
+    }
+    _resolveIpc(request, ok, result) {
+      this._ipcRequests.delete(request.id);
+      if (this._destroyed || request.generation !== this._generation) return;
+      const command = { method: 'resolveIpc', generation: request.generation, id: request.id, ok,
+        ...(ok ? { value: result === undefined ? null : result } : { error: result }) };
+      try { JSON.stringify(command); } catch {
+        command.ok = false;
+        delete command.value;
+        command.error = 'IPC result is not representable by the current JSON transport';
+      }
+      this._command(command).catch(error => app.emit('weber-error', error));
     }
     _loadURL(target, options = {}) {
       if (this._destroyed) throw new Error('Object has been destroyed');
@@ -223,19 +306,30 @@ function createBindings(host, appPath, loadInternal) {
         return unsupported('loadURL options (referrer, headers, postData and userAgent)');
       }
       const serial = ++this._navigation;
+      this._generation = null;
+      this._deferredEvents = [];
+      this._rejectEvaluations('Navigation replaced the evaluation document');
       this._loading = true;
       this.emit('did-start-loading');
       this.emit('did-start-navigation', event(this), target, false, true);
-      this._command({ method: 'loadURL', url: String(target) }).then(state => {
+      const prepare = this._preloadSource === undefined ? Promise.resolve() :
+        this._command({ method: 'configurePreload', source: this._preloadSource });
+      prepare.then(() => this._command({ method: 'loadURL', url: String(target) })).then(state => {
         if (this._destroyed || serial !== this._navigation) return;
         this._url = state?.url || String(target);
         this._title = state?.title || '';
+        this._generation = state?.generation ?? null;
         this._loading = false;
+        const deferred = this._deferredEvents;
+        this._deferredEvents = [];
+        for (const message of deferred) this._engineEvent(message);
         this._history.splice(this._historyIndex + 1);
         this._history.push({ url: this._url, title: this._title });
         this._historyIndex = this._history.length - 1;
         this.emit('dom-ready', event(this));
-        this.emit('did-navigate', event(this), this._url, 200, 'OK');
+        // The current engine response has no HTTP status metadata. Electron
+        // uses -1 for unavailable status; do not manufacture an HTTP 200.
+        this.emit('did-navigate', event(this), this._url, -1, '');
         this.emit('did-frame-finish-load', event(this), true, this._rendererPid, this.id);
         this.emit('did-finish-load', event(this));
         this.emit('did-stop-loading', event(this));
@@ -243,6 +337,7 @@ function createBindings(host, appPath, loadInternal) {
       }, error => {
         if (this._destroyed || serial !== this._navigation) return;
         this._loading = false;
+        this._deferredEvents = [];
         this.emit('did-fail-load', event(this), -2, error.message, String(target), true);
         this.emit('did-stop-loading', event(this));
       });
@@ -263,6 +358,7 @@ function createBindings(host, appPath, loadInternal) {
     _destroy() {
       if (this._destroyed) return;
       this._destroyed = true;
+      this._rejectEvaluations('WebContents was destroyed');
       this._loading = false;
       contents.delete(this.id);
       this.emit('destroyed');
@@ -294,12 +390,19 @@ function createBindings(host, appPath, loadInternal) {
 
   function BrowserWindow(options = {}) {
     const preferences = options.webPreferences || {};
-    if (preferences.preload) return unsupported('isolated Electron preload; main-world injection is not a substitute');
     if (preferences.nodeIntegration) return unsupported('Node integration inside the Obscura renderer');
+    if (preferences.preload && preferences.contextIsolation === false) return unsupported('non-isolated preload execution');
+    let preloadSource;
+    if (preferences.preload) {
+      if (!path.isAbsolute(preferences.preload)) throw new Error('Preload script must have an absolute path');
+      preloadSource = fs.readFileSync(preferences.preload, 'utf8');
+      if (Buffer.byteLength(preloadSource) > 512 * 1024) throw new Error('Preload source exceeds 512 KiB');
+    }
     if (process.env.WEBER_UNSANDBOXED_DEVELOPMENT !== '1') {
       throw new Error('The development host has no OS sandbox. Explicitly set WEBER_UNSANDBOXED_DEVELOPMENT=1 for trusted local development.');
     }
     startWindow(this, options);
+    this._preloadSource = preloadSource;
     this.webContents = new WebContents(preferences, this);
     this.contentView = {
       addChildView: () => unsupported('embedding additional WebContentsView'),
@@ -342,6 +445,11 @@ function createBindings(host, appPath, loadInternal) {
       win.webContents.emit('weber-first-frame-presented', message);
     } else if (type === 'frame-error') {
       app.emit('weber-error', new Error(message.error || 'Native frame presentation failed'));
+    } else if (type === 'engine-event') {
+      win.webContents?._engineEvent(message.data);
+    } else if (type === 'engine-event-overflow') {
+      win.webContents?._rejectEvaluations('Renderer event queue overflow');
+      app.emit('weber-error', new Error('Renderer event queue overflow'));
     }
   });
   host.on('closed', error => {

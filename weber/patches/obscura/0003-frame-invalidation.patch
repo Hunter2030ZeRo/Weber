@@ -1,0 +1,98 @@
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -1523,6 +1523,21 @@
+             surface_color,
+             render_resources,
+         )
++    }
++
++    /// Read retained rendering invalidation without layout, painting or JS.
++    /// Connected DOM changes, canvas task damage, image arrivals and scrolling
++    /// update activity_generation. Dirty retained caches cover font/resource,
++    /// viewport, base URL and media invalidation even without a DOM mutation.
++    #[cfg(feature = "render")]
++    pub fn desktop_render_damage(&self) -> (u64, u64, bool) {
++        let state = self.state.borrow();
++        let dirty = state.prepared_render.is_none()
++            || !state.pending_style_mutations.is_empty()
++            || state.resolved_scroll.is_none()
++            || state.prepared_render.as_ref()
++                .is_some_and(|prepared| prepared.has_active_css_animations());
++        (state.document_generation, state.activity_generation, dirty)
+     }
+ 
+     /// Return the retained viewport as premultiplied RGBA8 for a desktop surface.
+diff --git a/crates/obscura-browser/src/page.rs b/crates/obscura-browser/src/page.rs
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -263,6 +263,11 @@
+     /// CSS viewport used by responsive page JavaScript and CDP screenshots.
+     /// The physical `screen` fingerprint remains independent.
+     pub viewport: (f32, f32),
++    /// Weber: last successfully presented generation, with no retained pixels.
++    #[cfg(feature = "render")]
++    desktop_frame_stamp: std::cell::Cell<Option<(
++        std::time::Instant, u64, u64, u32, u32, [u8; 4],
++    )>>,
+     /// Optional CDP physical-screen override. This is separate from the CSS
+     /// viewport and survives navigation, matching device-metrics emulation.
+     screen_size_override: Option<(f32, f32)>,
+@@ -1146,6 +1151,8 @@
+             title: String::new(),
+             referrer: String::new(),
+             viewport: (1280.0, 720.0),
++            #[cfg(feature = "render")]
++            desktop_frame_stamp: std::cell::Cell::new(None),
+             screen_size_override: None,
+             screen_metrics_emulated: false,
+             device_metrics_baseline: None,
+@@ -3755,6 +3762,35 @@
+     /// Rasterize the current DOM to PNG bytes at `viewport` (CSS pixels), when
+     /// the render feature is compiled in. None if the page has no DOM or the
+     /// viewport is zero-sized.
++    /// Skip an unchanged retained frame before layout, rasterization or copying.
++    /// CSS/Web Animations continue producing frames until their active interval
++    /// ends; JavaScript timers remain owned by the normal browser event loop.
++    #[cfg(feature = "render")]
++    pub fn render_frame_rgba_if_changed(
++        &self,
++    ) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
++        let js = self.js.as_ref().ok_or("No document loaded")?;
++        let (document, activity, dirty) = js.desktop_render_damage();
++        let stamp = (
++            self.document_timeline_origin, document, activity,
++            self.viewport.0.to_bits(), self.viewport.1.to_bits(),
++            self.capture_surface_color(),
++        );
++        if self.desktop_frame_stamp.get() == Some(stamp) && !dirty {
++            return Ok(None);
++        }
++        let frame = self.render_frame_rgba().ok_or("Rendering failed")?;
++        // A successful paint may clamp scrolling or process retained changes.
++        // Record its final generation, never acknowledge a failed frame.
++        let (document, activity, _) = js.desktop_render_damage();
++        self.desktop_frame_stamp.set(Some((
++            self.document_timeline_origin, document, activity,
++            self.viewport.0.to_bits(), self.viewport.1.to_bits(),
++            self.capture_surface_color(),
++        )));
++        Ok(Some(frame))
++    }
++
+     /// Present the live viewport without an encode/decode cycle.
+     /// Pixel bytes are premultiplied RGBA8, row-major, with no row padding.
+     /// Width and height currently follow the CSS viewport (scale factor 1).
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -1035,6 +1035,9 @@
+ /// rather than once for every HTMLImageElement waiter.
+ #[cfg(feature = "render")]
+ pub(crate) fn invalidate_render_resource_geometry(state: &mut ObscuraState) {
++    // Weber: resource/font geometry can be flushed by CSSOM before presentation.
++    // Preserve damage even after the retained-cache dirty flags have cleared.
++    state.activity_generation = state.activity_generation.wrapping_add(1);
+     if state.prepared_render.is_some()
+         && !queue_retained_style_mutation(
+             &mut state.pending_style_mutations,

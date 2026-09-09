@@ -53,6 +53,7 @@ try:
         assert evaluate(1, 'Promise.resolve(6 * 7)') == 42
         xwindow = subprocess.check_output(['xdotool', 'search', '--name', '^Weber Test A$'], text=True).splitlines()[-1]
         subprocess.run(['xdotool', 'windowraise', xwindow], check=True)
+        subprocess.run(['xdotool', 'windowfocus', '--sync', xwindow], check=True)
         subprocess.run(['xdotool', 'mousemove', '--sync', '--window', xwindow, '60', '40', 'click', '1'], check=True)
         deadline = time.monotonic() + 10
         while evaluate(1, 'document.getElementById("click").textContent') != 'clicked':

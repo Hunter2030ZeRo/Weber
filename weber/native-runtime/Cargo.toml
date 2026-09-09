@@ -1,0 +1,11 @@
+[package]
+name = "weber-native-runtime"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Rust main-process API for the Weber desktop host and Obscura renderer"
+
+[workspace]
+
+[dependencies]
+serde_json = "1"

@@ -1,12 +1,17 @@
 'use strict';
 // Ordinary Electron application imports. No alternate framework API is loaded.
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
 
 app.on('window-all-closed', () => {});
+ipcMain.handle('test:add', (event, left, right) => {
+  assert.equal(event.senderFrame, event.sender.mainFrame);
+  return left + right;
+});
+ipcMain.handle('test:failure', () => { throw new Error('Expected main-process rejection'); });
 const deadline = setTimeout(() => finish(new Error('Live Electron-source test timed out')), 90000);
 let completed = false;
 function finish(error, details = {}) {
@@ -20,8 +25,9 @@ function finish(error, details = {}) {
 }
 
 app.whenReady().then(async () => {
-  const first = new BrowserWindow({ width: 640, height: 480, title: 'First Obscura window' });
-  const second = new BrowserWindow({ width: 600, height: 420, title: 'Second Obscura window' });
+  const preferences = { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true };
+  const first = new BrowserWindow({ width: 640, height: 480, title: 'First Obscura window', webPreferences: preferences });
+  const second = new BrowserWindow({ width: 600, height: 420, title: 'Second Obscura window', webPreferences: preferences });
   // A diagnostic emitted only after the native GTK draw callback ran. App
   // behavior below uses the upstream Electron methods and event contracts.
   const presented = [once(first.webContents, 'weber-first-frame-presented'),
@@ -33,6 +39,11 @@ app.whenReady().then(async () => {
   await Promise.all(presented);
   assert.match(first.getURL(), /\/index\.html$/);
   assert.equal(await first.webContents.executeJavaScript('typeof require'), 'undefined');
+  assert.equal(await first.webContents.executeJavaScript('typeof __preloadSecret'), 'undefined');
+  assert.equal(await first.webContents.executeJavaScript('weberTest.secret()'), 'visible only inside the isolated preload context');
+  assert.equal(await first.webContents.executeJavaScript('weberTest.add(3, 4)'), 7);
+  assert.equal(await second.webContents.executeJavaScript('weberTest.add(8, 9)'), 17);
+  await assert.rejects(first.webContents.executeJavaScript('weberTest.fail()'), /Expected main-process rejection/);
   assert.equal(await first.webContents.executeJavaScript('Promise.resolve(6 * 7)'), 42);
   assert.equal(await first.webContents.executeJavaScript("document.getElementById('button').click(); document.getElementById('output').textContent"), '1');
   assert.equal(await second.webContents.executeJavaScript("document.getElementById('output').textContent"), '0');
@@ -54,6 +65,6 @@ app.whenReady().then(async () => {
   assert.equal(await second.webContents.executeJavaScript('Promise.resolve(17)'), 17);
   finish(null, { rendererPids, rendererExecutables, windowsPresented: 2,
     sourceReuse: ['BrowserWindow', 'BaseWindow', 'WebContents'],
-    tested: ['original loadFile/loadURL', 'Promise evaluation', 'DOM events', 'window isolation', 'native drawing', 'PNG capture', 'close lifecycle'],
-    osSandbox: false, privilegedPreload: false, fullElectronCompatibility: false });
+    tested: ['original loadFile/loadURL', 'Promise evaluation', 'isolated preload', 'contextBridge function calls', 'ipcMain.invoke round trip and rejection', 'DOM events', 'window isolation', 'native drawing', 'PNG capture', 'close lifecycle'],
+    osSandbox: false, privilegedPreload: 'electron bridge subset', fullElectronCompatibility: false });
 }).catch(finish);

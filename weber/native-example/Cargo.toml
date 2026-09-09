@@ -9,3 +9,4 @@ description = "Native Rust main process driving the Weber desktop host without N
 
 [dependencies]
 serde_json = "1"
+weber-native-runtime = { path = "../native-runtime" }

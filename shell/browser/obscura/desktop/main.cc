@@ -23,6 +23,7 @@ using electron::obscura::RendererProcess;
 namespace {
 std::mutex output_mutex;
 std::atomic<bool> quitting{false};
+std::atomic<unsigned> pending_requests{0};
 std::string renderer_path;
 void Emit(const Json& value) {
   std::lock_guard<std::mutex> lock(output_mutex);
@@ -50,6 +51,7 @@ struct Window {
   std::condition_variable wake;
   std::deque<Json> commands;
   std::thread worker;
+  std::atomic<bool> worker_done{false};
   std::vector<uint8_t> pixels; // Cairo native-endian premultiplied ARGB32, UI-owned.
   unsigned frame_width = 0, frame_height = 0;
   std::atomic<bool> frame_pending{false};
@@ -134,8 +136,24 @@ void Work(std::shared_ptr<Window> window, Json create) {
       const auto now = std::chrono::steady_clock::now();
       if (now >= next_frame) {
         next_frame = now + 33ms;
+        if (loaded) {
+          try {
+            const auto batch = Decode(renderer.Command(R"({"method":"pollEvents"})"));
+            if (batch.value("dropped", 0u))
+              Emit({{"event", "engine-event-overflow"}, {"windowId", window->id}});
+            for (const auto& event : batch.at("events"))
+              Emit({{"event", "engine-event"}, {"windowId", window->id}, {"data", event}});
+          } catch (const std::exception& error) {
+            Emit({{"event", "render-process-gone"}, {"windowId", window->id}, {"error", error.what()}});
+            Ui([window] { Close(window); });
+            break;
+          }
+        }
         if (loaded && !window->frame_pending) {
-          try { Present(window, renderer.Command(R"({"method":"captureFrame"})")); }
+          try {
+            auto frame = renderer.Command(R"({"method":"captureFrameIfChanged"})");
+            if (!frame.empty()) Present(window, std::move(frame));
+          }
           catch (const std::exception& error) {
             Emit({{"event", "frame-error"}, {"windowId", window->id}, {"error", error.what()}});
             loaded = false; // Do not flood errors or conceal unsupported presentation.
@@ -151,6 +169,7 @@ void Work(std::shared_ptr<Window> window, Json create) {
   std::deque<Json> pending;
   { std::lock_guard<std::mutex> lock(window->mutex); pending.swap(window->commands); }
   for (const auto& request : pending) Error(request, "Window is destroyed");
+  window->worker_done = true;
 }
 void Input(Window* ptr, Json command) {
   auto found = windows.find(ptr->id);
@@ -336,7 +355,13 @@ void ReadCommands() {
     if (size <= 0) break;
     for (ssize_t i = 0; i < size; ++i) {
       if (bytes[i] == '\n') {
-        try { auto request = Json::parse(line); Ui([request] { Dispatch(request); }); }
+        try {
+          auto request = Json::parse(line);
+          if (pending_requests.fetch_add(1) >= 1024) {
+            --pending_requests;
+            Error(request, "Desktop request queue is full");
+          } else Ui([request] { --pending_requests; Dispatch(request); });
+        }
         catch (const std::exception& error) { Emit({{"event", "protocol-error"}, {"error", error.what()}}); }
         line.clear();
       } else {
@@ -358,6 +383,17 @@ int main(int argc, char** argv) {
   renderer_path = argv[1];
   if (!gtk_init_check(nullptr, nullptr)) { std::cerr << "No desktop display available\n"; return 2; }
   std::thread(ReadCommands).detach();
+  // Reap closed windows during app lifetime; do not retain their frames and
+  // completed worker threads until the last application window closes.
+  g_timeout_add(100, [](gpointer) -> gboolean {
+    for (auto it = retired.begin(); it != retired.end();) {
+      if ((*it)->worker_done) {
+        if ((*it)->worker.joinable()) (*it)->worker.join();
+        it = retired.erase(it);
+      } else ++it;
+    }
+    return G_SOURCE_CONTINUE;
+  }, nullptr);
   Emit({{"event", "ready"}, {"protocol", 1}, {"engine", "obscura"}});
   gtk_main(); quitting = true;
   for (const auto& item : windows) { item.second->closed = true; item.second->wake.notify_all(); retired.push_back(item.second); }

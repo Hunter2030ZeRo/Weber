@@ -17,6 +17,12 @@ enable_testing()
 add_test(NAME real-obscura-boundary COMMAND weber-obscura-smoke)
 set_tests_properties(real-obscura-boundary PROPERTIES TIMEOUT 45)
 
+add_executable(weber-frame-invalidation-smoke obscura_engine.cc frame_invalidation_smoke.cc)
+target_compile_options(weber-frame-invalidation-smoke PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(weber-frame-invalidation-smoke PRIVATE weber_engine Threads::Threads ${CMAKE_DL_LIBS} m rt util)
+add_test(NAME real-obscura-frame-invalidation COMMAND weber-frame-invalidation-smoke)
+set_tests_properties(real-obscura-frame-invalidation PROPERTIES TIMEOUT 45)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_library(obscura_wire STATIC ../../common/obscura/wire.cc)
   add_library(obscura_browser_proxy STATIC ../../browser/obscura/renderer_process.cc)

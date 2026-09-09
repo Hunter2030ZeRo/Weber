@@ -18,7 +18,8 @@ const MAX_INPUT_TEXT: usize = 64 * 1024;
 
 pub(crate) fn dispatch(page: &mut Page, request: &Value) -> Option<Result<Vec<u8>, String>> {
     match request.get("method").and_then(Value::as_str)? {
-        "captureFrame" => Some(capture_frame(page)),
+        "captureFrame" => Some(capture_frame(page, false)),
+        "captureFrameIfChanged" => Some(capture_frame(page, true)),
         "dispatchMouseEvent" => Some(dispatch_mouse(page, request)),
         "dispatchKeyEvent" => Some(dispatch_key(page, request)),
         "insertText" => Some((|| {
@@ -31,13 +32,20 @@ pub(crate) fn dispatch(page: &mut Page, request: &Value) -> Option<Result<Vec<u8
 
 // OBF1 | width:u32LE | height:u32LE | tightly packed premultiplied RGBA8.
 // Raster size follows Page.viewport in CSS pixels, scale 1.
-fn capture_frame(page: &Page) -> Result<Vec<u8>, String> {
+fn capture_frame(page: &Page, only_if_changed: bool) -> Result<Vec<u8>, String> {
     let (width, height) = page.viewport;
     if width < 1.0 || height < 1.0 || !width.is_finite() || !height.is_finite()
         || width * height > ((MAX_FRAME_BYTES - FRAME_HEADER) / 4) as f32 {
         return Err("Frame exceeds transport bounds".into());
     }
-    let (width, height, mut rgba) = page.render_frame_rgba().ok_or("Rendering failed")?;
+    let frame = if only_if_changed {
+        page.render_frame_rgba_if_changed()?
+    } else {
+        Some(page.render_frame_rgba().ok_or("Rendering failed")?)
+    };
+    let Some((width, height, mut rgba)) = frame else {
+        return Ok(Vec::new());
+    };
     let expected = (width as usize).checked_mul(height as usize)
         .and_then(|pixels| pixels.checked_mul(4)).ok_or("Frame size overflow")?;
     if rgba.len() != expected || expected > MAX_FRAME_BYTES - FRAME_HEADER {

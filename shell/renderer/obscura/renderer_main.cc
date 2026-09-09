@@ -4,12 +4,17 @@
 #include <cstring>
 #include <cerrno>
 #include <poll.h>
+#include <csignal>
 #include <iostream>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 int main(int argc, char** argv) {
   using namespace electron::obscura;
   if (argc != 2 || std::strcmp(argv[1], "--weber-channel=3")) return 2;
+  // Do not leave an engine process behind if its owning desktop host is killed.
+  const pid_t parent = getppid();
+  if (parent == 1 || prctl(PR_SET_PDEATHSIG, SIGKILL) || getppid() != parent) return 2;
   int type = 0; socklen_t length = sizeof(type);
   if (getsockopt(3, SOL_SOCKET, SO_TYPE, &type, &length) || type != SOCK_STREAM) return 2;
   try {

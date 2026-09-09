@@ -8,6 +8,7 @@ const Module = require('node:module');
 const { pathToFileURL } = require('node:url');
 const { HostClient } = require('./host-client.cjs');
 const { createBindings } = require('./bindings.cjs');
+const { createCommonJSLoader } = require('./commonjs-loader.cjs');
 let activeHost;
 
 async function main() {
@@ -32,9 +33,15 @@ async function main() {
   const originalBinding = process._linkedBinding?.bind(process);
   const api = {};
   const loaded = new Map();
+  const bunLoader = process.versions.bun ? createCommonJSLoader(request => {
+    if (request === 'electron' || request === 'electron/main') return { value: api };
+    if (request.startsWith('@electron/internal/')) return { value: loadInternal(request.slice('@electron/internal/'.length)) };
+    return undefined;
+  }) : null;
   function loadInternal(id) {
     if (!allowedModules.has(id)) throw new Error(`Electron source module was not compiled: ${id}`);
-    return originalLoad.call(Module, path.join(dist, `${id}.js`), module, false);
+    const filename = path.join(dist, `${id}.js`);
+    return bunLoader ? bunLoader.load(filename) : originalLoad.call(Module, filename, module, false);
   }
   const runtime = createBindings(host, project, loadInternal);
   process._linkedBinding = name => {
@@ -53,6 +60,7 @@ async function main() {
     Object.defineProperty(api, name, { enumerable: true, get() {
       if (!loaded.has(name)) {
         const value = loadInternal(id);
+        if (value === undefined) throw new Error(`Electron source module returned no exports: ${id}`);
         loaded.set(name, value.default ?? value);
       }
       return loaded.get(name);
@@ -68,7 +76,7 @@ async function main() {
   } };
   api.dialog = { showMessageBox: () => runtime.unsupported('dialog.showMessageBox'),
     showErrorBox: (title, message) => { console.error(`${title}: ${message}`); } };
-  Module._load = function (request, parent, isMain) {
+  if (!bunLoader) Module._load = function (request, parent, isMain) {
     if (request === 'electron' || request === 'electron/main') return api;
     if (request === 'electron/renderer') return runtime.unsupported('renderer API in the main process');
     if (request.startsWith('@electron/internal/')) return loadInternal(request.slice('@electron/internal/'.length));
@@ -77,7 +85,7 @@ async function main() {
   globalThis[Symbol.for('weber.electron.api')] = api;
   // Node's synchronous hooks preserve ordinary ESM import { app } from
   // 'electron'. The generated facade names exports statically for CJS/ESM.
-  if (typeof Module.registerHooks === 'function') {
+  if (!bunLoader && typeof Module.registerHooks === 'function') {
     Module.registerHooks({ resolve(specifier, context, nextResolve) {
       if (specifier === 'electron' || specifier === 'electron/main') {
         return { url: pathToFileURL(path.join(__dirname, 'electron-api.cjs')).href, shortCircuit: true };
@@ -105,10 +113,11 @@ async function main() {
   for (const name of ['BaseWindow', 'View', 'WebContentsView', 'webContents', 'BrowserWindow', 'ipcMain']) void api[name];
   try {
     if (entry.endsWith('.mjs') || (metadata.type === 'module' && !entry.endsWith('.cjs'))) {
-      if (typeof Module.registerHooks !== 'function') runtime.unsupported('ESM application loading on this backend');
+      if (bunLoader || typeof Module.registerHooks !== 'function') runtime.unsupported('ESM application loading on this backend');
       await import(pathToFileURL(entry).href);
     } else {
-      Module._load(entry, null, true);
+      if (bunLoader) bunLoader.load(entry, true);
+      else Module._load(entry, null, true);
     }
     runtime.finishStartup();
   } catch (error) {

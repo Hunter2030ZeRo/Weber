@@ -6,6 +6,7 @@ use obscura_browser::{BrowserContext, Page};
 use serde_json::{json, Value};
 
 mod desktop;
+mod preload;
 
 const MAX_REQUEST: usize = 1024 * 1024;
 const MAX_RESPONSE: usize = 64 * 1024 * 1024;
@@ -14,6 +15,7 @@ thread_local! { static ENGINE: RefCell<Option<(u64, Engine)>> = const { RefCell:
 struct Engine {
     // Page/V8 must be destroyed before the Tokio runtime.
     page: Page,
+    preload: preload::Preload,
     runtime: tokio::runtime::Runtime,
     loaded: bool,
     width: u32,
@@ -29,14 +31,15 @@ impl Engine {
     fn new() -> Result<Self, String> {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all()
             .build().map_err(|e| e.to_string())?;
-        let page = {
+        let mut page = {
             let _guard = runtime.enter();
             let mut page = Page::new("weber-renderer".into(), Arc::new(BrowserContext::new("weber-renderer".into())));
             page.set_navigation_timeout(Duration::from_secs(15));
             page.set_viewport((800., 600.));
             page
         };
-        Ok(Self { page, runtime, loaded: false, width: 800, height: 600, poisoned: false,
+        let preload = preload::Preload::new(&mut page);
+        Ok(Self { page, preload, runtime, loaded: false, width: 800, height: 600, poisoned: false,
             events: VecDeque::new(), event_bytes: 0, dropped_events: 0 })
     }
 
@@ -72,22 +75,38 @@ impl Engine {
             "about" if url.as_str() == "about:blank" => {},
             _ => return Err("Unsupported navigation scheme".into()),
         }
+        self.preload.before_navigation()?;
+        self.events.clear();
+        self.event_bytes = 0;
+        self.dropped_events = 0;
         self.loaded = false;
-        self.push_event(json!({"type": "navigation-started", "url": url.as_str()}));
+        self.push_event(json!({"type": "navigation-started", "url": url.as_str(),
+            "generation": self.preload.generation}));
         let result = self.runtime.block_on(self.page.navigate(url.as_str()));
         if let Err(error) = result {
             let error = error.to_string();
             self.push_event(json!({"type": "navigation-failed", "url": url.as_str(),
-                "error": error}));
+                "error": error, "generation": self.preload.generation}));
             return Err(error);
         }
         self.runtime.block_on(self.page.prepare_screenshot_resources(100));
         self.loaded = true;
-        let state = json!({"url": self.page.url_string(), "title": self.page.title});
+        let state = json!({"url": self.page.url_string(), "title": self.page.title,
+            "generation": self.preload.generation});
         self.push_event(json!({"type": "navigation-finished", "url": self.page.url_string(),
-            "title": self.page.title}));
+            "title": self.page.title, "generation": self.preload.generation}));
         self.collect_navigation_request();
         Ok(state.to_string().into_bytes())
+    }
+
+    fn pump_preload(&mut self) -> Result<(), String> {
+        match self.preload.pump(&mut self.page) {
+            Ok(events) => { for event in events { self.push_event(event); } Ok(()) },
+            Err(error) => {
+                self.poisoned = true;
+                Err(format!("Isolated bridge failed; renderer restart required: {error}"))
+            }
+        }
     }
 
     fn command(&mut self, value: Value) -> Result<Vec<u8>, String> {
@@ -180,10 +199,12 @@ impl Engine {
                         }
                     })?;
                     self.collect_navigation_request();
+                    self.pump_preload()?;
                 }
                 Ok(b"null".to_vec())
             }
             "pollEvents" => {
+                if self.loaded { self.pump_preload()?; }
                 self.collect_navigation_request();
                 let events: Vec<_> = self.events.drain(..).map(|(event, _)| event).collect();
                 self.event_bytes = 0;
@@ -191,7 +212,8 @@ impl Engine {
                 Ok(json!({"events": events, "dropped": dropped}).to_string().into_bytes())
             }
             "getState" => Ok(json!({"url": self.page.url_string(), "title": self.page.title,
-                "loaded": self.loaded, "lifecycle": format!("{:?}", self.page.lifecycle)})
+                "loaded": self.loaded, "lifecycle": format!("{:?}", self.page.lifecycle),
+                "generation": self.preload.generation})
                 .to_string().into_bytes()),
             "capturePng" => {
                 if !self.loaded { return Err("No document loaded".into()); }
@@ -199,8 +221,11 @@ impl Engine {
                 let _guard = self.runtime.enter();
                 self.page.screenshot((self.width as f32, self.height as f32)).ok_or("Rendering failed".into())
             }
-            _ => desktop::dispatch(&mut self.page, &value)
-                .unwrap_or_else(|| Err("Unsupported engine method".into())),
+            _ => {
+                if let Some(result) = self.preload.command(&mut self.page, &value) { return result; }
+                desktop::dispatch(&mut self.page, &value)
+                    .unwrap_or_else(|| Err("Unsupported engine method".into()))
+            }
         }
     }
 }
@@ -292,21 +317,21 @@ mod tests {
             "scripts": ["globalThis.weberPreload = 11"]})).unwrap();
         command(&mut engine, json!({"method": "loadURL", "url":
             "data:text/html,<script>globalThis.preloadAtAuthorScript=globalThis.weberPreload</script><title>Weber test</title>"})).unwrap();
-        assert_eq!(evaluate(&mut engine, "preloadAtAuthorScript").unwrap(), json!(11));
-        assert_eq!(evaluate(&mut engine, "var weberAnswer = 20; weberAnswer + 22;\n//# sourceURL=weber-test.js").unwrap(), json!(42));
-        assert_eq!(evaluate(&mut engine, "Promise.resolve({answer:42})").unwrap(), json!({"answer": 42}));
-        assert_eq!(evaluate(&mut engine, "new Promise(resolve => setTimeout(() => resolve(33), 20))").unwrap(), json!(33));
+        assert_eq!(evaluate(&mut engine, "preloadAtAuthorScript").unwrap().as_f64(), Some(11.0));
+        assert_eq!(evaluate(&mut engine, "var weberAnswer = 20; weberAnswer + 22;\n//# sourceURL=weber-test.js").unwrap().as_f64(), Some(42.0));
+        assert_eq!(evaluate(&mut engine, "Promise.resolve({answer:42})").unwrap()["answer"].as_f64(), Some(42.0));
+        assert_eq!(evaluate(&mut engine, "new Promise(resolve => setTimeout(() => resolve(33), 20))").unwrap().as_f64(), Some(33.0));
         assert_eq!(evaluate(&mut engine, "null").unwrap(), Value::Null);
         assert!(evaluate(&mut engine, "throw new TypeError('weber sync failure')").unwrap_err()
             .contains("weber sync failure"));
         assert!(evaluate(&mut engine, "Promise.reject(new Error('weber async failure'))").unwrap_err()
             .contains("weber async failure"));
         assert!(evaluate(&mut engine, "throw null").is_err());
-        assert_eq!(evaluate(&mut engine, "6 * 7").unwrap(), json!(42));
+        assert_eq!(evaluate(&mut engine, "6 * 7").unwrap().as_f64(), Some(42.0));
 
         // A by-value call must not keep its result rooted indefinitely.
         evaluate(&mut engine, "({retained: new Array(1000).fill('large')})").unwrap();
-        assert_eq!(evaluate(&mut engine, "Object.keys(globalThis.__obscura_objects).length").unwrap(), json!(0));
+        assert_eq!(evaluate(&mut engine, "Object.keys(globalThis.__obscura_objects).length").unwrap().as_f64(), Some(0.0));
 
         command(&mut engine, json!({"method": "viewport", "width": 200, "height": 80})).unwrap();
         evaluate(&mut engine, "document.body.innerHTML = '<textarea id=editor style=\"position:absolute;left:0;top:0;width:180px;height:40px\"></textarea>'; null").unwrap();
@@ -341,7 +366,7 @@ mod tests {
         assert!(command(&mut engine, json!({"method": "pollEvents"})).unwrap()["events"]
             .as_array().unwrap().is_empty());
         command(&mut engine, json!({"method": "loadURL", "url": "about:blank"})).unwrap();
-        assert_eq!(evaluate(&mut engine, "weberPreload").unwrap(), json!(11));
+        assert_eq!(evaluate(&mut engine, "weberPreload").unwrap().as_f64(), Some(11.0));
         assert!(command(&mut engine, json!({"method": "loadURL", "url": "javascript:1"})).is_err());
 
         // Queue size is bounded even if a browser owner stops draining events.

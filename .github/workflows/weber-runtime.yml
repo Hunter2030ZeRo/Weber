@@ -23,7 +23,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: git submodule update --init --depth 1 weber/vendor/obscura
       - name: Apply retained raw-frame API extension
-        run: git -C weber/vendor/obscura apply "$PWD/weber/patches/obscura/0001-desktop-raw-frame.patch"
+        run: |
+          git -C weber/vendor/obscura apply "$PWD/weber/patches/obscura/0001-desktop-raw-frame.patch"
+          git -C weber/vendor/obscura apply "$PWD/weber/patches/obscura/0002-isolated-preload.patch"
+          git -C weber/vendor/obscura apply "$PWD/weber/patches/obscura/0003-frame-invalidation.patch"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -32,6 +35,8 @@ jobs:
           cache-on-failure: true
       - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libgtk-3-dev nlohmann-json3-dev cmake xvfb xauth xdotool
       - name: Test real engine APIs
+        id: engine
+        continue-on-error: true
         run: cargo test --release --manifest-path weber/Cargo.toml -p weber-engine -- --nocapture
       - name: Build Obscura static boundary
         run: cargo build --release --manifest-path weber/Cargo.toml -p weber-engine
@@ -40,8 +45,12 @@ jobs:
           cmake -S weber -B out/runtime -DWEBER_ENGINE_LIBRARY="$PWD/weber/target/release/libweber_engine.a"
           cmake --build out/runtime --parallel 2
       - name: Test renderer process boundary
+        id: boundary
+        continue-on-error: true
         run: ctest --test-dir out/runtime --output-on-failure
       - name: Test real GTK windows and X11 input
+        id: desktop
+        continue-on-error: true
         run: xvfb-run -a python3 weber/tests/desktop_test.py out/runtime/weber-desktop-host out/runtime/obscura/weber-obscura-renderer
       - name: Verify browser host does not link Chromium or V8
         run: |
@@ -52,8 +61,14 @@ jobs:
           print(subprocess.check_output(['ldd', 'out/runtime/weber-desktop-host'], text=True))
           PY
       - name: Test TOML backend selection
-        run: cargo test --manifest-path weber/runtime-config/Cargo.toml
+        id: config
+        continue-on-error: true
+        run: |
+          cargo test --manifest-path weber/runtime-config/Cargo.toml
+          cargo test --manifest-path weber/native-runtime/Cargo.toml
       - name: Test native Rust backend without Node
+        id: native
+        continue-on-error: true
         env:
           WEBER_DESKTOP_HOST: ${{ github.workspace }}/out/runtime/weber-desktop-host
           WEBER_OBSCURA_RENDERER: ${{ github.workspace }}/out/runtime/obscura/weber-obscura-renderer
@@ -65,15 +80,29 @@ jobs:
           npm ci --prefix weber/electron-runtime
           node weber/electron-runtime/build.cjs
       - name: Test original Electron API on Obscura
+        id: node
+        continue-on-error: true
         env:
           WEBER_DESKTOP_HOST: ${{ github.workspace }}/out/runtime/weber-desktop-host
           WEBER_OBSCURA_RENDERER: ${{ github.workspace }}/out/runtime/obscura/weber-obscura-renderer
         run: xvfb-run -a node weber/electron-runtime/test-live.cjs
       - name: Test original Electron API on Bun
+        id: bun
+        continue-on-error: true
         env:
           WEBER_DESKTOP_HOST: ${{ github.workspace }}/out/runtime/weber-desktop-host
           WEBER_OBSCURA_RENDERER: ${{ github.workspace }}/out/runtime/obscura/weber-obscura-renderer
         run: xvfb-run -a bun weber/electron-runtime/test-live.cjs
+      - name: Require every runtime check to pass
+        if: always()
+        env:
+          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }}
+        run: |
+          python3 - <<'PY_GATE'
+          import os
+          outcomes = os.environ['RESULTS'].split()
+          assert len(outcomes) == 7 and all(result == 'success' for result in outcomes), outcomes
+          PY_GATE
       - uses: actions/upload-artifact@v4
         if: always()
         with:

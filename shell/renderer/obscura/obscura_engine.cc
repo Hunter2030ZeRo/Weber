@@ -8,6 +8,7 @@ namespace {
 struct Reply { std::vector<uint8_t> bytes; std::exception_ptr error; };
 void Collect(const uint8_t* data, size_t len, void* user) noexcept {
   auto* reply = static_cast<Reply*>(user);
+  if (len == 0) { reply->bytes.clear(); return; }
   try { reply->bytes.assign(data, data + len); }
   catch (...) { reply->error = std::current_exception(); }
 }

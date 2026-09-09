@@ -22,6 +22,23 @@ the CSS viewport at scale 1; device-scale rasterization is not implemented
 by this transport yet. Cairo ARGB32 consumers on little-endian platforms
 must swap red and blue; the alpha channel is already premultiplied.
 
+`0003-frame-invalidation.patch` adds a generation-based capture checkpoint.
+Apply it after `0001` (it also applies after `0002`). The
+`captureFrameIfChanged` engine command returns an empty successful response
+when the document is unchanged, otherwise the same OBF1 frame. This skips
+layout, rasterization and frame-buffer copying before they happen; it does
+not hash rendered frames. Existing DOM, canvas, scroll and image activity
+generations drive invalidation, with an added resource/font generation bump
+so a CSSOM flush cannot lose pending presentation damage. Navigation,
+viewport and surface changes invalidate the checkpoint. CSS and Web
+Animations keep repainting until their active interval ends. Timer handling
+continues independently in the renderer process. This removes redundant
+static painting; it does not remove the renderer's event-loop wakeups.
+
+`real-obscura-frame-invalidation` checks idle frame suppression, DOM changes,
+timer-driven changes, resizing, canvas repaint, same-URL navigation and CSS
+animation completion against the actual C ABI engine.
+
 The input adapter in `weber-engine/src/desktop.rs` derives from the pinned
 Obscura CDP input implementation under Apache-2.0. There is no separate
 native input dispatcher in the pinned `Page` API. The adapter uses the same

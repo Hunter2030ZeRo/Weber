@@ -1,10 +1,11 @@
 # Native Rust backend example
 
-This executable starts the actual Weber desktop host and Obscura renderer,
-creates a GTK window, loads `index.html`, changes and verifies its DOM, then
+This executable uses the reusable `weber-native-runtime` Rust API to start the
+actual Weber desktop host and Obscura renderer,
+creates a GTK window, loads `index.html`, changes and verifies its DOM, waits for
+the host's `frame-presented` event confirming a frame reached GTK, then
 closes the window and quits. It uses no Node.js or Bun process. This is a small
-GUI integration example, not an Electron compatibility claim or a general Rust
-GUI API.
+GUI integration example, not a full Electron compatibility claim.
 
 ```sh
 cargo build --release --manifest-path weber/native-example/Cargo.toml
@@ -20,8 +21,9 @@ this example should load only its own trusted local document. The
 example fails if window creation, page loading, DOM evaluation or shutdown fails.
 It prints one success JSON record only after all operations have succeeded.
 
-The main process communicates through the desktop host's stdin/stdout JSON-line
-protocol. The host path and renderer path must be absolute, existing files. The
+The library communicates through the desktop host's stdin/stdout JSON-line
+protocol; application code calls `Runtime` and `Window` methods. The host path
+and renderer path must be absolute, existing files. The
 renderer path is passed as the host's first positional argument. Stderr remains
 available for diagnostics. Requests have a 30-second deadline and responses are
 bounded to 1 MiB; this example does not request screenshots or raw frame payloads.

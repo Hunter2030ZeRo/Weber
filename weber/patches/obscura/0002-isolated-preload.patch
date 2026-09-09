@@ -1,0 +1,229 @@
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -1,3 +1,6 @@
++#[path = "desktop_bridge.rs"]
++mod desktop_bridge;
++
+ use std::cell::RefCell;
+ use std::collections::HashMap;
+ use std::future::Future;
+@@ -188,6 +191,8 @@
+     /// their shims can call ops; nothing else can reach it, including page
+     /// script.
+     ops_handoff: Option<deno_core::v8::Global<deno_core::v8::Value>>,
++    // These contexts must drop before the owning isolate.
++    desktop_bridge: Option<desktop_bridge::DesktopBridge>,
+     // Keep the runtime last: custom `Drop` enters its isolate, then every
+     // V8-backed field above is released before `OwnedIsolate` performs the
+     // matching exit and disposes the isolate.
+@@ -576,6 +581,7 @@
+             loaded_module_specifiers,
+             evaluated_module_specifiers: HashMap::new(),
+             ops_handoff: None,
++            desktop_bridge: None,
+             js_runtime: runtime,
+         };
+         // Take the op table before any page script can run, and drop the global
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -312,6 +312,8 @@
+     // contract. Includes `Runtime.addBinding` shims so puppeteer's
+     // `exposeFunction` bindings exist before inline `<script>` tags execute.
+     preload_scripts: Vec<String>,
++    desktop_preload_scripts: Option<(String, String, String)>,
++    desktop_preload_error: Option<String>,
+     /// Whether at least one attached CDP session enabled the Runtime domain.
+     /// Page-owned so the subscription survives replacement of the JS runtime
+     /// during navigation.
+@@ -1166,6 +1168,8 @@
+             blocked_url_patterns: Vec::new(),
+             intercept_tx: None,
+             preload_scripts: Vec::new(),
++            desktop_preload_scripts: None,
++            desktop_preload_error: None,
+             runtime_events_enabled: std::cell::Cell::new(false),
+             pending_frame_work: std::collections::VecDeque::new(),
+             suspended_started_script_ids: Vec::new(),
+@@ -1877,7 +1881,37 @@
+             &format!("globalThis.devicePixelRatio={};", self.device_scale_factor),
+         );
+ 
++        self.desktop_preload_error = None;
++        if let Some((main, isolated, source)) = &self.desktop_preload_scripts {
++            if let Err(error) = rt.install_desktop_bridge(main, isolated, source) {
++                self.desktop_preload_error = Some(error);
++                self.lifecycle = LifecycleState::Failed;
++                // Fail before author scripts if privileged preload setup fails.
++                self.js = None;
++                return;
++            }
++        }
+         self.js = Some(rt);
++    }
++
++    fn ensure_desktop_preload(&self) -> Result<(), PageError> {
++        match &self.desktop_preload_error {
++            Some(error) => Err(PageError::ParseError(format!("Isolated preload: {error}"))),
++            None => Ok(()),
++        }
++    }
++
++    /// Configures the next document. Separate contexts are created before any
++    /// author script, and are destroyed with that document's runtime.
++    pub fn set_desktop_preload(&mut self, main: String, isolated: String, source: String) {
++        self.desktop_preload_scripts = Some((main, isolated, source));
++    }
++
++    pub fn desktop_bridge_command(&mut self, isolated: bool, request: &serde_json::Value)
++        -> Result<serde_json::Value, String>
++    {
++        self.js.as_mut().ok_or("No document loaded")?
++            .desktop_bridge_command(isolated, request)
+     }
+ 
+     /// Resolve the document base URL per HTML spec:
+@@ -3248,6 +3282,7 @@
+         if url.scheme() == "about" {
+             self.navigate_blank();
+             self.init_js();
++            self.ensure_desktop_preload()?;
+             // Preloads (Page.addScriptToEvaluateOnNewDocument, the
+             // Runtime.addBinding shim) must run on about:blank too —
+             // puppeteer's `browser.newPage()` lands on about:blank and
+@@ -3330,6 +3365,7 @@
+ 
+         self.dom = Some(dom);
+         self.init_js();
++        self.ensure_desktop_preload()?;
+         let author_stylesheets = self.fetch_stylesheets().await;
+ 
+         // Inject CSS as a global so getComputedStyle and any CSS-aware shim
+--- /dev/null
++++ b/crates/obscura-js/src/desktop_bridge.rs
+@@ -0,0 +1,126 @@
++//! Two separate contexts connected only by bounded JSON messages.
++//! Dispatcher functions are rooted privately in Rust, never on page globals.
++use deno_core::v8;
++use serde_json::{json, Value};
++use super::{exception_text, ObscuraJsRuntime};
++
++pub(super) struct DesktopBridge {
++    isolated: v8::Global<v8::Context>,
++    main_dispatch: v8::Global<v8::Function>,
++    isolated_dispatch: v8::Global<v8::Function>,
++}
++
++impl ObscuraJsRuntime {
++    fn compile_desktop_dispatcher(
++        &mut self,
++        context: &v8::Global<v8::Context>,
++        source: &str,
++    ) -> Result<v8::Global<v8::Function>, String> {
++        let mut entered = self.runtime();
++        let isolate = entered.v8_isolate();
++        let scope = &mut v8::HandleScope::new(isolate);
++        let context = v8::Local::new(scope, context);
++        let scope = &mut v8::ContextScope::new(scope, context);
++        let scope = &mut v8::TryCatch::new(scope);
++        let code = v8::String::new(scope, source).ok_or("Bridge bootstrap is too large")?;
++        let script = v8::Script::compile(scope, code, None).ok_or_else(|| exception_text(scope))?;
++        let value = script.run(scope).ok_or_else(|| exception_text(scope))?;
++        let function = v8::Local::<v8::Function>::try_from(value)
++            .map_err(|_| "Bridge bootstrap did not return a function")?;
++        Ok(v8::Global::new(scope, function))
++    }
++
++    /// Install before author scripts. The isolated context is intentionally
++    /// bare: no DOM, Node.js, network ops, or published frame/window handles.
++    /// Supported preload APIs are supplied by the trusted bootstrap source.
++    pub fn install_desktop_bridge(
++        &mut self,
++        main_bootstrap: &str,
++        isolated_bootstrap: &str,
++        preload_source: &str,
++    ) -> Result<(), String> {
++        if self.desktop_bridge.is_some() { return Err("Desktop bridge already installed".into()); }
++        let isolated = {
++            let mut entered = self.runtime();
++            let scope = &mut v8::HandleScope::new(entered.v8_isolate());
++            let context = v8::Context::new(scope, v8::ContextOptions::default());
++            v8::Global::new(scope, context)
++        };
++        // Deno's isolate-level Promise rejection callback dereferences these
++        // slots. Reuse its existing frame-realm lifetime mechanism, without
++        // sharing any JS ops, security token, DOM objects, or global objects.
++        self.share_deno_context_state_with_realm(&isolated);
++        let main = self.runtime().main_context();
++        let token = self.arm_watchdog(std::time::Duration::from_secs(2));
++        let compiled = (|| {
++            let isolated_dispatch = self.compile_desktop_dispatcher(&isolated, isolated_bootstrap)?;
++            let main_dispatch = self.compile_desktop_dispatcher(&main, main_bootstrap)?;
++            self.desktop_bridge = Some(DesktopBridge { isolated, main_dispatch, isolated_dispatch });
++            Ok::<_, String>(())
++        })();
++        let timed_out = self.disarm_watchdog(token);
++        if timed_out { self.desktop_bridge = None; return Err("Bridge bootstrap timed out".into()); }
++        compiled?;
++        let configured = self.desktop_bridge_command(true, &json!({
++            "method": "configure", "source": preload_source,
++        }))?;
++        if configured.get("ok").and_then(Value::as_bool) != Some(true) {
++            self.desktop_bridge = None;
++            return Err(configured.get("error").and_then(Value::as_str)
++                .unwrap_or("Isolated preload failed").to_string());
++        }
++        let installed = self.desktop_bridge_command(false, &json!({
++            "method": "install", "exports": configured["value"],
++        }))?;
++        if installed.get("ok").and_then(Value::as_bool) != Some(true) {
++            self.desktop_bridge = None;
++            return Err(installed.get("error").and_then(Value::as_str)
++                .unwrap_or("Context bridge installation failed").to_string());
++        }
++        Ok(())
++    }
++
++    /// Calls a privately rooted dispatcher with serialized data. No function,
++    /// Promise, Error, prototype, or other JS reference crosses contexts.
++    pub fn desktop_bridge_command(&mut self, isolated: bool, request: &Value) -> Result<Value, String> {
++        let text = request.to_string();
++        if text.len() > 1024 * 1024 { return Err("Bridge request exceeds 1 MiB".into()); }
++        let (context, dispatcher) = {
++            let bridge = self.desktop_bridge.as_ref().ok_or("Desktop bridge unavailable")?;
++            if isolated {
++                (bridge.isolated.clone(), bridge.isolated_dispatch.clone())
++            } else {
++                let dispatcher = bridge.main_dispatch.clone();
++                (self.runtime().main_context(), dispatcher)
++            }
++        };
++        let token = self.arm_watchdog(std::time::Duration::from_secs(2));
++        let result = (|| {
++            let mut entered = self.runtime();
++            let reply = {
++                let scope = &mut v8::HandleScope::new(entered.v8_isolate());
++                let context = v8::Local::new(scope, &context);
++                let scope = &mut v8::ContextScope::new(scope, context);
++                let scope = &mut v8::TryCatch::new(scope);
++                let function = v8::Local::new(scope, &dispatcher);
++                let argument = v8::String::new(scope, &text).ok_or("Bridge argument allocation failed")?;
++                let receiver = v8::undefined(scope).into();
++                let result = function.call(scope, receiver, &[argument.into()])
++                    .ok_or_else(|| exception_text(scope))?;
++                if !result.is_string() { return Err("Invalid bridge reply".into()); }
++                let reply = result.to_rust_string_lossy(scope);
++                if reply.len() > 2 * 1024 * 1024 { return Err("Bridge reply exceeds 2 MiB".into()); }
++                reply
++            };
++            // Bare-realm promises share the isolate microtask queue. Advance
++            // completed IPC/bridge callbacks without waiting on external I/O.
++            entered.v8_isolate().perform_microtask_checkpoint();
++            serde_json::from_str(&reply).map_err(|error| format!("Invalid bridge JSON: {error}"))
++        })();
++        if self.disarm_watchdog(token) {
++            self.desktop_bridge = None;
++            return Err("Bridge execution timed out; renderer restart required".into());
++        }
++        result
++    }
++}

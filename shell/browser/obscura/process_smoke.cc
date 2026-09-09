@@ -38,7 +38,7 @@ void Real(const std::string& path) {
   Check(Text(second.Command(query)) == "\"Separate Obscura renderer\"", "Renderer documents leaked");
   first->Command(R"json({"method":"evaluate","source":"globalThis.idleTimer=0; setTimeout(()=>globalThis.idleTimer=123,20); null"})json");
   std::this_thread::sleep_for(300ms);
-  Check(Text(first->Command(R"json({"method":"evaluate","source":"globalThis.idleTimer"})json")) == "123",
+  Check(std::stod(Text(first->Command(R"json({"method":"evaluate","source":"globalThis.idleTimer"})json"))) == 123.0,
         "Renderer timer did not progress while browser was idle");
   const auto png = first->Command(R"json({"method":"capturePng"})json");
   Check(png.size() > 100 && png[0] == 137 && png[1] == 'P' && png[2] == 'N' && png[3] == 'G', "Missing renderer pixels");
