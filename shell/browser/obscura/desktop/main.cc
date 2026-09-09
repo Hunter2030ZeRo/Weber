@@ -2,6 +2,8 @@
 // Linux desktop surface for Electron's source-level API adapters. No Chromium.
 #include "../renderer_process.h"
 #include "menu.h"
+#include "platform_sync.h"
+#include "async_output.h"
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 #include <nlohmann/json.hpp>
@@ -18,17 +20,34 @@
 #include <mutex>
 #include <thread>
 #include <unistd.h>
+#include <fcntl.h>
 using Json = nlohmann::json;
 using namespace std::chrono_literals;
 using electron::obscura::RendererProcess;
 namespace {
 std::mutex output_mutex;
 std::atomic<bool> quitting{false};
+std::atomic<bool> output_failed{false};
+std::shared_ptr<weber::desktop::AsyncOutput> output_writer;
 std::atomic<unsigned> pending_requests{0};
 std::string renderer_path;
+void OutputFailed() {
+  if (output_failed.exchange(true)) return;
+  quitting = true;
+  // This also runs on the writer thread. Do not report failure over the failed
+  // stream or depend on Ui(), which suppresses callbacks once quitting is set.
+  g_idle_add_full(G_PRIORITY_HIGH, [](gpointer) -> gboolean {
+    gtk_main_quit(); return G_SOURCE_REMOVE;
+  }, nullptr, nullptr);
+}
 void Emit(const Json& value) {
-  std::lock_guard<std::mutex> lock(output_mutex);
-  std::cout << value.dump() << '\n' << std::flush;
+  try {
+    // Keep the previous cross-producer serialization order, but never hold
+    // this mutex while waiting for Node/Bun to consume stdout.
+    std::lock_guard<std::mutex> lock(output_mutex);
+    const auto writer = output_writer;
+    if (!writer || !writer->Enqueue(value.dump() + '\n')) OutputFailed();
+  } catch (...) { OutputFailed(); }
 }
 void Reply(const Json& request, const Json& result) {
   if (request.contains("id")) Emit({{"id", request["id"]}, {"result", result}});
@@ -413,6 +432,14 @@ int main(int argc, char** argv) {
   }
   renderer_path = argv[1];
   if (!gtk_init_check(nullptr, nullptr)) { std::cerr << "No desktop display available\n"; return 2; }
+  try {
+    const int descriptor = fcntl(STDOUT_FILENO, F_DUPFD_CLOEXEC, 3);
+    if (descriptor < 0) throw std::runtime_error("Cannot own desktop output descriptor");
+    output_writer = std::make_shared<weber::desktop::AsyncOutput>(descriptor, OutputFailed);
+  } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 2; }
+  std::unique_ptr<weber::desktop::PlatformSync> platform;
+  try { platform = weber::desktop::PlatformSync::FromEnvironment(Emit); }
+  catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 2; }
   std::thread(ReadCommands).detach();
   // Reap closed windows during app lifetime; do not retain their frames and
   // completed worker threads until the last application window closes.
@@ -427,8 +454,13 @@ int main(int argc, char** argv) {
   }, nullptr);
   Emit({{"event", "ready"}, {"protocol", 1}, {"engine", "obscura"}});
   gtk_main(); quitting = true;
+  platform.reset();
   for (const auto& item : windows) { item.second->closed = true; item.second->wake.notify_all(); retired.push_back(item.second); }
   windows.clear();
   for (auto& window : retired) if (window->worker.joinable()) window->worker.join();
-  return 0;
+  // Keep shared ownership available to any final detached reader callback.
+  // Finish rejects later enqueues and waits only for its bounded drain deadline.
+  const auto writer = output_writer;
+  const bool delivered = writer->Finish();
+  return delivered && !output_failed ? 0 : 1;
 }

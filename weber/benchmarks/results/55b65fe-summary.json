@@ -1,0 +1,51 @@
+{
+  "kind": "benchmark-summary-from-ci-log",
+  "commit": "55b65fe806666aaadc111b4b6d93a0225d7e6cbe",
+  "workflow_run": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34378756414",
+  "raw_artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34378756414/artifacts/10115113528",
+  "completeBenchmark": true,
+  "fullWorkflowPassed": true,
+  "methodologyVersion": 2,
+  "conditions": {
+    "windows": 2,
+    "trialsPerFramework": 3,
+    "build": "Release",
+    "osSandboxEnabled": false,
+    "display": "Xvfb 1600x900; nonoverlapping 768x512 windows",
+    "workload": "Identical local HTML/preload app; hidden -> ready-to-show -> show -> two animation frames -> capture. DOM mutations also wait two animation frames before capture.",
+    "scope": "Not a VS Code or production desktop benchmark",
+    "idleCpuZero": "Electron median fell below the process CPU tick measurement resolution; it does not establish literally zero CPU work.",
+    "comparisonWithPrevious": "DOM/capture timing differs from the older methodology; do not attribute cross-version changes solely to runtime optimization."
+  },
+  "summary": {
+    "electron": {
+      "domUpdateAndCaptureMs": 48.74875499999996,
+      "idleCpuOneCorePercent": 0,
+      "idlePssBytes": 391856128,
+      "idleRssBytes": 918863872,
+      "ipcRoundTripMs": 0.5626250000000255,
+      "javascriptRoundTripMs": 0.30640950000008615,
+      "startupToLoadAndCaptureMs": 666.1944839999978,
+      "trials": 3
+    },
+    "weber": {
+      "domUpdateAndCaptureMs": 58.15470300000001,
+      "idleCpuOneCorePercent": 4.4211863623830014,
+      "idlePssBytes": 190338048,
+      "idleRssBytes": 291753984,
+      "ipcRoundTripMs": 1.30382400000002,
+      "javascriptRoundTripMs": 0.537778000000003,
+      "startupToLoadAndCaptureMs": 337.387534999998,
+      "trials": 3
+    },
+    "weberDividedByElectron": {
+      "domUpdateAndCaptureMs": 1.1929474506579718,
+      "idleCpuOneCorePercent": null,
+      "idlePssBytes": 0.48573451937952083,
+      "idleRssBytes": 0.317516003066883,
+      "ipcRoundTripMs": 2.3173943568095288,
+      "javascriptRoundTripMs": 1.7550957134157126,
+      "startupToLoadAndCaptureMs": 0.5064400007851148
+    }
+  }
+}

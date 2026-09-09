@@ -16,6 +16,7 @@ const entries = [
   'browser/api/web-contents-view', 'browser/api/ipc-main',
   'browser/ipc-main-internal',
   'browser/api/menu', 'browser/api/menu-item',
+  'browser/api/global-shortcut',
 ];
 const seen = new Set();
 const sources = [];
@@ -78,3 +79,4 @@ fs.writeFileSync(path.join(output, 'source-manifest.json'), JSON.stringify({
   linkedBindings: [...bindings].sort(),
 }, null, 2) + '\n');
 console.log(`Compiled ${sources.length} original Electron modules to ${output}`);
+require('./platform-sync/build.cjs').build(output);

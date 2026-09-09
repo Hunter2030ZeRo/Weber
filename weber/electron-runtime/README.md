@@ -18,13 +18,17 @@ The replacement code is intentionally at the native binding boundary:
 * `bootstrap.cjs` installs Electron module/binding resolution and starts the app.
 * `bindings.cjs` supplies the native objects expected by the original modules.
 * `host-client.cjs` transports bounded requests to the GTK host.
+* `menu-binding.cjs` maps original Menu/MenuItem policy to actual GTK menus.
+* `global-shortcut-binding.cjs` uses the private synchronous Node-API channel for
+  actual X11 registration and ownership booleans; callbacks remain asynchronous.
 * `commonjs-loader.cjs` executes CommonJS modules on Bun, whose `Module._load`
   interception differs from Node. Builtins and native addons remain Bun's.
 
 ## Build and run
 
-From the fork root, install the build-only TypeScript compiler and compile the
-original Electron modules:
+From the fork root, install the build-only TypeScript compiler and Node-API
+headers, then compile the original Electron modules and the platform addon
+(requires a C++17 compiler):
 
 ```sh
 npm ci --prefix weber/electron-runtime
@@ -73,9 +77,17 @@ This test requires the actual host and renderer under a Linux display/Xvfb; it
 does not use a simulated engine. A passing result is a narrow integration test,
 not a claim of VS Code compatibility or lower memory consumption.
 
-There is no implemented menu/tray/session/network interception, transferred
-message port, operating-system sandbox, full navigation history, general
-WebContentsView embedding, packaging, or VS Code acceptance result yet.
+Native GTK menu mouse input, checkbox/radio behavior, accelerators, multiwindow
+ownership and removal are tested. Popup menus, icons, sublabels and several
+built-in roles remain unsupported. The X11 globalShortcut implementation and
+its actual cross-process input tests are described in
+[platform-sync/README.md](platform-sync/README.md). A relocatable development
+archive is assembled and exercised by [the packaging workflow](../packaging/README.md).
+
+Tray, clipboard, drag and drop, sessions/custom protocols, transferred message
+ports, an operating-system sandbox, full navigation history, general
+WebContentsView embedding, production installers and VS Code acceptance remain
+unimplemented.
 Unsupported binding operations fail explicitly. Many upstream public methods
 are present because original Electron source is reused, but their presence must
 not be counted as working compatibility until the underlying binding is tested.

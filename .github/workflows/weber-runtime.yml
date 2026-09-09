@@ -111,6 +111,31 @@ jobs:
         run: |
           node --test weber/electron-runtime/test-menu-binding.cjs weber/electron-runtime/test-platform-app.cjs
           xvfb-run -a python3 weber/electron-runtime/test-menu-live.py node
+      - name: Test synchronous platform transport and native global shortcuts
+        id: shortcuts
+        continue-on-error: true
+        env:
+          WEBER_DESKTOP_HOST: ${{ github.workspace }}/out/runtime/weber-desktop-host
+          WEBER_OBSCURA_RENDERER: ${{ github.workspace }}/out/runtime/obscura/weber-obscura-renderer
+        run: |
+          node weber/electron-runtime/platform-sync/test.cjs
+          bun weber/electron-runtime/platform-sync/test.cjs
+          node weber/electron-runtime/platform-sync/tests/test-foreign-wrapper.cjs
+          bun weber/electron-runtime/platform-sync/tests/test-foreign-wrapper.cjs
+          xvfb-run -a python3 weber/electron-runtime/test-shortcut-live.py node
+          xvfb-run -a python3 weber/electron-runtime/test-shortcut-live.py bun
+      - name: Assemble and execute Linux development bundle
+        id: bundle
+        continue-on-error: true
+        run: |
+          cargo build --release --manifest-path weber/runtime-config/Cargo.toml
+          python3 -m unittest discover -s weber/packaging -p 'test_*.py'
+          python3 weber/packaging/package.py --output out/development-bundle
+          mkdir -p out/extracted-bundle
+          tar -xzf out/development-bundle/weber-*-development-*.tar.gz -C out/extracted-bundle
+          for backend in node bun native; do
+            xvfb-run -a python3 out/extracted-bundle/weber-*/smoke.py --backend "$backend" --output "out/bundle-$backend.json"
+          done
       - name: Compare the same application with pinned Electron
         id: benchmark
         timeout-minutes: 6
@@ -131,12 +156,12 @@ jobs:
       - name: Require every runtime check to pass
         if: always()
         env:
-          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }}
+          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.bundle.outcome }}
         run: |
           python3 - <<'PY_GATE'
           import os
           outcomes = os.environ['RESULTS'].split()
-          assert len(outcomes) == 8 and all(result == 'success' for result in outcomes), outcomes
+          assert len(outcomes) == 10 and all(result == 'success' for result in outcomes), outcomes
           PY_GATE
       - name: Require measurements and startup diagnostic to complete
         if: always()
@@ -161,4 +186,14 @@ jobs:
             out/bun-live.json
             out/benchmark.json
             out/vscode-startup.json
+            out/bundle-*.json
             out/runtime/Testing/Temporary/LastTest.log
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && steps.bundle.outcome == 'success' }}
+        with:
+          name: weber-linux-development
+          compression-level: 0
+          path: |
+            out/development-bundle/*.tar.gz
+            out/development-bundle/*.sha256
+            out/bundle-*.json

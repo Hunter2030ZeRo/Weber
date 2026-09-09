@@ -12,8 +12,8 @@ Electron's MIT license remains at the repository root; its README is
 
 ## Executable implementation
 
-The runtime compiles and executes 19 original, unmodified Electron TypeScript
-modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem and IPC helpers. A
+The runtime compiles and executes 20 original, unmodified Electron TypeScript
+modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem, globalShortcut and IPC helpers. A
 replacement `process._linkedBinding` layer routes their native operations to a
 separate GTK host. Each window has its own Obscura process. The build uses no
 Chromium checkout, Content, Blink, Viz or Chromium renderer binary. Obscura and
@@ -23,7 +23,7 @@ The original Chromium-dependent GN build and native Electron implementation rema
 as migration reference in this source fork. Build Weber using the CMake/Cargo path
 below; running the upstream GN build does not produce the replacement runtime.
 
-[CI for commit 6688e3c](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34373027242)
+[CI for commit 55b65fe](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34378756414)
 passed the following actual execution checks:
 
 - Two native GTK windows painted from Obscura raw frames, with real X11 mouse and
@@ -36,11 +36,15 @@ passed the following actual execution checks:
 - Native V8 preload isolation and IPC checks, process transport failures, renderer
   crash containment, frame invalidation and backend argument/signal handling.
 
-Newer commits additionally exercise TOML selection for the Node/Bun live tests,
-navigation policy, IPC bounds and performance measurements. Consult their CI
-results rather than treating the earlier passing commit as proof of later changes.
+That run also passed TOML selection for the Node/Bun tests, native menu mouse
+input, accelerators and removal, navigation policy and IPC bounds. New global
+shortcut and extracted-bundle checks must pass on their own corresponding commit.
 These checks establish a functioning development runtime, not full Electron or
 VS Code compatibility.
+
+For a prebuilt development archive, see the
+[packaging instructions](weber/packaging/README.md) and the successful workflow
+run's `weber-linux-development` artifact when available.
 
 ## Build and run on Linux
 
@@ -104,7 +108,10 @@ startup, IPC, DOM/capture and idle CPU, and preserves results even when Weber is
 slower. This small unsandboxed Linux fixture cannot establish VS Code performance.
 The [VS Code probe](weber/vscode-probe/README.md) runs an unmodified official app
 entry and records its first startup blocker; diagnostic completion is explicitly
-not a VS Code acceptance pass. Neither a compatibility percentage nor a general
+not a VS Code acceptance pass. The [55b65fe measurement](weber/benchmarks/results/55b65fe-summary.json) recorded
+median PSS of 181.5 MiB for Weber versus 373.7 MiB for Electron and startup of
+337 ms versus 666 ms. IPC, JavaScript round trips, DOM/capture and idle CPU were
+still worse for Weber. Neither a compatibility percentage nor a general
 performance advantage is currently claimed.
 
 The next compatibility target is a functioning VS Code workbench, followed by

@@ -4,6 +4,11 @@
   "version": "0.1.0",
   "license": "MIT",
   "description": "Compile Electron's original JavaScript API onto Weber native bindings",
-  "scripts": { "build": "node build.cjs" },
-  "devDependencies": { "typescript": "5.8.3" }
+  "scripts": {
+    "build": "node build.cjs"
+  },
+  "devDependencies": {
+    "node-api-headers": "1.9.0",
+    "typescript": "5.8.3"
+  }
 }

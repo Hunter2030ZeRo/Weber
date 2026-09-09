@@ -12,7 +12,20 @@ class HostClient extends EventEmitter {
     this.pending = new Map();
     this.buffer = '';
     this.closed = false;
-    this.child = spawn(executable, args, { stdio: ['pipe', 'pipe', 'inherit'], shell: false });
+    this.syncId = 0;
+    this.platform = require('./dist/native/weber_platform.node');
+    this.syncChannel = this.platform.create();
+    try {
+      this.child = spawn(executable, args, {
+        stdio: ['pipe', 'pipe', 'inherit', this.platform.childFd(this.syncChannel)],
+        env: { ...process.env, WEBER_PLATFORM_FD: '3' }, shell: false,
+      });
+    } catch (error) {
+      this.platform.close(this.syncChannel);
+      throw error;
+    } finally {
+      this.platform.releaseChild(this.syncChannel);
+    }
     this.child.stdout.setEncoding('utf8');
     this.child.stdout.on('data', chunk => this.consume(chunk));
     this.child.on('error', error => this.fail(error));
@@ -68,6 +81,28 @@ class HostClient extends EventEmitter {
     });
   }
 
+  requestSync(method, parameters = {}) {
+    if (this.closed) throw new Error('Weber desktop host is closed');
+    const id = ++this.syncId;
+    const request = JSON.stringify({ ...parameters, id, method });
+    if (Buffer.byteLength(request) > 64 * 1024) throw new Error('Weber platform request exceeds 64 KiB');
+    try {
+      const response = JSON.parse(this.platform.request(this.syncChannel, request, 5000));
+      if (response?.id !== id || (!Object.hasOwn(response, 'result') && !Object.hasOwn(response, 'error'))) {
+        throw new Error('Invalid synchronous platform response');
+      }
+      if (response.error !== undefined) {
+        const error = new Error(String(response.error));
+        error.code = 'ERR_WEBER_PLATFORM_OPERATION';
+        throw error;
+      }
+      return response.result;
+    } catch (error) {
+      if (error.code !== 'ERR_WEBER_PLATFORM_OPERATION') this.fail(error);
+      throw error;
+    }
+  }
+
   fail(error) {
     if (this.closed) return;
     this.closed = true;
@@ -76,6 +111,7 @@ class HostClient extends EventEmitter {
       reject(error);
     }
     this.pending.clear();
+    this.platform.close(this.syncChannel);
     this.child.stdin.destroy();
     // EOF is the host's graceful shutdown signal; it must reap its renderers.
     this.emit('closed', error);
@@ -83,6 +119,7 @@ class HostClient extends EventEmitter {
 
   close() {
     if (this.closed) return;
+    this.platform.close(this.syncChannel);
     this.child.stdin.end();
   }
 }

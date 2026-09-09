@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createMenuBinding } = require('./menu-binding.cjs');
 const { attachPlatformApp } = require('./platform-app.cjs');
+const { createGlobalShortcutBinding } = require('./global-shortcut-binding.cjs');
 
 function unsupported(name) {
   const error = new Error(`Weber has not implemented ${name}`);
@@ -419,6 +420,7 @@ function createBindings(host, appPath, loadInternal) {
   bindings.set('electron_browser_web_contents_view', { WebContentsView });
   bindings.set('electron_browser_printing', { getPrinterListAsync: () => unsupported('printing') });
   bindings.set('electron_browser_menu', menuBinding);
+  bindings.set('electron_browser_global_shortcut', createGlobalShortcutBinding({ host, app }));
   bindings.set('electron_common_command_line', app.commandLine);
   bindings.set('electron_common_environment', { hasVar: key => process.env[key] !== undefined });
 
