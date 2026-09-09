@@ -6,6 +6,9 @@ on:
     paths: ['weber/**', 'shell/browser/obscura/**', 'shell/renderer/obscura/**', '.github/workflows/weber-runtime.yml']
 permissions:
   contents: read
+concurrency:
+  group: weber-runtime-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   linux-runtime:
     runs-on: ubuntu-latest
