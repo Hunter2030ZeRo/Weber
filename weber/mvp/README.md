@@ -34,7 +34,19 @@ reference is an engine dependency requiring a rewrite.
 required by Electron's DEPS, synchronizes its real dependencies, runs hooks and
 generates the normal GN graph. Chromium is needed at this stage to establish and
 validate the existing Electron baseline while its dependencies are removed.
-This command does not itself compile Electron or replace Chromium.
+It then compiles and runs the process-transport tests with Electron's actual GN
+toolchain. This command does not compile the Electron application or replace
+Chromium. The new GN target is a test target, not a BrowserWindow runtime switch.
+
+The initial bootstrap failed at Yarn's immutable installation because moving
+upstream workflows also moved their workspace manifest. The manifest has been
+restored at `.github/workflows/package.json`; the unchanged upstream lockfile
+now passes validation before downloading Chromium dependencies.
+
+At commit `2993716559edff8ab2c7e06dc302904546d6c9b8`, the three standalone engine
+and process tests passed in [run 34363011850](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34363011850).
+The GN bootstrap is tracked separately in [run 34363012091](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34363012091).
+Its result must be checked before claiming GN compilation success.
 
 The first hosted-runner check found 92.3 GB free. Removing the unused Android SDK
 on the disposable runner increased this to 104.2 GB, meeting the documented
