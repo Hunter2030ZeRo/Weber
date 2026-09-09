@@ -1,0 +1,26 @@
+name: Electron baseline dependency bootstrap
+on:
+  push:
+    branches: [codex/electron-obscura]
+    paths: ['weber/mvp/bootstrap_baseline.sh', '.github/workflows/electron-baseline.yml']
+permissions:
+  contents: read
+jobs:
+  prepare-real-electron-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reserve disk for upstream dependencies
+        run: sudo rm -rf -- /usr/local/lib/android
+      - name: Confirm full-build resources
+        run: python3 weber/mvp/build_preflight.py --root . --output preflight.json
+      - name: Sync exact Electron dependencies and generate real GN graph
+        run: bash weber/mvp/bootstrap_baseline.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: electron-baseline-build-evidence
+          path: |
+            preflight.json
+            electron-baseline-dependencies.txt
