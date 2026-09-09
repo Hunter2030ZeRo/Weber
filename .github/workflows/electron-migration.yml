@@ -1,0 +1,27 @@
+name: Electron source migration
+on:
+  push:
+    branches: [codex/obscura-desktop-prototype]
+    paths: ['migration/**', 'crates/weber-engine/**', '.github/workflows/electron-migration.yml']
+permissions:
+  contents: write
+concurrency:
+  group: electron-source-import
+  cancel-in-progress: false
+jobs:
+  import-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev cmake
+      - run: bash migration/scripts/import-electron.sh
