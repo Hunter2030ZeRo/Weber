@@ -23,8 +23,9 @@ Chromium-dependent. The separate CMake target tests only the new boundary.
 
 Obscura brings its own V8 build. This library must run in a dedicated replacement
 renderer process, not in Electron's main process alongside Electron's V8.
-The process launcher, transport, native surface integration and OS sandbox are
-not implemented here. The C ABI itself is not a security boundary.
+A Linux process launcher and bounded private transport now connect the browser-side
+proxy to a dedicated renderer. Native surface integration and OS sandbox remain
+unimplemented. The C ABI itself is not a security boundary.
 
 ## Reproduce the boundary test on Linux
 
@@ -43,9 +44,9 @@ memory/performance results exist.
 
 ## Next engine replacement work
 
-1. Introduce an engine-neutral browser-side contract in place of direct
+1. Introduce an asynchronous engine-neutral browser-side contract in place of direct
    content::WebContents dependencies. Preserve Electron's public JS contracts.
-2. Connect a replacement renderer process to that contract, including navigation,
+2. Wire the replacement renderer process proxy into that contract, including navigation,
    frame lifecycle, input, callbacks and failure reporting.
 3. Replace PNG capture with raw-frame/dirty-region presentation to native windows.
 4. Implement isolated preload, message ports and process sandboxing before
@@ -68,3 +69,7 @@ commit `4cf5f266c4d7967791f0b3678addb78a854915ac`.
 The initial shared-library attempt failed because the prebuilt V8 uses TLS
 relocations incompatible with a shared object; the validated build statically
 links it into the separate executable.
+
+The [browser-side process proxy](shell/browser/obscura/README.md) describes the
+new process transport and its exact integration limits. The normal Electron
+BrowserWindow/WebContents path still uses Chromium.

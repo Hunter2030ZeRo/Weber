@@ -1,0 +1,40 @@
+name: Obscura replacement renderer
+on:
+  push:
+    branches: [codex/electron-obscura]
+    paths: ['shell/browser/obscura/**', 'shell/common/obscura/**', 'shell/renderer/obscura/**', 'weber/crates/weber-engine/**', 'weber/Cargo.toml', '.github/workflows/obscura-renderer.yml']
+  pull_request:
+    paths: ['shell/browser/obscura/**', 'shell/common/obscura/**', 'shell/renderer/obscura/**', 'weber/crates/weber-engine/**', 'weber/Cargo.toml', '.github/workflows/obscura-renderer.yml']
+permissions:
+  contents: read
+jobs:
+  linux-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - run: git submodule update --init --depth 1 weber/vendor/obscura
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'weber -> target'
+          cache-on-failure: true
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev cmake
+      - name: Build Obscura engine
+        run: cargo build --release --manifest-path weber/Cargo.toml -p weber-engine
+      - name: Build browser proxy and renderer
+        run: |
+          cmake -S shell/renderer/obscura -B out/obscura-boundary -DWEBER_ENGINE_LIBRARY="$PWD/weber/target/release/libweber_engine.a"
+          cmake --build out/obscura-boundary --parallel 2
+      - name: Check browser proxy has no V8 symbols
+        run: |
+          python - <<'PY'
+          import subprocess
+          symbols = subprocess.check_output(['nm', '-C', 'out/obscura-boundary/weber-process-smoke'], text=True)
+          assert 'v8::' not in symbols, 'Browser proxy must not link V8'
+          PY
+      - name: Test engine and process isolation
+        run: ctest --test-dir out/obscura-boundary --output-on-failure
