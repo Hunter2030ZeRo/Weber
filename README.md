@@ -3,11 +3,13 @@
 Experimental GUI framework using **obscura-for-weber** as its web engine,
 with Node.js, Bun, and native Rust application backends.
 
-**Status: integration prototype, not an Electron fork or drop-in replacement
-yet.** The Electron checkout under `upstream/electron` is a pinned reference,
-not a runtime dependency. Importing Electron's source/history and replacing its
-Chromium-dependent implementation remains outstanding. This branch must not be
-represented as completion of that migration.
+**Status: this branch is the original integration prototype.** Active
+Electron-based engine migration is now in
+[`codex/electron-obscura`](https://github.com/Hunter2030ZeRo/Weber/tree/codex/electron-obscura).
+That branch preserves Electron's source/ancestry and Weber's development history,
+and includes a tested C++/Obscura engine boundary. Its BrowserWindow/WebContents
+still use Chromium; the replacement is not complete. Backend extensions and
+agent features are deferred while the Electron engine route is implemented.
 
 ## Product acceptance goals
 
