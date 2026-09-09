@@ -9,6 +9,15 @@ not a runtime dependency. Importing Electron's source/history and replacing its
 Chromium-dependent implementation remains outstanding. This branch must not be
 represented as completion of that migration.
 
+## Product acceptance goals
+
+The [product goals and acceptance criteria](docs/product-goals.md) define the
+required destination: minimally modified Electron apps including VS Code,
+lower memory and higher performance as the top priority, native desktop
+integration and installers, multiple windows, and process isolation/security.
+These are release requirements, not implemented capabilities. Performance
+comparisons must preserve equivalent functionality and security.
+
 ## Implemented source
 
 - A Rust host using Obscura's `Page`, `winit` windows, and `softbuffer` presentation.
