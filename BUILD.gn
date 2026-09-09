@@ -2200,3 +2200,11 @@ if (is_linux && is_official_build) {
     deps = mksnapshot_deps
   }
 }
+
+# Validate the Obscura process boundary in Electron's native toolchain.
+if (is_linux) {
+  group("weber_obscura_transport_tests") {
+    testonly = true
+    deps = [ "shell/browser/obscura:transport_tests" ]
+  }
+}

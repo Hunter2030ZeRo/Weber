@@ -25,4 +25,7 @@ cd src
 gclient runhooks
 gn gen out/WeberBaseline --args='import("//electron/build/args/testing.gn") use_remoteexec=false use_siso=false symbol_level=0 blink_symbol_level=0'
 gn desc out/WeberBaseline //electron:electron deps --all > "$GITHUB_WORKSPACE/electron-baseline-dependencies.txt"
-printf '%s\n' 'Full Electron dependency sync and GN generation completed. This is not an Electron build or an Obscura MVP result.' >> "$GITHUB_STEP_SUMMARY"
+# Use the real Electron toolchain for the boundary before linking it into APIs.
+autoninja -C out/WeberBaseline weber_process_smoke weber_renderer_fixture -j 4
+out/WeberBaseline/weber_process_smoke --fake "$build_root/src/out/WeberBaseline/weber_renderer_fixture"
+printf '%s\n' 'Electron dependency sync, GN generation and GN-built transport tests completed. The Electron application itself and Obscura MVP are not built by this check.' >> "$GITHUB_STEP_SUMMARY"

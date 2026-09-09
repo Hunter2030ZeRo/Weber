@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: Apache-2.0
+# Compile the process boundary with Electron's actual Clang, sysroot and libc++.
+# This target does not replace content::WebContents or link RustyV8 into Electron.
+assert(is_linux, "The Obscura process transport currently requires Linux/glibc")
+
+config("boundary_exceptions") {
+  # Exceptions are contained in this boundary; Electron callers must translate
+  # failures before returning to Chromium's exception-disabled code.
+  cflags_cc = [ "-fexceptions" ]
+}
+
+source_set("wire") {
+  sources = [
+    "../../common/obscura/wire.cc",
+    "../../common/obscura/wire.h",
+  ]
+  configs -= [ "//build/config/compiler:no_exceptions" ]
+  configs += [ ":boundary_exceptions" ]
+}
+
+source_set("renderer_process") {
+  sources = [
+    "renderer_process.cc",
+    "renderer_process.h",
+  ]
+  deps = [ ":wire" ]
+  configs -= [ "//build/config/compiler:no_exceptions" ]
+  configs += [ ":boundary_exceptions" ]
+}
+
+executable("weber_renderer_fixture") {
+  testonly = true
+  sources = [ "renderer_fixture.cc" ]
+  deps = [ ":wire" ]
+  configs -= [ "//build/config/compiler:no_exceptions" ]
+  configs += [ ":boundary_exceptions" ]
+}
+
+executable("weber_process_smoke") {
+  testonly = true
+  sources = [ "process_smoke.cc" ]
+  deps = [
+    ":renderer_process",
+    ":wire",
+  ]
+  configs -= [ "//build/config/compiler:no_exceptions" ]
+  configs += [ ":boundary_exceptions" ]
+}
+
+group("transport_tests") {
+  testonly = true
+  deps = [
+    ":weber_process_smoke",
+    ":weber_renderer_fixture",
+  ]
+}

@@ -21,6 +21,7 @@ async function run() {
   const make = () => new BrowserWindow({ show: true, width: 640, height: 480,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true } });
   const first = make(), second = make();
+  const firstId = first.id;
   assert.equal(typeof first.id, 'number');
   assert.equal(BrowserWindow.fromId(first.id), first);
   await Promise.all([first.loadFile(path.join(__dirname, 'index.html')), second.loadFile(path.join(__dirname, 'index.html'))]);
@@ -49,7 +50,7 @@ async function run() {
   const closed = once(first, 'closed');
   first.close(); await closed;
   assert.equal(first.isDestroyed(), true);
-  assert.equal(BrowserWindow.fromId(first.id), null);
+  assert.equal(BrowserWindow.fromId(firstId), null);
   assert.equal(await second.webContents.executeJavaScript('window.mvp.sum(8, 9)'), 17);
   finish();
 }

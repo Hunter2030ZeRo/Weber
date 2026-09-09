@@ -2,7 +2,7 @@ name: Electron baseline dependency bootstrap
 on:
   push:
     branches: [codex/electron-obscura]
-    paths: ['weber/mvp/bootstrap_baseline.sh', '.github/workflows/electron-baseline.yml', '.github/workflows/package.json', 'package.json', 'yarn.lock']
+    paths: ['weber/mvp/bootstrap_baseline.sh', '.github/workflows/electron-baseline.yml', '.github/workflows/package.json', 'package.json', 'yarn.lock', 'shell/browser/obscura/BUILD.gn']
 permissions:
   contents: read
 jobs:
