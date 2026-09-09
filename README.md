@@ -23,7 +23,7 @@ The original Chromium-dependent GN build and native Electron implementation rema
 as migration reference in this source fork. Build Weber using the CMake/Cargo path
 below; running the upstream GN build does not produce the replacement runtime.
 
-[CI for commit 55b65fe](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34378756414)
+[CI for commit f574b9e](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34381018333)
 passed the following actual execution checks:
 
 - Two native GTK windows painted from Obscura raw frames, with real X11 mouse and
@@ -36,15 +36,20 @@ passed the following actual execution checks:
 - Native V8 preload isolation and IPC checks, process transport failures, renderer
   crash containment, frame invalidation and backend argument/signal handling.
 
-That run also passed TOML selection for the Node/Bun tests, native menu mouse
-input, accelerators and removal, navigation policy and IPC bounds. New global
-shortcut and extracted-bundle checks must pass on their own corresponding commit.
+That run also passed TOML selection for Node/Bun, native menu mouse input,
+accelerators and removal, navigation policy and IPC bounds. X11 global shortcuts
+were exercised with another process focused, actual registration conflicts and
+key delivery after unregistering. A bounded output writer keeps GTK responsive
+when a synchronous main-process call temporarily stops reading async replies.
+All three backend examples also passed from the extracted development archive.
 These checks establish a functioning development runtime, not full Electron or
 VS Code compatibility.
 
-For a prebuilt development archive, see the
-[packaging instructions](weber/packaging/README.md) and the successful workflow
-run's `weber-linux-development` artifact when available.
+Download the verified [Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34381018333/artifacts/10116112677)
+and follow the [packaging instructions](weber/packaging/README.md). The archive
+contains the native executables and compiled source runtime; Node/Bun are external.
+The [bundle record](weber/packaging/results/f574b9e.json) preserves its checksum,
+source commit and extracted execution results.
 
 ## Build and run on Linux
 
@@ -92,8 +97,9 @@ the TOML selector automatically.
 The current binding subset is documented in
 [weber/electron-runtime/README.md](weber/electron-runtime/README.md). GTK menu
 integration reuses Electron's template ordering, checkbox/radio policy and click
-dispatch, with native accelerators and window ownership. Its native input check
-must pass on the corresponding commit before it is considered verified. Popup
+dispatch, with native accelerators and window ownership, verified by real native input
+at the commit linked above. Global shortcuts currently require X11; Wayland
+portal support, suspension and live keyboard-map changes remain unsupported. Popup
 menus, icons, sublabels and several built-in roles remain unsupported. Tray,
 clipboard, drag and drop, sessions, MessagePorts, extension hosting, installers,
 Windows/macOS support and full navigation/IME behavior still need implementation.
@@ -108,13 +114,24 @@ startup, IPC, DOM/capture and idle CPU, and preserves results even when Weber is
 slower. This small unsandboxed Linux fixture cannot establish VS Code performance.
 The [VS Code probe](weber/vscode-probe/README.md) runs an unmodified official app
 entry and records its first startup blocker; diagnostic completion is explicitly
-not a VS Code acceptance pass. The [55b65fe measurement](weber/benchmarks/results/55b65fe-summary.json) recorded
-median PSS of 181.5 MiB for Weber versus 373.7 MiB for Electron and startup of
-337 ms versus 666 ms. IPC, JavaScript round trips, DOM/capture and idle CPU were
+not a VS Code acceptance pass. The [f574b9e measurement](weber/benchmarks/results/f574b9e-summary.json) recorded
+median PSS of 181.9 MiB for Weber versus 376.3 MiB for Electron and startup of
+275 ms versus 528 ms. IPC, JavaScript round trips, DOM/capture and idle CPU were
 still worse for Weber. Neither a compatibility percentage nor a general
 performance advantage is currently claimed.
 
-The next compatibility target is a functioning VS Code workbench, followed by
+The unmodified VS Code 1.136.2 entry currently stops at the missing `protocol`
+export. Custom schemes need real resource dispatch and origin policy across
+document, subresource and fetch paths; adding an empty export will not satisfy
+that requirement. The next compatibility target is a functioning workbench, followed by
 editing, terminal, extension host, multiwindow and desktop integrations. Obscura's
 agent capabilities should use the same page state and input paths, with explicit
 application authorization rather than a separate uncontrolled browser endpoint.
+
+Idle CPU still includes periodic renderer/host polling. Pinned Obscura already
+provides `Page::run_autonomous_event_loop_turn()` with real timer/network/task
+wakeups, and its CDP loop selects that future against commands. Weber currently
+cancels it after a short tick. The next scheduling change must keep that existing
+reactor active, notify the host of events/damage, and retain presentation
+deadlines while CSS/WAAPI animation is active; reducing polling frequency alone
+would trade latency for idle CPU.

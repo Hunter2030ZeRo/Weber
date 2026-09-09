@@ -1,0 +1,52 @@
+{
+  "kind": "benchmark-summary-from-ci-log",
+  "commit": "f574b9e267bea01fa301b167a760d2cad226fdb2",
+  "workflow_run": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34381018333",
+  "raw_artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34381018333/artifacts/10116111578",
+  "completeBenchmark": true,
+  "fullWorkflowPassed": true,
+  "methodologyVersion": 2,
+  "conditions": {
+    "windows": 2,
+    "trialsPerFramework": 3,
+    "build": "Release",
+    "osSandboxEnabled": false,
+    "display": "Xvfb 1600x900; nonoverlapping 768x512 windows",
+    "electronVersion": "42.0.0",
+    "workload": "Identical local HTML/preload app; hidden -> ready-to-show -> show -> two animation frames -> capture. DOM mutations also wait two animation frames before capture.",
+    "scope": "Not a VS Code or production desktop benchmark",
+    "idleCpuZero": "Electron median fell below the process CPU tick measurement resolution; it does not establish literally zero CPU work.",
+    "comparisonWithPrevious": "Shared CI runner timings vary. Do not attribute all changes between runs to implementation changes."
+  },
+  "summary": {
+    "electron": {
+      "trials": 3,
+      "startupToLoadAndCaptureMs": 527.996650000001,
+      "javascriptRoundTripMs": 0.20410550000019612,
+      "ipcRoundTripMs": 0.4128449999998338,
+      "domUpdateAndCaptureMs": 48.36411099999981,
+      "idlePssBytes": 394555392,
+      "idleRssBytes": 919105536,
+      "idleCpuOneCorePercent": 0
+    },
+    "weber": {
+      "trials": 3,
+      "startupToLoadAndCaptureMs": 274.8392709999989,
+      "javascriptRoundTripMs": 0.40684300000000917,
+      "ipcRoundTripMs": 1.012896000000012,
+      "domUpdateAndCaptureMs": 68.9394135,
+      "idlePssBytes": 190784512,
+      "idleRssBytes": 292929536,
+      "idleCpuOneCorePercent": 1.978781009822873
+    },
+    "weberDividedByElectron": {
+      "startupToLoadAndCaptureMs": 0.5205322249677122,
+      "javascriptRoundTripMs": 1.9932975838456988,
+      "ipcRoundTripMs": 2.453453475276241,
+      "domUpdateAndCaptureMs": 1.4254250119473977,
+      "idlePssBytes": 0.4835430357013091,
+      "idleRssBytes": 0.3187115347763502,
+      "idleCpuOneCorePercent": null
+    }
+  }
+}

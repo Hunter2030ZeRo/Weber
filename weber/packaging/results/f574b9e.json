@@ -1,0 +1,24 @@
+{
+  "kind": "validated-linux-development-bundle",
+  "commit": "f574b9e267bea01fa301b167a760d2cad226fdb2",
+  "workflowRun": 34381018333,
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34381018333/artifacts/10116112677",
+  "filename": "weber-x86_64-unknown-linux-gnu-development-f574b9e267be.tar.gz",
+  "bytes": 56528920,
+  "sha256": "8e9ca60efd51c112abeb0da1e37fa090511c1978322e9fb8db1bfad48fcd8606",
+  "allRuntimeGatesPassed": true,
+  "extractedBackendSmokes": [
+    "node",
+    "bun",
+    "native"
+  ],
+  "originalElectronSourceModules": 20,
+  "osSandbox": false,
+  "nodeAndBunExecutablesIncluded": false,
+  "chromiumBrowserRuntimeIncluded": false,
+  "vscode": {
+    "version": "1.136.2",
+    "ready": false,
+    "blocker": "Missing Electron protocol export; custom-scheme dispatch and associated origin/security semantics remain unimplemented."
+  }
+}
