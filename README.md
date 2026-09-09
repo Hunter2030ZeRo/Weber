@@ -28,6 +28,42 @@ initialization is an error.
 
 ## Build and run
 
+Choose the backend in the project-root `weber.toml`:
+
+```toml
+schema = 1
+backend = "node" # change to "bun" or "native"
+
+[app]
+frontend = "examples/javascript/index.html"
+channels = ["system.info"]
+
+[node]
+entry = "examples/javascript/main.mjs"
+
+[bun]
+entry = "examples/javascript/main.mjs"
+
+[native]
+binary = "target/release/examples/native"
+```
+
+Build the launcher with `cargo build --release -p weber-cli`, then run
+`./target/release/weber run` from the project directory. Alternatively install
+it with `cargo install --path crates/weber-cli` and use `weber run`. The same
+command works for all three backends. `weber run --backend bun` overrides the
+setting for one launch, and `weber check` prints the resolved launch plan.
+Use `--project DIRECTORY` when starting from a different directory.
+
+Backend selection happens at startup, not while an application is running.
+The Rust launcher requires neither Node nor Bun for the native backend. Node
+and Bun can share an entry script, subject to their runtime compatibility;
+native applications need a separately compiled Rust backend implementing the
+same channels. Changing the setting does not translate JavaScript into Rust.
+The launcher exports the shared frontend path and channel list for all backends;
+both included examples consume those settings. Missing runtimes/binaries fail
+explicitly instead of falling back to another backend.
+
 Prerequisites: Rust stable plus Obscura's native build dependencies, a desktop
 display, and Node.js 22+ or Bun for the JavaScript backend. Obscura brings V8;
 removing Chromium does **not** remove V8.
@@ -77,7 +113,8 @@ The Node test suite checks the pipe protocol, API lifecycle, channel denial,
 renderer bridge, malformed/oversized frames, deadlines and host crashes using
 an explicitly identified host test double. **These tests do not prove that
 Obscura builds, renders correctly, or supports real desktop applications.**
-The separate native smoke test checks the real Obscura DOM and round-trip IPC.
+The separate native smoke test checks nonblank pixels presented to the native
+surface, the real Obscura DOM, and round-trip IPC.
 See CI for native build results; do not infer a passing build from source alone.
 
 ## Current limits

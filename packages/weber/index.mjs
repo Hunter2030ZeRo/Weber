@@ -20,6 +20,7 @@ export function createApplication({ hostPath, hostArgs = [], timeout = 30_000 } 
         app.emit('quit', code, signal);
       });
       transport.on('event', message => {
+        if (message.event === 'frame-presented') windows.get(message.window)?.emit('ready-to-show', message);
         if (message.event === 'closed') {
           const win = windows.get(message.window);
           windows.delete(message.window);

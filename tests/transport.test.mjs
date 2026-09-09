@@ -50,6 +50,6 @@ test('rejects oversized and cyclic requests before writing', async t => {
   const transport = host(t);
   await assert.rejects(transport.request('echo', { value: 'a'.repeat(MAX_FRAME) }), /exceeds 1 MiB/);
   const cyclic = {}; cyclic.self = cyclic;
-  await assert.rejects(transport.request('echo', cyclic), /circular/i);
+  await assert.rejects(transport.request('echo', cyclic), TypeError);
   assert.equal(await transport.request('echo', { value: 'healthy' }), 'healthy');
 });

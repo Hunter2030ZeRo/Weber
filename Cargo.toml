@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/weber-host"]
+members = ["crates/weber-host", "crates/weber-cli"]
 exclude = ["vendor/obscura"]
 
 [patch.crates-io]

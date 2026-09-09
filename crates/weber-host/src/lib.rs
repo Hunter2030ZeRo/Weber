@@ -56,7 +56,8 @@ pub fn run_host() -> Result<()> {
     });
     let mut app = Host::new(None, None)?;
     app.ack = Some(ack_tx);
-    event_loop.run_app(&mut app).map_err(|e| e.to_string())
+    event_loop.run_app(&mut app).map_err(|e| e.to_string())?;
+    if let Some(error) = app.fatal { Err(error) } else { Ok(()) }
 }
 
 /// Run without a Node.js/Bun process. The callback executes on the GUI thread;
@@ -76,6 +77,7 @@ struct View {
     channels: HashSet<String>,
     epoch: u64,
     loaded: bool,
+    presented: bool,
     cursor: (f64, f64),
 }
 struct Host {
@@ -119,7 +121,7 @@ impl Host {
         page.set_navigation_timeout(Duration::from_secs(15));
         page.add_preload_script(include_str!("bridge.js"));
         page.add_preload_script(include_str!("input.js"));
-        self.view = Some(View { surface, window, page, channels, epoch: 0, loaded: false, cursor: (0.0, 0.0) });
+        self.view = Some(View { surface, window, page, channels, epoch: 0, loaded: false, presented: false, cursor: (0.0, 0.0) });
         Ok(json!(1))
     }
 
@@ -140,6 +142,7 @@ impl Host {
                 if !path.is_file() { return Err("Expected a file".into()); }
                 let url = url::Url::from_file_path(path).map_err(|_| "Invalid file path")?;
                 view.loaded = false;
+                view.presented = false;
                 // Never reuse a document generation after closing/reopening
                 // the single supported window in this host session.
                 self.next_epoch += 1;
@@ -242,7 +245,15 @@ impl Host {
                 }
             }
         }
-        buffer.present().map_err(|e| e.to_string())
+        let first_frame = view.loaded && !view.presented;
+        let nonwhite = if first_frame { buffer.iter().filter(|&&p| p != 0x00ff_ffff).count() } else { 0 };
+        buffer.present().map_err(|e| e.to_string())?;
+        if first_frame {
+            view.presented = true;
+            self.emit(json!({"event": "frame-presented", "window": 1,
+                "width": size.width, "height": size.height, "nonwhite": nonwhite}));
+        }
+        Ok(())
     }
 
     fn input(&mut self, value: Value) {
@@ -289,7 +300,11 @@ impl ApplicationHandler<UserEvent> for Host {
                 if self.native.is_some() { event_loop.exit(); }
             }
             WindowEvent::RedrawRequested => {
-                if let Err(error) = self.paint() { eprintln!("Weber paint: {error}"); }
+                if let Err(error) = self.paint() {
+                    eprintln!("Weber paint: {error}");
+                    self.fatal = Some(error);
+                    event_loop.exit();
+                }
             }
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => view.window.request_redraw(),
             WindowEvent::CursorMoved { position, .. } => {
