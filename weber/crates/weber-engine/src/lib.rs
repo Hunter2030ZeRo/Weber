@@ -1,6 +1,6 @@
 //! Renderer-side C ABI. Never load alongside Electron's separate V8 build.
 //! The caller owns valid input/callback pointers; all calls use the creating thread.
-use std::{cell::RefCell, collections::VecDeque, ffi::c_void, panic::{catch_unwind, AssertUnwindSafe},
+use std::{cell::RefCell, collections::{HashMap, VecDeque}, ffi::c_void, panic::{catch_unwind, AssertUnwindSafe},
     sync::{Arc, atomic::{AtomicU64, Ordering}}, time::Duration};
 use obscura_browser::{BrowserContext, Page};
 use serde_json::{json, Value};
@@ -10,6 +10,11 @@ mod preload;
 
 const MAX_REQUEST: usize = 1024 * 1024;
 const MAX_RESPONSE: usize = 64 * 1024 * 1024;
+const MAX_CRITICAL_EVENTS: usize = 256;
+const MAX_CRITICAL_BYTES: usize = 4 * 1024 * 1024;
+// IDs are at most 128 UTF-8 bytes, including worst-case JSON escaping. This
+// leaves ample room for a bounded completion failure and its generation.
+const COMPLETION_RESERVE: usize = 2048;
 static NEXT: AtomicU64 = AtomicU64::new(1);
 thread_local! { static ENGINE: RefCell<Option<(u64, Engine)>> = const { RefCell::new(None) }; }
 struct Engine {
@@ -24,6 +29,11 @@ struct Engine {
     events: VecDeque<(Value, usize)>,
     event_bytes: usize,
     dropped_events: u64,
+    critical_events: VecDeque<(Value, usize)>,
+    critical_bytes: usize,
+    queued_ipc: usize,
+    // true: completion is pending; false: completion is queued but not polled.
+    evaluation_tickets: HashMap<String, bool>,
 }
 type Reply = extern "C" fn(*const u8, usize, *mut c_void);
 
@@ -40,7 +50,9 @@ impl Engine {
         };
         let preload = preload::Preload::new(&mut page);
         Ok(Self { page, preload, runtime, loaded: false, width: 800, height: 600, poisoned: false,
-            events: VecDeque::new(), event_bytes: 0, dropped_events: 0 })
+            events: VecDeque::new(), event_bytes: 0, dropped_events: 0,
+            critical_events: VecDeque::new(), critical_bytes: 0, queued_ipc: 0,
+            evaluation_tickets: HashMap::new() })
     }
 
     fn push_event(&mut self, event: Value) {
@@ -57,6 +69,55 @@ impl Engine {
         }
         self.event_bytes += size;
         self.events.push_back((event, size));
+    }
+
+    fn completion_reservations(&self) -> usize {
+        self.evaluation_tickets.values().filter(|pending| **pending).count() * COMPLETION_RESERVE
+    }
+
+    fn push_critical_event(&mut self, mut event: Value) -> Result<(), String> {
+        match event.get("type").and_then(Value::as_str) {
+            Some("evaluation-result") => {
+                let id = event.get("id").and_then(Value::as_str).ok_or("Missing completion ID")?.to_string();
+                if self.evaluation_tickets.get(&id) != Some(&true) {
+                    return Err("Unreserved or duplicate evaluation completion".into());
+                }
+                let remaining_reservations = self.completion_reservations() - COMPLETION_RESERVE;
+                let available = MAX_CRITICAL_BYTES - self.critical_bytes - remaining_reservations;
+                let mut size = event.to_string().len();
+                if size > MAX_REQUEST || size > available {
+                    event = json!({"type": "evaluation-result", "id": id,
+                        "generation": self.preload.generation, "ok": false,
+                        "error": "Evaluation result exceeded the bounded delivery queue; poll events before submitting more work"});
+                    size = event.to_string().len();
+                }
+                if size > available || size > MAX_REQUEST {
+                    return Err("Completion reservation invariant violated".into());
+                }
+                self.evaluation_tickets.insert(id, false);
+                self.critical_bytes += size;
+                self.critical_events.push_back((event, size));
+            }
+            Some("ipc-invoke") => {
+                let size = event.to_string().len();
+                if size > MAX_REQUEST
+                    || self.evaluation_tickets.len() + self.queued_ipc >= MAX_CRITICAL_EVENTS
+                    || self.critical_bytes + self.completion_reservations() + size > MAX_CRITICAL_BYTES {
+                    // Reject only this invocation, using the existing isolated
+                    // resolver. Accepted tickets already queued remain intact.
+                    self.preload.command(&mut self.page, &json!({"method": "resolveIpc",
+                        "generation": event["generation"], "id": event["id"], "ok": false,
+                        "error": "IPC delivery queue is full; poll events before submitting more work"}))
+                        .ok_or("Missing IPC resolver")??;
+                    return Ok(());
+                }
+                self.queued_ipc += 1;
+                self.critical_bytes += size;
+                self.critical_events.push_back((event, size));
+            }
+            _ => return Err("Unsupported critical event".into()),
+        }
+        Ok(())
     }
 
     fn collect_navigation_request(&mut self) {
@@ -79,6 +140,10 @@ impl Engine {
         self.events.clear();
         self.event_bytes = 0;
         self.dropped_events = 0;
+        self.critical_events.clear();
+        self.critical_bytes = 0;
+        self.queued_ipc = 0;
+        self.evaluation_tickets.clear();
         self.loaded = false;
         self.push_event(json!({"type": "navigation-started", "url": url.as_str(),
             "generation": self.preload.generation}));
@@ -100,8 +165,12 @@ impl Engine {
     }
 
     fn pump_preload(&mut self) -> Result<(), String> {
-        match self.preload.pump(&mut self.page) {
-            Ok(events) => { for event in events { self.push_event(event); } Ok(()) },
+        let result = self.preload.pump(&mut self.page).and_then(|events| {
+            for event in events { self.push_critical_event(event)?; }
+            Ok(())
+        });
+        match result {
+            Ok(()) => Ok(()),
             Err(error) => {
                 self.poisoned = true;
                 Err(format!("Isolated bridge failed; renderer restart required: {error}"))
@@ -114,6 +183,19 @@ impl Engine {
         let runtime_handle = self.runtime.handle().clone();
         let _guard = runtime_handle.enter();
         match value.get("method").and_then(Value::as_str).ok_or("Missing method")? {
+            "startEvaluation" => {
+                let id = value.get("id").and_then(Value::as_str)
+                    .filter(|id| !id.is_empty() && id.len() <= 128).ok_or("Invalid evaluation ID")?;
+                if self.evaluation_tickets.contains_key(id) { return Err("Duplicate evaluation ID awaiting delivery".into()); }
+                if self.evaluation_tickets.len() + self.queued_ipc >= MAX_CRITICAL_EVENTS
+                    || self.critical_bytes + self.completion_reservations() + COMPLETION_RESERVE > MAX_CRITICAL_BYTES {
+                    return Err("Evaluation delivery queue is full; pollEvents before submitting more work".into());
+                }
+                let response = self.preload.command(&mut self.page, &value)
+                    .ok_or("Missing evaluation dispatcher")??;
+                self.evaluation_tickets.insert(id.to_string(), true);
+                Ok(response)
+            }
             "loadFile" => {
                 let path = value.get("path").and_then(Value::as_str).ok_or("Missing path")?;
                 let path = std::fs::canonicalize(path).map_err(|e| e.to_string())?;
@@ -206,7 +288,16 @@ impl Engine {
             "pollEvents" => {
                 if self.loaded { self.pump_preload()?; }
                 self.collect_navigation_request();
-                let events: Vec<_> = self.events.drain(..).map(|(event, _)| event).collect();
+                let mut events = Vec::with_capacity(self.critical_events.len() + self.events.len());
+                for (event, _) in self.critical_events.drain(..) {
+                    if event["type"] == "evaluation-result" {
+                        if let Some(id) = event["id"].as_str() { self.evaluation_tickets.remove(id); }
+                    }
+                    events.push(event);
+                }
+                self.critical_bytes = 0;
+                self.queued_ipc = 0;
+                events.extend(self.events.drain(..).map(|(event, _)| event));
                 self.event_bytes = 0;
                 let dropped = std::mem::take(&mut self.dropped_events);
                 Ok(json!({"events": events, "dropped": dropped}).to_string().into_bytes())
@@ -304,6 +395,81 @@ mod tests {
 
     fn evaluate(engine: &mut Engine, source: &str) -> Result<Value, String> {
         command(engine, json!({"method": "evaluate", "source": source}))
+    }
+
+    #[test]
+    fn engine_observation_overflow_preserves_ipc_and_completion_events() {
+        let mut engine = Engine::new().unwrap();
+        command(&mut engine, json!({"method": "configurePreload", "source": r#"
+            const { contextBridge, ipcRenderer } = require('electron');
+            contextBridge.exposeInMainWorld('queueApi', {
+                echo: value => ipcRenderer.invoke('queue:echo', value),
+            });
+        "#})).unwrap();
+        command(&mut engine, json!({"method": "loadURL", "url": "about:blank"})).unwrap();
+        command(&mut engine, json!({"method": "startEvaluation", "id": "keep-me",
+            "source": "queueApi.echo('accepted')"})).unwrap();
+        command(&mut engine, json!({"method": "tick"})).unwrap();
+        for number in 0..600 { engine.push_event(json!({"type": "observation", "number": number})); }
+        let delivery = command(&mut engine, json!({"method": "pollEvents"})).unwrap();
+        assert!(delivery["dropped"].as_u64().unwrap() > 0);
+        let invokes: Vec<_> = delivery["events"].as_array().unwrap().iter()
+            .filter(|event| event["type"] == "ipc-invoke").collect();
+        assert_eq!(invokes.len(), 1, "observation overflow discarded accepted IPC");
+        let invoke = invokes[0];
+        command(&mut engine, json!({"method": "resolveIpc", "generation": invoke["generation"],
+            "id": invoke["id"], "ok": true, "value": invoke["args"][0]})).unwrap();
+        command(&mut engine, json!({"method": "tick"})).unwrap();
+        for number in 0..600 { engine.push_event(json!({"type": "observation", "number": number})); }
+        let delivery = command(&mut engine, json!({"method": "pollEvents"})).unwrap();
+        let results: Vec<_> = delivery["events"].as_array().unwrap().iter()
+            .filter(|event| event["type"] == "evaluation-result").collect();
+        assert_eq!(results.len(), 1, "observation overflow discarded the completion");
+        assert_eq!(results[0]["id"], "keep-me");
+        assert_eq!(results[0]["ok"], true);
+        assert_eq!(results[0]["value"], "accepted");
+        assert!(!engine.poisoned);
+    }
+
+    #[test]
+    fn engine_delivery_budget_reports_every_accepted_evaluation() {
+        let mut engine = Engine::new().unwrap();
+        command(&mut engine, json!({"method": "loadURL", "url": "about:blank"})).unwrap();
+        for index in 0..8 {
+            command(&mut engine, json!({"method": "startEvaluation", "id": format!("large-{index}"),
+                "source": "'x'.repeat(700000)"})).unwrap();
+            command(&mut engine, json!({"method": "tick"})).unwrap();
+        }
+        let delivery = command(&mut engine, json!({"method": "pollEvents"})).unwrap();
+        let mut seen = std::collections::HashSet::new();
+        let mut succeeded = 0;
+        let mut rejected = 0;
+        for event in delivery["events"].as_array().unwrap() {
+            if event["type"] != "evaluation-result" { continue; }
+            assert!(seen.insert(event["id"].as_str().unwrap()), "duplicate completion");
+            if event["ok"] == true {
+                succeeded += 1;
+                assert_eq!(event["value"].as_str().unwrap().len(), 700000);
+            } else {
+                rejected += 1;
+                assert!(event["error"].as_str().unwrap().contains("bounded delivery queue"));
+            }
+        }
+        assert_eq!(seen.len(), 8, "every accepted evaluation must have an explicit outcome");
+        assert!(succeeded > 0 && rejected > 0, "the byte budget must reject oversized delivery pressure");
+        assert!(!engine.poisoned);
+
+        // Reservations also bound unfinished work, and reject before executing
+        // an additional script which has no guaranteed completion slot.
+        for index in 0..MAX_CRITICAL_EVENTS {
+            command(&mut engine, json!({"method": "startEvaluation", "id": format!("pending-{index}"),
+                "source": "new Promise(() => {})"})).unwrap();
+        }
+        let error = command(&mut engine, json!({"method": "startEvaluation", "id": "overflow",
+            "source": "globalThis.unadmittedScriptRan=true"})).unwrap_err();
+        assert!(error.contains("delivery queue is full"));
+        assert_eq!(evaluate(&mut engine, "typeof unadmittedScriptRan").unwrap(), "undefined");
+        assert!(!engine.poisoned);
     }
 
     // One owning thread exercises the actual Page/V8 implementation. These

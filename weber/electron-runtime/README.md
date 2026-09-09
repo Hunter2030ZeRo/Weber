@@ -46,6 +46,12 @@ uses `module.registerHooks`; Bun ESM app loading is explicitly unsupported at
 this stage. `WEBER_ENTRY` allows the TOML selector to choose an entry file that
 differs from `package.json.main` without editing that application metadata.
 
+`original-fs` and `node:original-fs` resolve to the actual `node:fs` module on
+Node CommonJS/ESM and Bun CommonJS. This runtime has no ASAR filesystem wrapper,
+so `.asar` paths remain ordinary native paths. Providing this import does not
+implement ASAR archive loading; adding an archive-aware `fs` layer later must
+preserve `original-fs` as the unwrapped native filesystem implementation.
+
 The development opt-in is mandatory because the renderer has process separation
 but no operating-system sandbox. Do not mistake a different process for an OS
 sandbox. The engine's isolated preload context exposes the implemented

@@ -107,6 +107,8 @@ jobs:
           WEBER_OBSCURA_RENDERER: ${{ github.workspace }}/out/runtime/obscura/weber-obscura-renderer
         run: |
           npm install --prefix "$RUNNER_TEMP/electron-baseline" electron@42.0.0
+          node "$RUNNER_TEMP/electron-baseline/node_modules/electron/install.js"
+          test -x "$RUNNER_TEMP/electron-baseline/node_modules/electron/dist/electron"
           node --test weber/benchmarks/proc-tree.test.cjs
           xvfb-run -a node weber/benchmarks/compare.cjs --electron "$RUNNER_TEMP/electron-baseline/node_modules/electron/dist/electron" --node "$(command -v node)" --bootstrap "$PWD/weber/electron-runtime/bootstrap.cjs" --output "$PWD/out/benchmark.json"
       - name: Diagnose unmodified VS Code startup

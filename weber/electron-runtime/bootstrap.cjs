@@ -33,8 +33,13 @@ async function main() {
   const originalBinding = process._linkedBinding?.bind(process);
   const api = {};
   const loaded = new Map();
+  // Electron exposes both names (including the node: form in asar-spec.ts).
+  // This runtime has no ASAR fs wrapper, so its original fs is exactly node:fs.
+  // Introducing ASAR later must preserve this native path before any wrapping.
+  const isOriginalFs = request => request === 'original-fs' || request === 'node:original-fs';
   const bunLoader = process.versions.bun ? createCommonJSLoader(request => {
     if (request === 'electron' || request === 'electron/main') return { value: api };
+    if (isOriginalFs(request)) return { value: fs };
     if (request.startsWith('@electron/internal/')) return { value: loadInternal(request.slice('@electron/internal/'.length)) };
     return undefined;
   }) : null;
@@ -78,6 +83,7 @@ async function main() {
     showErrorBox: (title, message) => { console.error(`${title}: ${message}`); } };
   if (!bunLoader) Module._load = function (request, parent, isMain) {
     if (request === 'electron' || request === 'electron/main') return api;
+    if (isOriginalFs(request)) return fs;
     if (request === 'electron/renderer') return runtime.unsupported('renderer API in the main process');
     if (request.startsWith('@electron/internal/')) return loadInternal(request.slice('@electron/internal/'.length));
     return originalLoad.call(this, request, parent, isMain);
@@ -87,6 +93,7 @@ async function main() {
   // 'electron'. The generated facade names exports statically for CJS/ESM.
   if (!bunLoader && typeof Module.registerHooks === 'function') {
     Module.registerHooks({ resolve(specifier, context, nextResolve) {
+      if (isOriginalFs(specifier)) return { url: 'node:fs', shortCircuit: true };
       if (specifier === 'electron' || specifier === 'electron/main') {
         return { url: pathToFileURL(path.join(__dirname, 'electron-api.cjs')).href, shortCircuit: true };
       }

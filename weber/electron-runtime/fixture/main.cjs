@@ -5,6 +5,9 @@ const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
+const originalFs = require('original-fs');
+const nodeOriginalFs = require('node:original-fs');
 
 app.on('window-all-closed', () => {});
 ipcMain.handle('test:add', (event, left, right) => {
@@ -25,6 +28,30 @@ function finish(error, details = {}) {
 }
 
 app.whenReady().then(async () => {
+  // original-fs is a real filesystem API, not an Electron namespace stub.
+  // With no ASAR patch installed, all three imports are the same native module.
+  assert.equal(originalFs, fs);
+  assert.equal(nodeOriginalFs, fs);
+  const packageFile = path.join(__dirname, 'package.json');
+  const packageContents = fs.readFileSync(packageFile, 'utf8');
+  assert.equal(originalFs.readFileSync(packageFile, 'utf8'), packageContents);
+  assert.equal(await nodeOriginalFs.promises.readFile(packageFile, 'utf8'), packageContents);
+  if (!process.versions.bun) {
+    const esm = await import('original-fs');
+    const nodeEsm = await import('node:original-fs');
+    assert.equal(esm.default, fs);
+    assert.equal(nodeEsm.default, fs);
+    assert.equal(esm.readFileSync, fs.readFileSync);
+    assert.equal(esm.readFileSync(packageFile, 'utf8'), packageContents);
+  }
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'weber-original-fs-'));
+  try {
+    const archive = path.join(temporary, 'ordinary.asar');
+    const bytes = Buffer.from('ordinary file bytes, without archive interpretation');
+    fs.writeFileSync(archive, bytes);
+    assert.equal(originalFs.statSync(archive).isFile(), true);
+    assert.deepEqual(await originalFs.promises.readFile(archive), bytes);
+  } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
   const preferences = { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true };
   const first = new BrowserWindow({ width: 640, height: 480, title: 'First Obscura window', webPreferences: preferences });
   const second = new BrowserWindow({ width: 600, height: 420, title: 'Second Obscura window', webPreferences: preferences });
@@ -65,6 +92,6 @@ app.whenReady().then(async () => {
   assert.equal(await second.webContents.executeJavaScript('Promise.resolve(17)'), 17);
   finish(null, { rendererPids, rendererExecutables, windowsPresented: 2,
     sourceReuse: ['BrowserWindow', 'BaseWindow', 'WebContents'],
-    tested: ['original loadFile/loadURL', 'Promise evaluation', 'isolated preload', 'contextBridge function calls', 'ipcMain.invoke round trip and rejection', 'DOM events', 'window isolation', 'native drawing', 'PNG capture', 'close lifecycle'],
+    tested: ['original-fs real filesystem access', ...(process.versions.bun ? [] : ['original-fs ESM named and default exports']), 'original loadFile/loadURL', 'Promise evaluation', 'isolated preload', 'contextBridge function calls', 'ipcMain.invoke round trip and rejection', 'DOM events', 'window isolation', 'native drawing', 'PNG capture', 'close lifecycle'],
     osSandbox: false, privilegedPreload: 'electron bridge subset', fullElectronCompatibility: false });
 }).catch(finish);

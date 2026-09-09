@@ -12,6 +12,7 @@ Install it separately from the framework checkout, then pass its real executable
 
 ```sh
 npm install --prefix /tmp/weber-electron-baseline electron@42.0.0
+node /tmp/weber-electron-baseline/node_modules/electron/install.js
 xvfb-run -a node weber/benchmarks/compare.cjs \
   --electron /tmp/weber-electron-baseline/node_modules/electron/dist/electron \
   --node /absolute/path/to/node \
@@ -24,6 +25,10 @@ before running. The harness opts both frameworks into the same **unsandboxed
 development comparison**: Electron receives `--no-sandbox`, the common app uses
 `sandbox: false`, and Weber receives its explicit development opt-in. Neither
 result represents a production sandbox configuration.
+
+The explicit installer is required because [Electron 42 removed its postinstall
+download](https://electronjs.org/blog/electron-42-0). Measurements start the actual
+binary after installation, so downloading is excluded from startup timings.
 
 Three launches per framework are run sequentially, alternating order. OS page
 caches are not flushed. The output contains every sample, executable versions,
