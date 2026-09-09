@@ -73,3 +73,20 @@ links it into the separate executable.
 The [browser-side process proxy](shell/browser/obscura/README.md) describes the
 new process transport and its exact integration limits. The normal Electron
 BrowserWindow/WebContents path still uses Chromium.
+
+## Verified separate renderer processes
+
+[CI 34359352048](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34359352048)
+passed all three integration tests on Linux for implementation commit
+`d5e7a36842a437a7f87efac8071feec587f37069`:
+
+- Real C++/Obscura engine boundary: DOM, evaluation/errors and PNG rendering.
+- Transport fixture: startup/request deadlines, invalid startup/sequence/size,
+  fragmented replies, child cleanup and closed-stdio descriptor remapping.
+- Two real Obscura renderer processes: independent DOM, PNG capture, idle timer
+  progress, one-child crash containment and replacement renderer startup.
+
+The browser-side test executable was also checked for absence of V8 symbols.
+These checks validate the standalone renderer/proxy components. They do not
+validate Electron BrowserWindow routing, native multiwindow GUI, OS sandboxing,
+Windows/macOS support or an Electron performance advantage.
