@@ -14,6 +14,7 @@ try {
   assert.ok(metrics.nonwhite > 100, 'Expected nonblank Obscura pixels presented to the native surface');
   assert.equal(await win.webContents.executeJavaScript('document.querySelector("h1").textContent'), 'Weber');
   await assert.rejects(win.webContents.executeJavaScript('throw new Error("observable")'), /observable/);
+  const invocationStarted = Date.now();
   await win.webContents.executeJavaScript('document.getElementById("info").click(); null');
   let text = '';
   const deadline = Date.now() + 5000;
@@ -23,6 +24,7 @@ try {
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   assert.match(text, /smoke/);
+  assert.ok(Date.now() - invocationStarted < 5000, 'IPC must not wait for the renderer timeout timer');
   await win.close();
   await app.quit();
   console.log('Native Obscura surface + DOM + renderer/backend IPC smoke passed');

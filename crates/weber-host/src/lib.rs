@@ -188,7 +188,16 @@ impl Host {
         let Some(view) = self.view.as_mut() else { return Ok(()); };
         if !view.loaded { return Ok(()); }
         let _guard = self.runtime.enter();
-        self.runtime.block_on(view.page.run_autonomous_event_loop_turn())?;
+        // Obscura's autonomous turn parks until its next browser task wakes.
+        // A 30-second renderer IPC timeout is such a task: awaiting that turn
+        // without a budget prevents us from draining the call or reading its
+        // backend reply. Yield back to the window/pipe loop after a short slice.
+        self.runtime.block_on(async {
+            match tokio::time::timeout(Duration::from_millis(2), view.page.run_autonomous_event_loop_turn()).await {
+                Ok(result) => result.map(|_| ()),
+                Err(_) => Ok(()),
+            }
+        })?;
         // Host navigation is explicit. Never turn a local privileged page into
         // an arbitrary remote document in response to a link or location write.
         let _blocked_navigation = view.page.take_pending_navigation();
