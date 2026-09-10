@@ -305,6 +305,26 @@
         if (payload.ok) entry.resolve(value); else entry.reject(value);
         return null;
       }
+      case 'settleBatch': {
+        if (!isArray(payload.replies) || !payload.replies.length || payload.replies.length > 32) fail('Invalid bridge settlement batch');
+        const seen = create(null);
+        const prepared = array();
+        for (let i = 0; i < payload.replies.length; i++) {
+          const reply = payload.replies[i];
+          const id = validId(reply.id);
+          if (!has(bridgePending, id) || has(seen, id)) fail('Unknown or duplicate bridge call ticket');
+          if (typeof reply.ok !== 'boolean') fail('Settlement requires a boolean status');
+          put(seen, id, true);
+          put(prepared, prepared.length, record({ id, entry: bridgePending[id], ok: reply.ok,
+            value: reply.ok ? publicValue(clone(reply.value)) : new NativeError(errorText(reply.error)) }));
+        }
+        for (let i = 0; i < prepared.length; i++) {
+          const reply = prepared[i];
+          delete bridgePending[reply.id]; pendingCount--;
+          if (reply.ok) reply.entry.resolve(reply.value); else reply.entry.reject(reply.value);
+        }
+        return null;
+      }
       case 'drain': {
         const events = queue;
         queue = array();

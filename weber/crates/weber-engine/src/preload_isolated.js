@@ -330,6 +330,17 @@
   }
   function dispatch(payload) {
     switch (payload.method) {
+      case 'callBatch': {
+        if (!isArray(payload.calls) || !payload.calls.length || payload.calls.length > 32) fail('Invalid bridge call batch');
+        const rejected = array();
+        for (let i = 0; i < payload.calls.length; i++) {
+          const item = payload.calls[i];
+          if (!item || item.method !== 'call') fail('Invalid batched bridge operation');
+          try { dispatch(item); }
+          catch (error) { put(rejected, rejected.length, record({ id: item.id, ok: false, error: errorText(error) })); }
+        }
+        return rejected;
+      }
       case 'configure': {
         if (configureAttempted) fail('The isolated preload has already attempted configuration');
         if (typeof payload.source !== 'string') fail('Preload source must be a string');

@@ -484,6 +484,9 @@ function createBindings(host, appPath, loadInternal) {
       app.emit('weber-error', new Error(message.error || 'Native frame presentation failed'));
     } else if (type === 'engine-event') {
       win.webContents?._engineEvent(message.data);
+    } else if (type === 'engine-events') {
+      if (!Array.isArray(message.events) || message.events.length > 512) throw new Error('Invalid renderer event batch');
+      for (const data of message.events) win.webContents?._engineEvent(data);
     } else if (type === 'engine-event-overflow') {
       win.webContents?._rejectEvaluations('Renderer event queue overflow');
       app.emit('weber-error', new Error('Renderer event queue overflow'));

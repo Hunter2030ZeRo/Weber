@@ -27,7 +27,7 @@ async function main() {
     if (!path.isAbsolute(filename)) throw new Error('Runtime executable paths must be absolute');
     fs.accessSync(filename, fs.constants.X_OK);
   }
-  const host = new HostClient(hostPath, [rendererPath]);
+  const host = new HostClient(hostPath, [rendererPath, '--weber-batch-events']);
   activeHost = host;
   const originalLoad = Module._load;
   const originalBinding = process._linkedBinding?.bind(process);

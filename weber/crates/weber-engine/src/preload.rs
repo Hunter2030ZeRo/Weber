@@ -27,6 +27,14 @@ fn bridge(page: &mut Page, isolated: bool, request: Value) -> Result<Value, Stri
     }
 }
 
+fn settle_many(page: &mut Page, replies: &[Value]) -> Result<(), String> {
+    for batch in replies.chunks(32) {
+        if batch.len() == 1 { bridge(page, false, batch[0].clone())?; }
+        else { bridge(page, false, json!({"method": "settleBatch", "replies": batch}))?; }
+    }
+    Ok(())
+}
+
 impl Preload {
     pub fn new(page: &mut Page) -> Self {
         page.set_desktop_preload(MAIN_BOOTSTRAP.into(), ISOLATED_BOOTSTRAP.into(), String::new());
@@ -142,24 +150,12 @@ impl Preload {
                 bridge(page, false, json!({"method": "drain"}))?
             } else { Value::Array(Vec::new()) };
             let main_events = main_events.as_array().ok_or("Invalid main bridge events")?;
+            let mut calls = Vec::new();
             for event in main_events {
                 match event.get("type").and_then(Value::as_str) {
                     Some("bridge-call") => {
-                        // Admission failure belongs to this Promise. A full
-                        // isolated queue must not discard already accepted IPC
-                        // requests or poison the renderer. Native V8 failures
-                        // still propagate; only a valid dispatcher rejection is
-                        // converted into an individual bridge-call rejection.
-                        let reply = page.desktop_bridge_command(true, &json!({"method": "call",
-                            "id": event["id"], "functionId": event["functionId"], "args": event["args"]}))?;
-                        if reply.get("ok").and_then(Value::as_bool) == Some(false) {
-                            let error = reply.get("error").and_then(Value::as_str)
-                                .ok_or("Invalid bridge admission failure")?;
-                            bridge(page, false, json!({"method": "settle", "id": event["id"],
-                                "ok": false, "error": error}))?;
-                        } else if reply.get("ok").and_then(Value::as_bool) != Some(true) {
-                            return Err("Invalid bridge admission reply".into());
-                        }
+                        calls.push(json!({"method": "call", "id": event["id"],
+                            "functionId": event["functionId"], "args": event["args"]}));
                     }
                     Some("evaluation-result") => {
                         let id = event.get("id").and_then(Value::as_str).ok_or("Invalid evaluation completion")?;
@@ -171,16 +167,37 @@ impl Preload {
                     _ => return Err("Unsupported main bridge event".into()),
                 }
             }
+            for batch in calls.chunks(32) {
+                // Each drained queue is already bounded below 1 MiB; replacing
+                // its event envelope with these smaller commands stays bounded.
+                let rejected = if batch.len() == 1 {
+                    let reply = page.desktop_bridge_command(true, &batch[0])?;
+                    match reply.get("ok").and_then(Value::as_bool) {
+                        Some(true) => Vec::new(),
+                        Some(false) => vec![json!({"method": "settle", "id": batch[0]["id"],
+                            "ok": false, "error": reply.get("error").and_then(Value::as_str)
+                                .ok_or("Invalid bridge admission failure")?})],
+                        _ => return Err("Invalid bridge admission reply".into()),
+                    }
+                } else {
+                    let result = bridge(page, true, json!({"method": "callBatch", "calls": batch}))?;
+                    result.as_array().ok_or("Invalid bridge batch result")?.iter().map(|reply|
+                        json!({"method": "settle", "id": reply["id"], "ok": false, "error": reply["error"]})
+                    ).collect()
+                };
+                settle_many(page, &rejected)?;
+            }
             let isolated_events = if page.desktop_bridge_has_events(true)? {
                 bridge(page, true, json!({"method": "drain"}))?
             } else { Value::Array(Vec::new()) };
             let isolated_events = isolated_events.as_array().ok_or("Invalid isolated bridge events")?;
+            let mut settlements = Vec::new();
             for event in isolated_events {
                 match event.get("type").and_then(Value::as_str) {
                     Some("bridge-result") => {
                         let mut reply = event.clone();
                         reply["method"] = json!("settle");
-                        bridge(page, false, reply)?;
+                        settlements.push(reply);
                     }
                     Some("ipc-send") => {
                         let mut event = event.clone();
@@ -200,6 +217,7 @@ impl Preload {
                     _ => return Err("Unsupported isolated bridge event".into()),
                 }
             }
+            settle_many(page, &settlements)?;
             if main_events.is_empty() && isolated_events.is_empty() { break; }
         }
         Ok(outgoing)

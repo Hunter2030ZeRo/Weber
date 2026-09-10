@@ -35,6 +35,7 @@ std::atomic<bool> output_failed{false};
 std::shared_ptr<weber::desktop::AsyncOutput> output_writer;
 std::atomic<unsigned> pending_requests{0};
 std::string renderer_path;
+bool batch_events = false;
 void OutputFailed() {
   if (output_failed.exchange(true)) return;
   quitting = true;
@@ -95,6 +96,10 @@ struct Window {
   bool presented = false;
 };
 std::map<int, std::shared_ptr<Window>> windows;
+// The UI owns native widgets. Readers may only acquire a strong reference to a
+// live command queue; no GTK object is touched through this routing registry.
+std::mutex routes_mutex;
+std::map<int, std::weak_ptr<Window>> routes;
 std::vector<std::shared_ptr<Window>> retired;
 void Queue(const std::shared_ptr<Window>& window, Json command) {
   std::lock_guard<std::mutex> lock(window->mutex);
@@ -110,6 +115,7 @@ void Close(std::shared_ptr<Window> window) {
   window->menu.reset();
   gtk_widget_destroy(window->window);
   windows.erase(window->id);
+  { std::lock_guard<std::mutex> lock(routes_mutex); routes.erase(window->id); }
   retired.push_back(window);
   Emit({{"event", "closed"}, {"windowId", window->id}});
 }
@@ -168,8 +174,12 @@ void Work(std::shared_ptr<Window> window, Json create) {
       if (kind == electron::obscura::wire::kFrameReady) { frame_requested = true; return; }
       const auto batch = Decode(bytes);
       if (batch.value("dropped", 0u)) Emit({{"event", "engine-event-overflow"}, {"windowId", window->id}});
-      for (const auto& event : batch.at("events"))
-        Emit({{"event", "engine-event"}, {"windowId", window->id}, {"data", event}});
+      if (batch_events) {
+        Emit({{"event", "engine-events"}, {"windowId", window->id}, {"events", batch.at("events")}});
+      } else {
+        for (const auto& event : batch.at("events"))
+          Emit({{"event", "engine-event"}, {"windowId", window->id}, {"data", event}});
+      }
     });
     resources->ChildSpawned();
     renderer.Command(Json{{"method", "viewport"}, {"width", create.value("options", Json::object()).value("width", 800)}, {"height", create.value("options", Json::object()).value("height", 600)}}.dump());
@@ -307,6 +317,7 @@ void Create(const Json& request) {
       GDK_POINTER_MOTION_MASK | GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK |
       GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK);
   windows[id] = window;
+  { std::lock_guard<std::mutex> lock(routes_mutex); routes[id] = window; }
   for (const char* signal : {"focus-in-event", "focus-out-event"})
     g_signal_connect(window->window, signal, G_CALLBACK((+[](GtkWidget*, GdkEventFocus* event, gpointer data) -> gboolean {
       auto* w = static_cast<Window*>(data);
@@ -429,10 +440,23 @@ void ReadCommands() {
       if (bytes[i] == '\n') {
         try {
           auto request = Json::parse(line);
+          // Earlier window operations are ordering barriers. Once dispatched,
+          // ordinary page/IPC work can go straight to its window owner without
+          // an extra GTK loop hop. Queue() still checks close and capacity.
+          if (request.value("method", "") == "page.command" && pending_requests.load() == 0) {
+            std::shared_ptr<Window> target;
+            { std::lock_guard<std::mutex> lock(routes_mutex);
+              const auto found = routes.find(request.at("windowId").get<int>());
+              if (found != routes.end()) target = found->second.lock(); }
+            if (target) Queue(target, std::move(request));
+            else Error(request, "Unknown or destroyed window");
+            line.clear();
+            continue;
+          }
           if (pending_requests.fetch_add(1) >= 1024) {
             --pending_requests;
             Error(request, "Desktop request queue is full");
-          } else Ui([request] { --pending_requests; Dispatch(request); });
+          } else Ui([request] { Dispatch(request); --pending_requests; });
         }
         catch (const std::exception& error) { Emit({{"event", "protocol-error"}, {"error", error.what()}}); }
         line.clear();
@@ -446,7 +470,9 @@ void ReadCommands() {
 }
 } // namespace
 int main(int argc, char** argv) {
-  if (argc != 2 || argv[1][0] != '/') { std::cerr << "Usage: weber-desktop-host /absolute/path/weber-obscura-renderer\n"; return 2; }
+  if ((argc != 2 && argc != 3) || argv[1][0] != '/') { std::cerr << "Usage: weber-desktop-host /absolute/path/weber-obscura-renderer [--weber-batch-events]\n"; return 2; }
+  batch_events = argc == 3 && std::string(argv[2]) == "--weber-batch-events";
+  if (argc == 3 && !batch_events) return 2;
   const char* development = std::getenv("WEBER_UNSANDBOXED_DEVELOPMENT");
   if (!development || std::string(development) != "1") {
     std::cerr << "This development runtime has no OS sandbox; set WEBER_UNSANDBOXED_DEVELOPMENT=1 for trusted local test apps.\n";
@@ -479,6 +505,7 @@ int main(int argc, char** argv) {
   platform.reset();
   for (const auto& item : windows) { item.second->closed = true; item.second->Wake(); retired.push_back(item.second); }
   windows.clear();
+  { std::lock_guard<std::mutex> lock(routes_mutex); routes.clear(); }
   for (auto& window : retired) if (window->worker.joinable()) window->worker.join();
   // Keep shared ownership available to any final detached reader callback.
   // Finish rejects later enqueues and waits only for its bounded drain deadline.
