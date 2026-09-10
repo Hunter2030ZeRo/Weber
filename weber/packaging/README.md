@@ -106,21 +106,22 @@ without notice files are explicitly listed; some native components bundled by a
 crate may require additional notices or source distribution. This collection is
 evidence for a later distribution review, not a complete third-party license audit.
 
-The credential-storage bundle is
-[5a852b6](results/5a852b6.json), from
-[CI run 34461274589](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34461274589).
-It contains 35 compiled original Electron modules and the libsecret helper.
-All 15 runtime groups pass. Real Electron 42.0.0, Node and Bun cross-read sync
-ciphertext in 18 process combinations, with first-use concurrency, locked-service
-failure and persisted-key recovery verified in an owned test keyring. The keyring
-daemon is not bundled. Async safeStorage, KWallet and other platforms are missing.
+The power-inhibition lifecycle bundle is
+[95e9c87](results/95e9c87.json), from
+[CI run 34464435416](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34464435416).
+It contains 36 compiled original Electron modules. All 16 runtime groups pass.
+The original powerSaveBlocker API uses native GNOME/freedesktop inhibition;
+18 Node/Bun scenarios cover priority, transition failure, daemon loss, app/host
+death and late replies. These use controlled D-Bus peers and do not establish
+physical desktop power-policy acceptance. There is no continuing inhibition polling.
 
-All three backend examples pass after extraction; Node also verifies the new
-safeStorage ESM named export. Node/Bun examples execute an independent utility
+All three backend examples pass after extraction; Node also verifies the
+powerSaveBlocker ESM named export. Node/Bun examples execute an independent utility
 and transferred-port round trip; the Native example remains a Rust main.
-Existing desktop, shell and startup-service checks still pass. GIO operations
-require the system `libglib2.0-bin` package; native crash collection remains absent.
+Existing desktop, shell, startup and real safeStorage cross-read checks still
+pass, including 18 Electron/Node/Bun encrypted-storage combinations.
 
-The unmodified VS Code diagnostic now stops at missing powerSaveBlocker; its
-workbench has not started. See the record for the archive checksum and remaining
-acceptance gaps. Monaco's dedicated module-worker gap is unchanged.
+The unmodified VS Code diagnostic now stops at missing net; its workbench has
+not started. The parser excludes error-like strings inside minified source when
+extracting the real exception. See the record for the archive checksum and
+remaining acceptance gaps. Monaco's dedicated module-worker gap is unchanged.

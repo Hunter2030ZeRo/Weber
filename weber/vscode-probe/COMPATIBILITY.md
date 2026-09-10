@@ -2,12 +2,12 @@
 
 Target: the unmodified Linux x64 VS Code 1.136.2 application at the revision in
 `pin.json`, running through the original Electron source modules on Obscura.
-The latest probe still exits before workbench startup because `powerSaveBlocker` is
+The latest probe still exits before workbench startup because `net` is
 missing. A diagnostic exit code of zero means evidence collection succeeded;
 the report itself has `ready: false`. No whole-app compatibility percentage is
 inferred from exported names or module counts.
 
-Latest validated runtime: [5a852b6](../packaging/results/5a852b6.json), with 15
+Latest validated runtime: [95e9c87](../packaging/results/95e9c87.json), with 16
 execution gates and extracted Node/Bun/native examples passing. Utility tests
 pass seven per JavaScript backend, startup services pass four on Node and three
 on Bun (one Node-only skip), and safeStorage unit checks pass four per backend.
@@ -17,8 +17,16 @@ Six simultaneous first-use processes share one key; locked/missing services fail
 closed; restarting and unlocking the owned daemon restores the persisted key.
 These are API tests, not VS Code's complete secret-service acceptance.
 
+Power-save unit tests pass four per JavaScript backend. Eighteen native protocol
+scenarios pass across Node/Bun: GNOME, freedesktop fallback, missing service,
+refused upgrade/downgrade, daemon loss, app/host SIGKILL and late responses. Every
+scenario ends with zero owned inhibitors. Service loss is recoverable; fatal host
+exit status remains intact. Physical sleep/display policy remains unverified.
+The startup diagnostic also has three regression tests to distinguish actual
+exceptions from error-like text embedded in minified source lines.
+
 Successive unmodified VS Code runs moved from missing crashReporter to shell,
-safeStorage and now powerSaveBlocker. This remains import-stage progress, not
+safeStorage, powerSaveBlocker and now net. This remains import-stage progress, not
 proof of a running workbench. Monaco's module-worker blocker is unchanged.
 
 The probe records these 24 named imports from the pinned application. An API
@@ -42,7 +50,7 @@ appearing in this table does not mean every method works.
 | globalShortcut | Original module, real X11 registration/conflicts/callbacks | Wayland portals, suspension and keyboard-map changes |
 | net | Missing | Main-process network requests and session integration |
 | powerMonitor | Original module; native X11 idle queries, UPower/logind power/suspend/resume/lock transport on Node/Bun | Shutdown inhibition, unsupported thermal/platform data, full desktop acceptance |
-| powerSaveBlocker | Missing | Native inhibition ownership and release |
+| powerSaveBlocker | Original module; aggregated IDs and priority; native GNOME/freedesktop acquisition/release, failed-transition rollback and ownership cleanup | Real desktop physical sleep/display acceptance, raw XScreenSaver fallback, Wayland portals and other platforms |
 | protocol | Original module, custom/file interception, handle/Response, document/CSS/JS/module/fetch loading | Full redirects, HTTP handlers and browser privilege semantics |
 | safeStorage | Original module; Linux libsecret-backed sync encryption, v10/v11 Buffer format and explicit basic-text opt-in; derived-key cache | Async format/key migration, KWallet, other operating systems and full VS Code secret-service acceptance |
 | screen | Original module, native monitors/cursor/work area/scale and change events | Rotation, color profiles, DIP conversion and complete display metadata |
@@ -52,7 +60,7 @@ appearing in this table does not mean every method works.
 | utilityProcess | Original wrapper and ParentPort; real same-backend child, stdio/argv/cwd/env, CJS/ESM entry, main-to-child port transfer, two-way data and termination | Actual VS Code extension host, renderer ports, nested transfers, auth integration and full process-tree cleanup |
 
 The unmodified Electron TypeScript modules remain in the upstream source tree.
-The replacement runtime compiles 35 of them and records exact source hashes.
+The replacement runtime compiles 36 of them and records exact source hashes.
 Additional behavior lives at their native binding boundary, with explicit
 unsupported errors where implemented entry points cannot perform an operation.
 

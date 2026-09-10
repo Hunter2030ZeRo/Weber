@@ -12,9 +12,9 @@ Electron's MIT license remains at the repository root; its README is
 
 ## Executable implementation
 
-The runtime compiles and executes 35 original, unmodified Electron TypeScript
+The runtime compiles and executes 36 original, unmodified Electron TypeScript
 modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem,
-Notification, powerMonitor, utilityProcess, ParentPort, globalShortcut, protocol,
+Notification, powerMonitor, powerSaveBlocker, utilityProcess, ParentPort, globalShortcut, protocol,
 clipboard, screen, systemPreferences, shell, safeStorage, crashReporter, contentTracing and
 IPC helpers. Their implemented scopes differ; crash collection is still absent. A
 replacement `process._linkedBinding` layer routes their native operations to a
@@ -26,8 +26,8 @@ The original Chromium-dependent GN build and native Electron implementation rema
 as migration reference in this source fork. Build Weber using the CMake/Cargo path
 below; running the upstream GN build does not produce the replacement runtime.
 
-[The Linux credential-storage build](weber/packaging/results/5a852b6.json) passed
-15 execution gates, extracted Node/Bun/native bundle checks, and the identical-app
+[The power-inhibition lifecycle build](weber/packaging/results/95e9c87.json) passed
+16 execution gates, extracted Node/Bun/native bundle checks, and the identical-app
 Electron comparison. The build also runs an unmodified VS Code startup diagnostic;
 that diagnostic is not a VS Code acceptance pass.
 
@@ -52,7 +52,13 @@ Electron 42.0.0, Node and Bun pass 18 cross-process read combinations using an
 owned test keyring. Locked/unavailable storage fails closed. Async key migration,
 KWallet and other operating systems remain unsupported.
 
-Download the [Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34461274589/artifacts/10145852742) and follow the
+Power-save requests now use native GNOME/freedesktop inhibition. Only effective
+strength changes send IPC; queries and duplicate-strength requests add no OS
+calls or recurring polling. Eighteen Node/Bun protocol scenarios verify priority,
+failed-transition rollback, service loss, process death and delayed replies.
+These use controlled desktop peers, not physical machine-sleep acceptance.
+
+Download the [Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34464435416/artifacts/10147143811) and follow the
 [packaging instructions](weber/packaging/README.md). Node/Bun executables are
 external. The bundle record identifies the exact runtime commit and checksum.
 
@@ -104,7 +110,7 @@ the TOML selector automatically.
 The [binding scope](weber/electron-runtime/README.md) and
 [VS Code compatibility matrix](weber/vscode-probe/COMPATIBILITY.md) distinguish
 verified operations from missing behavior. The unmodified VS Code 1.136.2 entry
-currently stops at the missing `powerSaveBlocker` export. Workbench startup, editing,
+currently stops at the missing `net` export. Workbench startup, editing,
 terminal, extension hosting and full-app migration have not passed acceptance.
 No compatibility percentage is claimed.
 

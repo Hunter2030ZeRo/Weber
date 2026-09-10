@@ -1,0 +1,298 @@
+{
+  "allRuntimeGatesPassed": true,
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34464435416/artifacts/10147143811",
+  "bytes": 56825238,
+  "chromiumBrowserRuntimeIncluded": false,
+  "commit": "95e9c871f6810d16732829bf6f6baa19cd5f6cdb",
+  "extractedBackendSmokes": [
+    "node",
+    "bun",
+    "native"
+  ],
+  "filename": "weber-x86_64-unknown-linux-gnu-development-95e9c871f681.tar.gz",
+  "kind": "validated-linux-development-bundle",
+  "monaco": {
+    "blocker": "Dedicated module Worker remains unavailable; Unexpected token 'export'.",
+    "coreEditingReady": true,
+    "passedChecks": 7,
+    "ready": false,
+    "version": "0.52.2"
+  },
+  "nodeAndBunExecutablesIncluded": false,
+  "originalElectronSourceModules": 36,
+  "osSandbox": false,
+  "performance": "Same-app comparison completed; no whole-VS-Code performance or resource-usage claim.",
+  "runtimeGates": 16,
+  "safeStorage": {
+    "bunUnitPassed": 4,
+    "concurrentFirstUse": 6,
+    "crossProcessReadCases": 18,
+    "electronReference": "42.0.0",
+    "existingKeyPreservedAfterUnlock": true,
+    "lockedAndUnavailableFailClosed": true,
+    "nodeUnitPassed": 4,
+    "recovery": "Reload persisted test keyring after daemon restart and unlock",
+    "runtimes": [
+      "electron",
+      "node",
+      "bun"
+    ],
+    "safeStorage": true,
+    "scope": "Linux synchronous v10/v11 API, actual libsecret application key identity, derived-key caching; no idle polling",
+    "unsupported": [
+      "Async key migration",
+      "KWallet",
+      "macOS Keychain",
+      "Windows DPAPI"
+    ],
+    "wholeVscodeSecretServiceVerified": false
+  },
+  "sha256": "4c84250b116e9a6b4ac332540c7701c13ee23ceaefda5037ab9d16cd89e67a77",
+  "shell": [
+    {
+      "kind": "native-shell-acceptance",
+      "backend": "node",
+      "passed": true,
+      "originalShellModule": true,
+      "externalURI": true,
+      "openPath": true,
+      "revealFallback": true,
+      "trashPreservesData": true,
+      "fileManagerSelectionTested": false
+    },
+    {
+      "kind": "native-shell-acceptance",
+      "backend": "bun",
+      "passed": true,
+      "originalShellModule": true,
+      "externalURI": true,
+      "openPath": true,
+      "revealFallback": true,
+      "trashPreservesData": true,
+      "fileManagerSelectionTested": false
+    }
+  ],
+  "startupImportProgression": [
+    {
+      "commit": "afa40b1d7b2435a2e5d8d8fc04d6c2dd59e4b162",
+      "missing": "crashReporter"
+    },
+    {
+      "commit": "2e60c76ef1edc3e0ba7163648115f5963b931ed7",
+      "missing": "shell"
+    },
+    {
+      "commit": "d969e2ebb6c5cfe570f7162c36275c5ad7cd163e",
+      "missing": "safeStorage"
+    },
+    {
+      "commit": "5a852b6c6e03b6d193977d86795cff4618b9ccf2",
+      "missing": "powerSaveBlocker"
+    },
+    {
+      "commit": "95e9c871f6810d16732829bf6f6baa19cd5f6cdb",
+      "missing": "net"
+    }
+  ],
+  "startupServices": {
+    "bun": {
+      "failed": 0,
+      "passed": 3,
+      "skipped": 1
+    },
+    "crashScope": "Inactive parameter metadata only; native collection and upload explicitly unsupported",
+    "node": {
+      "failed": 0,
+      "passed": 4
+    },
+    "traceScope": "Actual Node main-process marks and measures; no renderer or Bun tracing; bounded output and re-entrant start guard"
+  },
+  "utilityTests": {
+    "bunPassed": 7,
+    "nodePassed": 7
+  },
+  "vscode": {
+    "version": "1.136.2",
+    "ready": false,
+    "blocker": "SyntaxError: Named export 'net' not found. The requested module 'electron' is a CommonJS module, which may not support all module.exports as named exports."
+  },
+  "workflowRun": 34464435416,
+  "powerSaveBlocker": {
+    "originalModule": true,
+    "nodeUnitPassed": 4,
+    "bunUnitPassed": 4,
+    "nativeProtocolScenarios": [
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "node",
+        "scenario": "gnome",
+        "passed": true,
+        "acquisitions": 4,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "node",
+        "scenario": "fallback",
+        "passed": true,
+        "acquisitions": 4,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "node",
+        "scenario": "missing",
+        "passed": true,
+        "acquisitions": 0,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "node",
+        "scenario": "failure",
+        "passed": true,
+        "acquisitions": 1,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "node",
+        "scenario": "downgrade",
+        "passed": true,
+        "acquisitions": 2,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "node",
+        "scenario": "lost",
+        "passed": true,
+        "acquisitions": 2,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "node",
+        "scenario": "crash",
+        "passed": true,
+        "acquisitions": 1,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "node",
+        "scenario": "host-crash",
+        "passed": true,
+        "acquisitions": 1,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "node",
+        "scenario": "late",
+        "passed": true,
+        "acquisitions": 2,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "bun",
+        "scenario": "gnome",
+        "passed": true,
+        "acquisitions": 4,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "bun",
+        "scenario": "fallback",
+        "passed": true,
+        "acquisitions": 4,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "bun",
+        "scenario": "missing",
+        "passed": true,
+        "acquisitions": 0,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "bun",
+        "scenario": "failure",
+        "passed": true,
+        "acquisitions": 1,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "bun",
+        "scenario": "downgrade",
+        "passed": true,
+        "acquisitions": 2,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "bun",
+        "scenario": "lost",
+        "passed": true,
+        "acquisitions": 2,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "bun",
+        "scenario": "crash",
+        "passed": true,
+        "acquisitions": 1,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "bun",
+        "scenario": "host-crash",
+        "passed": true,
+        "acquisitions": 1,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      },
+      {
+        "kind": "native-power-save-protocol",
+        "backend": "bun",
+        "scenario": "late",
+        "passed": true,
+        "acquisitions": 2,
+        "remainingLeases": 0,
+        "physicalSleepTested": false
+      }
+    ],
+    "scope": "GNOME/freedesktop native D-Bus inhibition with controlled desktop peers; aggregated IDs, rollback, daemon loss, process death and late-reply ownership",
+    "physicalSleepTested": false,
+    "periodicPolling": false,
+    "recoverableLossEvent": "weber-power-save-blocker-lost",
+    "fatalSignaledHostExitStatusPreserved": true
+  },
+  "vscodeDiagnosticParser": {
+    "passedTests": 3,
+    "minifiedSourceIgnored": true
+  }
+}

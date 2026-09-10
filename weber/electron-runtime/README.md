@@ -226,3 +226,18 @@ retains Electron's insecure hardcoded-key obfuscation and is never an automatic
 fallback from a failed secure backend. KWallet, other operating systems and the
 newer async migration API remain unsupported. See the [source contracts, limits
 and isolated real-keyring tests](safe-storage/README.md).
+
+## Power-save inhibition
+
+The original `powerSaveBlocker` module now aggregates independent IDs by strength
+and calls native GNOME/freedesktop desktop services only when the effective mode
+changes. Its dedicated session-bus connection owns the OS inhibitor. Failed
+transitions preserve the previous lease; quit, transport loss and host death
+release ownership. Service loss invalidates IDs instead of keeping an apparently
+active stale request. It emits a recoverable `weber-power-save-blocker-lost`
+notification; a dead native host remains fatal. See [protocols, bounds and
+verification scope](POWER_SAVE.md).
+
+The native protocol tests use real D-Bus and the actual Weber host with controlled
+desktop peers. Physical machine suspension and real display-power policy are not
+covered by those tests. This does not implement powerMonitor shutdown inhibition.
