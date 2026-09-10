@@ -26,6 +26,11 @@ application's source or package layout.
   legacy package mains/index fallback, and exact conditional package exports.
   Dependency package-type scopes stop at `node_modules` boundaries. Bare
   dependencies within `node_modules.asar` resolve against that archive's root.
+  If an application's resolver first fails native lookup and then retries
+  inside the archive, the Node CommonJS adapter restores verified archive
+  filename/source metadata when Node skips its hooks. Native compilation,
+  caching and cycle handling remain in charge; no second CommonJS evaluator is
+  introduced on Node.
 - Native addons are loaded by the real backend from their original
   `.asar.unpacked` path. Packed native-addon extraction is not implemented.
   Successful loading still depends on the binary's platform and runtime ABI.
@@ -72,6 +77,8 @@ The suite checks packed/unpacked bytes without extraction, filesystem contracts,
 CJS/ESM resolution, package encapsulation, original-fs, an actual unpacked native
 addon, malformed inputs, ordinary filesystem behavior and an actual utility
 child whose entry and data reside inside an archive. ESM-only checks skip on Bun.
+The failed-native-lookup regression also checks an actual unpacked addon,
+CommonJS cycles and shared `import`/`require` identity without expanded files.
 
 A direct smoke check also loaded the pinned official VS Code distribution's
 `@vscode/spdlog` from its existing `node_modules.asar`, including its original

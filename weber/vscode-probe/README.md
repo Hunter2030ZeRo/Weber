@@ -56,31 +56,33 @@ named Electron imports from the pinned application. See
 [COMPATIBILITY.md](COMPATIBILITY.md) for their current scope and the remaining
 workbench, editing, terminal, extension and multiwindow acceptance work.
 
-Revision `71ac31a` compiles 43 original Electron modules and provides bounded
+Revision `72f2c8d` compiles 43 original Electron modules and provides bounded
 [ASAR loading](../electron-runtime/ASAR.md), session permissions, webRequest
 policy and the original [nativeTheme module](../electron-runtime/SESSION.md).
 A direct check loaded the pinned distribution's unmodified ASAR-backed
 `@vscode/spdlog`, including its original unpacked native addon. The local new-feature
-suites report 68 passes on Node and 50 passes with four skips on Bun; the
+suites report 69 passes on Node and 50 passes with five skips on Bun; the
 runners count subtests differently.
 
-Current validation: [71ac31a](../packaging/results/71ac31a.json) passed all 16
-runtime gates in [CI run 34501264566](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34501264566),
+Current validation: [72f2c8d](../packaging/results/72f2c8d.json) passed all 16
+runtime gates in [CI run 34503083387](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34503083387),
 including 11 engine tests, actual GTK nativeTheme changes, Node/Bun protocol and
 browser-clipboard permission fixtures, and extracted Node/Bun/native bundles.
 The [2b8adbd failed result](../packaging/results/2b8adbd.json) is retained: it
 passed 13 of 16 gates, with obsolete `original-fs === fs` assumptions failing the
 Node/Bun/bundle fixtures before those checks were corrected.
 
-The strict VS Code 1.136.2 run still reports `Cannot find module` for
-`node_modules.asar/@vscode/spdlog/index.js`. The separate expanded-dependency run
-now reports `Weber has not implemented powerMonitor shutdown inhibition`.
+The strict original-layout VS Code 1.136.2 run now passes ASAR loading and session
+configuration and reports `Weber has not implemented powerMonitor shutdown inhibition`,
+the same failure as the separate expanded-dependency run.
 Both application processes exit 1 without timing out and both reports retain
-`ready: false`. The direct spdlog check therefore does not establish correct
-archive resolution when composed with the full application startup path.
+`ready: false`. The earlier [71ac31a strict run](../packaging/results/71ac31a.json)
+failed to resolve `node_modules.asar/@vscode/spdlog/index.js`; that startup
+composition failure is resolved in this verified run. A running workbench is
+still not established.
 
 The independent [Monaco diagnostic](../monaco-probe/README.md) passes seven core
-checks in `71ac31a`, including real editor input, edits/undo and a 1,000-line
+checks in `72f2c8d`, including real editor input, edits/undo and a 1,000-line
 document. Its original worker/diff check still fails with
 `Unexpected token 'export'`, separately from this whole-app import failure.
 
@@ -88,11 +90,11 @@ document. Its original worker/diff check still fails with
 
 In the historical 45c56bb build, the strict probe stopped at `@vscode/spdlog`,
 whose JavaScript package resides inside the distribution's `node_modules.asar`.
-That build lacked ASAR filesystem/module loading. Revision `71ac31a` reads the
+That build lacked ASAR filesystem/module loading. Revision `72f2c8d` reads the
 existing archive and declared unpacked entries without changing the layout;
-isolated spdlog loading passes, but its full unmodified application still fails
-to resolve the same archive module. The optional expansion remains a separate
-diagnostic and must not substitute for the strict result.
+the full unmodified application now passes that dependency and reaches
+powerMonitor shutdown inhibition. The optional expansion remains a separate
+diagnostic and must not substitute for the strict original-layout result.
 
 `--expand-dependencies` runs a separate diagnostic. In its temporary application
 tree, it expands the authentic archive entries into `node_modules`, including
@@ -108,7 +110,7 @@ pass nor a transparent ASAR implementation. CI retains both reports independentl
 
 The historical [45c56bb run](../packaging/results/45c56bb.json) reached session
 configuration after expansion and stopped at `setPermissionRequestHandler`.
-The verified [71ac31a expanded run](../packaging/results/71ac31a.json) advances
+The verified [72f2c8d expanded run](../packaging/results/72f2c8d.json) advances
 to the explicit powerMonitor shutdown-inhibition error. It remains an altered
 dependency-layout diagnostic, not an unmodified VS Code workbench pass.
 The log parser now recognizes VS Code's timestamped `[main ...]` error prefix;

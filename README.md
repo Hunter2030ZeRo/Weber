@@ -27,8 +27,8 @@ The original Chromium-dependent GN build and native Electron implementation rema
 as migration reference in this source fork. Build Weber using the CMake/Cargo path
 below; running the upstream GN build does not produce the replacement runtime.
 
-The [71ac31a build](weber/packaging/results/71ac31a.json) passed all 16 runtime
-execution gates in [CI run 34501264566](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34501264566),
+The [72f2c8d build](weber/packaging/results/72f2c8d.json) passed all 16 runtime
+execution gates in [CI run 34503083387](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34503083387),
 including 11 engine tests, the native GTK appearance test, actual Node/Bun
 protocol and browser-clipboard permission fixtures, and extracted Node/Bun/native
 bundle checks. VS Code startup diagnostics remain separate from runtime acceptance.
@@ -47,14 +47,14 @@ clipboard. nativeTheme observes GTK system appearance and emits changes. See
 [session/appearance scope](weber/electron-runtime/SESSION.md) for the implemented
 paths and explicit limits.
 
-Current validation (`71ac31a`): the local new-feature suites report 68 passes on Node
-and 50 passes with four skips on Bun; the runners count subtests differently.
+Current validation (`72f2c8d`): the local new-feature suites report 69 passes on Node
+and 50 passes with five skips on Bun; the runners count subtests differently.
 A direct check loaded the pinned VS Code distribution's original ASAR-backed
 `@vscode/spdlog`, including its unpacked native addon. The full unmodified-layout
-VS Code diagnostic still fails to resolve that archive module; the separate
-expanded-dependency run reaches the explicit powerMonitor shutdown-inhibition
-error. Both application processes exit 1 without a timeout and report
-`ready: false`. Isolated dependency loading is not yet complete application loading.
+VS Code diagnostic now passes archive loading and session configuration and
+reaches `Weber has not implemented powerMonitor shutdown inhibition`, the same
+error as the separate expanded-dependency run. Both application processes exit
+1 without a timeout and report `ready: false`; workbench startup remains unverified.
 
 Verified paths include two independent native GTK windows with real X11 input,
 menus and global shortcuts; isolated preload/contextBridge; invoke, send, reply
@@ -88,7 +88,7 @@ calls or recurring polling. Eighteen Node/Bun protocol scenarios verify priority
 failed-transition rollback, service loss, process death and delayed replies.
 These use controlled desktop peers, not physical machine-sleep acceptance.
 
-Download the [71ac31a Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34501264566/artifacts/10162289597) and follow the
+Download the [72f2c8d Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34503083387/artifacts/10162995719) and follow the
 [packaging instructions](weber/packaging/README.md). Node/Bun executables are
 external. The bundle record identifies its exact runtime commit and checksum.
 
@@ -144,9 +144,9 @@ passed the previous `desktopCapturer` import failure and stopped resolving
 `@vscode/spdlog` inside VS Code's `node_modules.asar`. A separate,
 source-preserving dependency expansion reached VS Code session initialization
 and failed at `session.defaultSession.setPermissionRequestHandler`. In verified
-`71ac31a`, the strict run still reports `Cannot find module` for
-`node_modules.asar/@vscode/spdlog/index.js`. The expanded run now stops at
-`Weber has not implemented powerMonitor shutdown inhibition`. Both exit 1
+`72f2c8d`, both the strict original-layout run and the expanded run stop at
+`Weber has not implemented powerMonitor shutdown inhibition`. Archive loading
+and session configuration no longer block this original application. Both exit 1
 without timing out, with `ready: false`; neither is a workbench acceptance pass.
 HTTP/HTTPS, streaming fetch, WebSocket and opt-in utility
 Basic authentication forwarding have scoped execution tests. Workbench startup, editing,
@@ -161,7 +161,7 @@ infrastructure; it is not yet a passing VS Code extension host.
 The separate [Monaco diagnostic](weber/monaco-probe/README.md) runs upstream
 Monaco 0.52.2 and passes construction, edits, undo, actual X11 keyboard input,
 line rendering/capture and 1,000-line scrolling. All seven core checks pass in
-`71ac31a`; its worker-driven diff still fails with `Unexpected token 'export'`.
+`72f2c8d`; its worker-driven diff still fails with `Unexpected token 'export'`.
 Standalone editor success is not full VS Code acceptance.
 
 The renderer now keeps Obscura's existing timer/network reactor alive and waits

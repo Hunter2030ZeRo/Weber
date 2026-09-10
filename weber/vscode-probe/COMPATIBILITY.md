@@ -20,30 +20,32 @@ not transparent ASAR support or a workbench pass. The archive's original diagnos
 used a generic exit message; the exact exception is recovered from its saved stderr
 by the separately tested VS Code log-prefix parser.
 
-Revision `71ac31a` implements bounded read-only ASAR filesystem/module loading,
+Revision `72f2c8d` implements bounded read-only ASAR filesystem/module loading,
 session permission handlers, two webRequest events and the original nativeTheme
 module. A direct check loaded the pinned distribution's original ASAR-backed
 `@vscode/spdlog`, including its declared unpacked native addon, without expanding
 or rewriting the package layout. See [ASAR.md](../electron-runtime/ASAR.md) and
 [SESSION.md](../electron-runtime/SESSION.md) for exact boundaries.
 
-Current validation: [71ac31a](../packaging/results/71ac31a.json) passed all 16
-runtime gates in [CI run 34501264566](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34501264566).
+Current validation: [72f2c8d](../packaging/results/72f2c8d.json) passed all 16
+runtime gates in [CI run 34503083387](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34503083387).
 This includes 11 engine tests, actual GTK nativeTheme changes, Node/Bun protocol
 and browser-clipboard permission fixtures, and extracted Node/Bun/native bundles.
-The local new-feature suites report 68 passes on Node and 50 passes with four skips on
+The local new-feature suites report 69 passes on Node and 50 passes with five skips on
 Bun; the runners count subtests differently. The intermediate
 [2b8adbd record](../packaging/results/2b8adbd.json) remains a failed 13-of-16 run:
 obsolete `original-fs === fs` assumptions failed its Node/Bun/bundle fixtures.
 The corrected fixtures check actual raw and archive filesystem behavior.
 
-The strict `71ac31a` VS Code 1.136.2 run still reports `Cannot find module` for
-`node_modules.asar/@vscode/spdlog/index.js`. Its expanded-dependency run now stops
-at `Weber has not implemented powerMonitor shutdown inhibition`. Both application
-processes exit 1 without a timeout and both reports retain `ready: false`.
-The standalone spdlog smoke check has therefore not resolved the archive-loading
-failure in full application startup. The expanded run establishes a later
-failure only with the changed dependency layout.
+The strict original-layout `72f2c8d` VS Code 1.136.2 run now passes ASAR loading
+and session configuration, then stops at
+`Weber has not implemented powerMonitor shutdown inhibition`, matching the
+expanded-dependency run. Both application processes exit 1 without a timeout and
+both reports retain `ready: false`. The prior
+[71ac31a strict run](../packaging/results/71ac31a.json) failed to resolve
+`node_modules.asar/@vscode/spdlog/index.js`; that composition failure is resolved
+in the current run. This establishes a later failure in the unmodified application,
+not a running workbench.
 
 Historical [45c56bb validation](../packaging/results/45c56bb.json) passed 16
 execution gates and extracted Node/Bun/native examples. The remaining results
@@ -118,7 +120,7 @@ The [Monaco probe](../monaco-probe/README.md) executes upstream Monaco 0.52.2
 with the same app on Electron and Weber. Weber passes document load, editor
 construction, model edits, undo, native X11 keyboard input, rendered line DOM/PNG,
 and scrolling to line 700 in a 1,000-line document. All seven core checks pass in
-`71ac31a`. The worker-driven diff fails with `Unexpected token 'export'`;
+`72f2c8d`. The worker-driven diff fails with `Unexpected token 'export'`;
 Electron passes that check. This standalone Monaco release is not claimed to be
 the exact editor revision embedded in the pinned VS Code distribution.
 
@@ -137,7 +139,7 @@ with controlled D-Bus peers, not a full desktop acceptance suite.
 The pinned [CodeApplication source](https://github.com/microsoft/vscode/blob/88e44fa0e00b08f7758b4f6d05632e4fd5e4df6f/src/vs/code/electron-main/app.ts)
 installs `setPermissionRequestHandler`, `setPermissionCheckHandler`,
 `setDisplayMediaRequestHandler`, and `webRequest.onBeforeRequest/onHeadersReceived`
-during session configuration. Revision `71ac31a` implements those entry points
+during session configuration. Revision `72f2c8d` implements those entry points
 with session/document ownership checks and actual enforcement on the supported
 transports. Main HTTP/HTTPS and renderer custom/file resources enforce request
 policy. Browser clipboard text operations use native work after permission;
@@ -151,12 +153,36 @@ default Electron import. This dependency is outside the named-import inventory.
 The original nativeTheme module now receives actual GTK system appearance and
 change events; forced themes and renderer media-query propagation remain gaps.
 The historical 45c56bb expanded-dependency run encountered
-`setPermissionRequestHandler` first. The verified 71ac31a expanded run reaches
-powerMonitor shutdown inhibition instead. That unsupported operation remains
-the observed next failure on the expanded layout; the strict layout is still
-blocked by ASAR spdlog resolution. Neither result establishes workbench startup.
+`setPermissionRequestHandler` first. Both verified 72f2c8d runs now reach
+powerMonitor shutdown inhibition, including the strict original package layout.
+That unsupported operation is the observed next startup failure. Neither result
+establishes workbench startup.
 
 ## Acceptance work still required
+
+The next observed startup contract is shutdown-listener registration in VS
+Code's `initChannels`, before any actual shutdown. Implement it across
+`power-binding.cjs` and the native `desktop/power.cc` boundary using logind's
+system-bus `Inhibit("shutdown", ..., "delay")` descriptor ownership. The existing
+session-bus powerSaveBlocker cookie leases implement a different contract.
+See the [systemd inhibitor contract](https://systemd.io/INHIBITOR_LOCKS/).
+
+Native code must retain the descriptor while dispatching a generation-bound
+`PrepareForShutdown` event, then consume JavaScript's synchronous listener
+decision without blocking GTK. Cancellation retains the lease until exit or
+the bounded shutdown lifecycle; ordinary completion and every destruction path
+release it. Acquisition uses GIO's
+[Unix-FD-aware call](https://docs.gtk.org/gio/method.DBusConnection.call_with_unix_fd_list_sync.html),
+with reply validation, descriptor ownership and daemon-replacement cleanup.
+
+Read-only wrapper checks found two regression cases for that implementation:
+the first-ever shutdown listener does not request enablement, and automatic
+removal of a final `once` listener can disable observation before its handler
+calls `preventDefault()`. Any original-wrapper correction must be recorded in
+the source manifest. Actual D-Bus FD tests should verify first/last/once
+listeners, cancellation, failed acquisition, stale decisions, daemon loss and
+zero surviving leases after app/host exit on both Node and Bun. This is pending
+implementation work, not an existing inhibition guarantee.
 
 [ACCEPTANCE.md](ACCEPTANCE.md) records the project success criterion: the same
 VS Code application must provide equivalent visible behavior with lower resource

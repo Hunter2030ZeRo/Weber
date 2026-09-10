@@ -93,12 +93,14 @@ values; this is a subset of Electron's full contextBridge contract.
 
 ## Actual scope and validation
 
-Current validation: [71ac31a](../packaging/results/71ac31a.json) passed all 16
-runtime gates in [CI run 34501264566](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34501264566),
+Current validation: [72f2c8d](../packaging/results/72f2c8d.json) passed all 16
+runtime gates in [CI run 34503083387](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34503083387),
 including 11 engine tests, actual GTK nativeTheme changes, Node/Bun protocol and
 browser-clipboard permission fixtures, and extracted Node/Bun/native bundles.
-The local ASAR/session/webRequest/nativeTheme suites report 68 passes on Node and
-50 passes with four skips on Bun; their subtest counting differs.
+The local ASAR/session/webRequest/nativeTheme suites report 69 passes on Node and
+50 passes with five skips on Bun; their subtest counting differs.
+The ASAR suite alone reports 12 passes on Node and seven passes with five skips
+on Bun.
 
 The [45c56bb full validation](../packaging/results/45c56bb.json) remains historical
 evidence. The intermediate [2b8adbd result](../packaging/results/2b8adbd.json)
@@ -108,10 +110,10 @@ behavior instead; the failed record is retained.
 
 A direct smoke check loaded the pinned VS Code distribution's unmodified
 ASAR-backed `@vscode/spdlog` and its original unpacked native addon. The full
-`71ac31a` application diagnostic still reports `Cannot find module` for that
-archive entry. The expanded-dependency run reaches the explicit powerMonitor
-shutdown-inhibition error. Both exit 1 without timing out and report
-`ready: false`; successful native fixtures do not establish workbench startup.
+`72f2c8d` original-layout application diagnostic now passes archive loading and
+session configuration and reaches the explicit powerMonitor shutdown-inhibition
+error, matching the expanded-dependency run. Both exit 1 without timing out and
+report `ready: false`; successful native fixtures do not establish workbench startup.
 
 `test-live.cjs` checks source provenance and launches an ordinary Electron app
 that creates two native windows. The app checks actual native draw completion,
