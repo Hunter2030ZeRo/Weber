@@ -29,6 +29,10 @@ jobs:
         run: |
           node --test weber/electron-runtime/test-utility.cjs
           bun test ./weber/electron-runtime/test-utility.cjs
+      - name: Test startup services and real main-process traces
+        run: |
+          node --test weber/electron-runtime/test-startup-services.cjs
+          bun test ./weber/electron-runtime/test-startup-services.cjs
   linux-runtime:
     needs: utility-compatibility
     runs-on: ubuntu-latest

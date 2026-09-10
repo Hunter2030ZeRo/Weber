@@ -72,6 +72,7 @@ function createBindings(host, appPath, loadInternal) {
   let quittingAfterWindows = false;
   Object.defineProperty(app, 'name', { get: () => name, set: value => { name = String(value); } });
   attachPlatformApp(app, { getName: () => name });
+  require('./startup-options.cjs').attachStartupOptions(app, { unsupported });
   const protocolRuntime = createProtocolBinding({ app, host, windows, unsupported });
   const menuBinding = createMenuBinding({ host, windows, app, unsupported });
   Object.defineProperty(app, 'applicationMenu', {
@@ -453,6 +454,9 @@ function createBindings(host, appPath, loadInternal) {
   bindings.set('electron_browser_notification', require('./notification-binding.cjs').createNotificationBinding({ host, app, unsupported }));
   bindings.set('electron_browser_power_monitor', require('./power-binding.cjs').createPowerBinding({ host, app, unsupported }));
   bindings.set('electron_browser_utility_process', require('./utility-binding.cjs').createUtilityBinding({ app, unsupported }));
+  const diagnostics = require('./diagnostics-binding.cjs').createDiagnosticsBinding({ unsupported });
+  bindings.set('electron_browser_crash_reporter', diagnostics.crashReporter);
+  bindings.set('electron_browser_content_tracing', diagnostics.tracing);
   const clipboard = createClipboardBinding({ host, app });
   bindings.set('electron_browser_message_port', require('./message-port-binding.cjs'));
   bindings.set('electron_browser_clipboard', clipboard.clipboard);

@@ -1,6 +1,6 @@
 'use strict';
 // Ordinary Electron application imports. No alternate framework API is loaded.
-const { app, BrowserWindow, ipcMain, utilityProcess, MessageChannelMain } = require('electron');
+const { app, BrowserWindow, ipcMain, utilityProcess, MessageChannelMain, crashReporter, contentTracing } = require('electron');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const fs = require('node:fs');
@@ -10,6 +10,12 @@ const originalFs = require('original-fs');
 const nodeOriginalFs = require('node:original-fs');
 
 app.on('window-all-closed', () => {});
+assert.equal(crashReporter.getLastCrashReport(), null);
+assert.equal(crashReporter.getUploadToServer(), false);
+crashReporter.addExtraParameter('fixture', 'packaged-runtime');
+assert.equal(crashReporter.getParameters().fixture, 'packaged-runtime');
+crashReporter.removeExtraParameter('fixture');
+assert.throws(() => crashReporter.start({ uploadToServer: false }), /native crash collection/);
 ipcMain.handle('test:add', (event, left, right) => {
   assert.equal(event.senderFrame, event.sender.mainFrame);
   return left + right;
@@ -128,5 +134,6 @@ app.whenReady().then(async () => {
     sourceReuse: ['BrowserWindow', 'BaseWindow', 'WebContents'],
     tested: ['original-fs real filesystem access', ...(process.versions.bun ? [] : ['original-fs ESM named and default exports']), 'original loadFile/loadURL', 'Promise evaluation', 'isolated preload', 'contextBridge function calls', 'ipcMain.invoke round trip and rejection', 'ipcRenderer.send and event.reply', 'webContents.send, once and listener removal', 'DOM events', 'window isolation', 'native drawing', 'PNG capture', 'close lifecycle'],
     utilityProcess: { independentPid: utilityResult.pid, transferredPortRoundTrip: true, cleanExit: true },
+    diagnostics: { nativeCrashCollection: false, traceCategories: await contentTracing.getCategories() },
     osSandbox: false, privilegedPreload: 'electron bridge subset', fullElectronCompatibility: false });
 }).catch(finish);

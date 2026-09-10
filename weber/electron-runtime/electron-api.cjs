@@ -23,3 +23,5 @@ exports.systemPreferences = api.systemPreferences;
 exports.Notification = api.Notification;
 exports.powerMonitor = api.powerMonitor;
 exports.utilityProcess = api.utilityProcess;
+exports.crashReporter = api.crashReporter;
+exports.contentTracing = api.contentTracing;
