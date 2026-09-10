@@ -62,6 +62,7 @@ async function main() {
     Menu: 'browser/api/menu', MenuItem: 'browser/api/menu-item',
     screen: 'browser/api/screen', systemPreferences: 'browser/api/system-preferences',
     Notification: 'browser/api/notification',
+    desktopCapturer: 'browser/api/desktop-capturer',
     powerMonitor: 'browser/api/power-monitor', powerSaveBlocker: 'browser/api/power-save-blocker',
     crashReporter: 'browser/api/crash-reporter', contentTracing: 'browser/api/content-tracing',
     shell: 'common/api/shell', safeStorage: 'browser/api/safe-storage', net: 'browser/api/net',

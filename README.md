@@ -12,7 +12,7 @@ Electron's MIT license remains at the repository root; its README is
 
 ## Executable implementation
 
-The runtime compiles 41 Electron TypeScript source modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem,
+The runtime compiles 42 Electron TypeScript source modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem,
 Notification, powerMonitor, powerSaveBlocker, utilityProcess, ParentPort, globalShortcut, protocol,
 clipboard, screen, systemPreferences, shell, safeStorage, crashReporter, contentTracing and
 IPC helpers, main/utility networking and WebSocket. Two network source modules

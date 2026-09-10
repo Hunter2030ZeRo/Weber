@@ -249,3 +249,22 @@ verification scope](POWER_SAVE.md).
 The native protocol tests use real D-Bus and the actual Weber host with controlled
 desktop peers. Physical machine suspension and real display-power policy are not
 covered by those tests. This does not implement powerMonitor shutdown inhibition.
+
+### Desktop source capture
+
+The original Electron `desktopCapturer` wrapper is connected to on-demand native
+X11 source enumeration. It preserves request coalescing and callback cleanup and
+returns actual window titles, monitor IDs matching `screen.getAllDisplays()`,
+optional window icons and aspect-preserving PNG thumbnails. EWMH desktops and
+Xvfb without a window manager are supported. Requests are bounded to eight
+pending operations, 256 sources, 1024-pixel thumbnail dimensions, 16 MP capture
+surfaces and 8 MiB of cumulative base64 image output. Host loss or app quit rejects
+pending callers; enumeration creates no polling timers.
+
+Captured images currently expose `isEmpty`, `getSize`, `getAspectRatio`,
+`getScaleFactors`, `toPNG` and `toDataURL`, with copied PNG bytes and scale factor
+1 only. This does not implement the full `nativeImage` API. Minimized windows
+can have empty thumbnails; pixels hidden behind other windows are not guaranteed
+without XComposite. Wayland portal capture, display-media streams and a system
+picker remain unimplemented. The native fixture checks actual pixel colors and
+icons; Node/Bun fixtures exercise the original API through the real desktop host.

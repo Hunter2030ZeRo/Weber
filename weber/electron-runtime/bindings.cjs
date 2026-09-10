@@ -74,6 +74,8 @@ function createBindings(host, appPath, loadInternal) {
   attachPlatformApp(app, { getName: () => name });
   require('./startup-options.cjs').attachStartupOptions(app, { unsupported });
   const protocolRuntime = createProtocolBinding({ app, host, windows, unsupported });
+  bindings.set('electron_browser_desktop_capturer',
+    require('./desktop-capturer-binding.cjs').createDesktopCapturerBinding({ app, host }));
   const network = require('./net-binding.cjs').createNetBinding({ app, unsupported, loadInternal, session: protocolRuntime.session });
   bindings.set('electron_common_net', network.binding);
   bindings.set('electron_browser_session', { Session: protocolRuntime.Session });

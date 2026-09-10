@@ -21,7 +21,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
-      - run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev gnome-keyring dbus-x11 nlohmann-json3-dev
+      - run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev gnome-keyring dbus-x11 nlohmann-json3-dev libgtk-3-dev libx11-dev xvfb xauth
       - name: Compile original utility API and native transport
         run: |
           npm ci --prefix weber/electron-runtime
@@ -51,6 +51,14 @@ jobs:
           bun test ./weber/electron-runtime/test-utility-net.cjs
           node --test weber/electron-runtime/test-utility-auth.cjs
           bun test ./weber/electron-runtime/test-utility-auth.cjs
+      - name: Test desktop capture callbacks on Node and Bun
+        run: |
+          node --test weber/electron-runtime/test-desktop-capturer.cjs
+          bun test ./weber/electron-runtime/test-desktop-capturer.cjs
+      - name: Test real X11 capture pixels, icons and stale windows without the engine
+        run: |
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror weber/tests/desktop-capture.cc shell/browser/obscura/desktop/desktop_capture.cc shell/browser/obscura/desktop/display.cc $(pkg-config --cflags --libs gtk+-3.0 x11) -o "$RUNNER_TEMP/desktop-capture-test"
+          xvfb-run -a -s '-screen 0 1024x768x24' "$RUNNER_TEMP/desktop-capture-test"
       - name: Test VS Code diagnostic extraction
         run: python3 -m unittest discover -s weber/vscode-probe -p 'test_*.py'
       - name: Compile native inhibition without the engine

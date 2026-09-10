@@ -7,6 +7,7 @@
 #include "async_output.h"
 #include "resource_broker.h"
 #include "frame.h"
+#include "desktop_capture.h"
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 #include <nlohmann/json.hpp>
@@ -403,6 +404,9 @@ void Dispatch(const Json& request) {
     if (method == "window.create") { Create(request); return; }
     if (method == "app.quit") {
       Reply(request, nullptr); gtk_main_quit(); return;
+    }
+    if (method == "desktop.captureSources") {
+      Reply(request, weber::desktop::DesktopCaptureSources(request)); return;
     }
     const int id = request.at("windowId");
     auto found = windows.find(id);

@@ -1,6 +1,6 @@
 'use strict';
 // Ordinary Electron application imports. No alternate framework API is loaded.
-const { app, BrowserWindow, ipcMain, utilityProcess, MessageChannelMain, crashReporter, contentTracing, shell, safeStorage, powerSaveBlocker, net } = require('electron');
+const { app, BrowserWindow, ipcMain, utilityProcess, MessageChannelMain, crashReporter, contentTracing, shell, safeStorage, powerSaveBlocker, net, desktopCapturer, screen } = require('electron');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const fs = require('node:fs');
@@ -54,6 +54,7 @@ app.whenReady().then(async () => {
     assert.equal(electronEsm.safeStorage, safeStorage);
     assert.equal(electronEsm.powerSaveBlocker, powerSaveBlocker);
     assert.equal(electronEsm.net, net);
+    assert.equal(electronEsm.desktopCapturer, desktopCapturer);
     const esm = await import('original-fs');
     const nodeEsm = await import('node:original-fs');
     assert.equal(esm.default, fs);
@@ -109,6 +110,31 @@ app.whenReady().then(async () => {
   const capture = await first.capturePage();
   assert.equal(capture.isEmpty(), false);
   assert.deepEqual(capture.toPNG().subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  // Read actual native windows/screens through the original Electron source API.
+  // The standalone native fixture separately validates known pixel colors/icons.
+  first.setTitle('Weber capture first'); second.setTitle('Weber capture second');
+  const sources = await desktopCapturer.getSources({ types: ['window', 'screen'],
+    thumbnailSize: { width: 80, height: 60 }, fetchWindowIcons: true });
+  for (const name of ['Weber capture first', 'Weber capture second']) {
+    const source = sources.find(item => item.name === name);
+    assert.ok(source, `Missing actual desktop window ${name}`);
+    assert.match(source.id, /^window:\d+:0$/);
+    assert.equal(source.thumbnail.isEmpty(), false);
+    const size = source.thumbnail.getSize();
+    assert.ok(size.width > 0 && size.width <= 80 && size.height > 0 && size.height <= 60);
+    assert.deepEqual(source.thumbnail.toPNG().subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  }
+  const monitors = sources.filter(item => item.id.startsWith('screen:'));
+  assert.ok(monitors.length > 0);
+  const displayIds = screen.getAllDisplays().map(display => String(display.id));
+  for (const monitor of monitors) {
+    assert.ok(displayIds.includes(monitor.display_id));
+    assert.equal(monitor.thumbnail.isEmpty(), false);
+  }
+  assert.deepEqual(await desktopCapturer.getSources({ types: [] }), []);
+  const empty = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } });
+  assert.ok(empty.length >= 2);
+  assert.ok(empty.every(source => source.thumbnail.isEmpty()));
   const rendererPids = [first, second].map(win => win.webContents.getOSProcessId());
   assert.notEqual(rendererPids[0], rendererPids[1]);
   const rendererExecutables = rendererPids.map(pid => path.basename(fs.readlinkSync(`/proc/${pid}/exe`)));
@@ -139,7 +165,7 @@ app.whenReady().then(async () => {
   assert.equal((await stopped)[0], 'stopped'); assert.equal((await utilityExit)[0], 0);
   finish(null, { rendererPids, rendererExecutables, windowsPresented: 2,
     sourceReuse: ['BrowserWindow', 'BaseWindow', 'WebContents'],
-    tested: ['original-fs real filesystem access', ...(process.versions.bun ? [] : ['original-fs ESM named and default exports']), 'original loadFile/loadURL', 'Promise evaluation', 'isolated preload', 'contextBridge function calls', 'ipcMain.invoke round trip and rejection', 'ipcRenderer.send and event.reply', 'webContents.send, once and listener removal', 'DOM events', 'window isolation', 'native drawing', 'PNG capture', 'close lifecycle'],
+    tested: ['original-fs real filesystem access', ...(process.versions.bun ? [] : ['original-fs ESM named and default exports']), 'original loadFile/loadURL', 'Promise evaluation', 'isolated preload', 'contextBridge function calls', 'ipcMain.invoke round trip and rejection', 'ipcRenderer.send and event.reply', 'webContents.send, once and listener removal', 'DOM events', 'window isolation', 'native drawing', 'PNG capture', 'desktopCapturer actual X11 windows/screens and display IDs', 'close lifecycle'],
     utilityProcess: { independentPid: utilityResult.pid, transferredPortRoundTrip: true, cleanExit: true },
     diagnostics: { nativeCrashCollection: false, traceCategories: await contentTracing.getCategories() },
     osSandbox: false, privilegedPreload: 'electron bridge subset', fullElectronCompatibility: false });
