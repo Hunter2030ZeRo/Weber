@@ -11,7 +11,9 @@
 #include <unistd.h>
 int main(int argc, char** argv) {
   using namespace electron::obscura;
-  if (argc != 2 || std::strcmp(argv[1], "--weber-channel=3")) return 2;
+  if ((argc != 2 && argc != 3) || std::strcmp(argv[1], "--weber-channel=3")) return 2;
+  const bool notifications = argc == 3 && std::strcmp(argv[2], "--weber-notifications") == 0;
+  if (argc == 3 && !notifications) return 2;
   // Do not leave an engine process behind if its owning desktop host is killed.
   const pid_t parent = getppid();
   if (parent == 1 || prctl(PR_SET_PDEATHSIG, SIGKILL) || getppid() != parent) return 2;
@@ -23,27 +25,40 @@ int main(int argc, char** argv) {
     ObscuraEngine engine(has_resources ? 4 : -1);
     wire::Send(3, {0, wire::kReady, {'1'}}, std::chrono::steady_clock::now() + std::chrono::seconds(5));
     uint32_t sequence = 0;
+    bool frame_pending = false;
+    auto drain_events = [&] {
+      if (!notifications) return;
+      auto events = engine.Command(R"({"method":"pollEvents"})");
+      const std::string empty = R"({"dropped":0,"events":[]})";
+      if (std::string(events.begin(), events.end()) != empty)
+        wire::Send(3, {0, wire::kEvents, std::move(events)}, std::chrono::steady_clock::now() + std::chrono::seconds(30));
+    };
     for (;;) {
-      pollfd pending{3, POLLIN, 0};
-      const int available = poll(&pending, 1, 16);
-      if (available < 0 && errno == EINTR) continue;
-      if (available < 0) throw std::runtime_error("Renderer channel poll failed");
-      if (available == 0) {
-        engine.Command(R"json({"method":"tick"})json");
+      const int work = engine.Wait(3, notifications && !frame_pending);
+      if (work == 1) { drain_events(); continue; }
+      if (work == 2) {
+        frame_pending = true;
+        wire::Send(3, {0, wire::kFrameReady, {}}, std::chrono::steady_clock::now() + std::chrono::seconds(30));
         continue;
       }
       auto request = wire::Receive(3, wire::kMaxRequest, wire::Deadline::max());
       if (request.kind != wire::kRequest || !request.sequence || request.sequence != sequence + 1) return 3;
       sequence = request.sequence;
       wire::Frame response{sequence, wire::kSuccess, {}};
-      try { response.payload = engine.Command(std::string(request.payload.begin(), request.payload.end())); }
+      try {
+        const std::string command(request.payload.begin(), request.payload.end());
+        // Only the owner emits this exact internal command. A notification
+        // stays outstanding until its corresponding frame request is consumed.
+        if (command == R"({"method":"captureFrameIfChanged"})") frame_pending = false;
+        response.payload = engine.Command(command);
+      }
       catch (const std::exception& error) {
         response.kind = wire::kError;
         const std::string message = error.what();
         response.payload.assign(message.begin(), message.end());
       }
       wire::Send(3, response, std::chrono::steady_clock::now() + std::chrono::seconds(30));
-      engine.Command(R"json({"method":"tick"})json");
+      drain_events();
     }
   } catch (const std::exception& error) {
     std::cerr << "Obscura renderer stopped: " << error.what() << '\n';

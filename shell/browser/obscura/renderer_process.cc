@@ -12,8 +12,8 @@
 #include <unistd.h>
 extern char** environ;
 namespace electron::obscura {
-RendererProcess::RendererProcess(const std::string& executable, std::chrono::milliseconds timeout, int resource_fd)
-    : timeout_(timeout), owner_(std::this_thread::get_id()) {
+RendererProcess::RendererProcess(const std::string& executable, std::chrono::milliseconds timeout, int resource_fd, Notification notification)
+    : notification_(std::move(notification)), timeout_(timeout), owner_(std::this_thread::get_id()) {
   if (timeout.count() <= 0 || executable.empty() || executable[0] != '/' || executable.find('\0') != std::string::npos)
     throw std::invalid_argument("Expected absolute renderer executable and positive deadline");
   int pair[2];
@@ -33,7 +33,8 @@ RendererProcess::RendererProcess(const std::string& executable, std::chrono::mil
   if (!error && resource_endpoint >= 0) error = posix_spawn_file_actions_adddup2(&actions, resource_endpoint, 4);
   if (!error) error = posix_spawn_file_actions_addclosefrom_np(&actions, resource_endpoint >= 0 ? 5 : 4);
   char channel[] = "--weber-channel=3";
-  char* args[] = {const_cast<char*>(executable.c_str()), channel, nullptr};
+  char notifications[] = "--weber-notifications";
+  char* args[] = {const_cast<char*>(executable.c_str()), channel, notification_ ? notifications : nullptr, nullptr};
   pid_t child = -1;
   if (!error) error = posix_spawn(&child, executable.c_str(), &actions, nullptr, args, environ);
   posix_spawn_file_actions_destroy(&actions);
@@ -71,7 +72,8 @@ std::vector<uint8_t> RendererProcess::Command(const std::string& json) {
   wire::Frame response;
   try {
     wire::Send(fd_, {sequence_, wire::kRequest, {json.begin(), json.end()}}, deadline);
-    response = wire::Receive(fd_, wire::kMaxResponse, deadline);
+    do { response = wire::Receive(fd_, wire::kMaxResponse, deadline); }
+    while (Notify(response.sequence, response.kind, response.payload));
     if (response.sequence != sequence_ || (response.kind != wire::kSuccess && response.kind != wire::kError))
       throw std::runtime_error("Uncorrelated renderer response");
   } catch (...) { Stop(); throw; }
@@ -79,4 +81,20 @@ std::vector<uint8_t> RendererProcess::Command(const std::string& json) {
   if (response.kind == wire::kError) throw std::runtime_error(std::string(response.payload.begin(), response.payload.end()));
   return std::move(response.payload);
 }
+bool RendererProcess::Notify(uint32_t sequence, uint32_t kind, std::vector<uint8_t>& payload) {
+  if (sequence != 0 || !notification_) return false;
+  if (kind != wire::kEvents && kind != wire::kFrameReady) return false;
+  if ((kind == wire::kFrameReady && !payload.empty()) || payload.size() > 5 * 1024 * 1024)
+    throw std::runtime_error("Invalid renderer notification");
+  notification_(kind, std::move(payload));
+  return true;
+}
+void RendererProcess::ReceiveNotification() {
+  if (std::this_thread::get_id() != owner_ || fd_ < 0) throw std::runtime_error("Invalid renderer notification owner");
+  try {
+    auto frame = wire::Receive(fd_, 5 * 1024 * 1024, std::chrono::steady_clock::now() + timeout_);
+    if (!Notify(frame.sequence, frame.kind, frame.payload)) throw std::runtime_error("Unexpected renderer notification");
+  } catch (...) { Stop(); throw; }
+}
+
 }

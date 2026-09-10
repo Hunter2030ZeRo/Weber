@@ -15,6 +15,7 @@ class ObscuraEngine final {
   ObscuraEngine(const ObscuraEngine&) = delete;
   ObscuraEngine& operator=(const ObscuraEngine&) = delete;
   std::vector<uint8_t> Command(const std::string& json);
+  int Wait(int fd, bool watch_frames);
  private:
   uint64_t handle_;
   std::thread::id owner_;

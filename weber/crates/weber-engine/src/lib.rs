@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 mod desktop;
 mod preload;
 mod protocol;
+mod scheduler;
 use obscura_net::desktop_protocol::DesktopProtocolHandler;
 
 const MAX_REQUEST: usize = 1024 * 1024;
@@ -24,6 +25,7 @@ struct Engine {
     page: Page,
     protocols: Option<Arc<protocol::Protocols>>,
     preload: preload::Preload,
+    scheduler: scheduler::Scheduler,
     runtime: tokio::runtime::Runtime,
     loaded: bool,
     width: u32,
@@ -55,7 +57,7 @@ impl Engine {
         };
         if let Some(protocols) = &protocols { *page.context.http_client.desktop_protocol.write().unwrap() = Some(protocols.clone()); }
         let preload = preload::Preload::new(&mut page);
-        Ok(Self { page, protocols, preload, runtime, loaded: false, width: 800, height: 600, poisoned: false,
+        Ok(Self { page, protocols, preload, runtime, scheduler: scheduler::Scheduler::default(), loaded: false, width: 800, height: 600, poisoned: false,
             events: VecDeque::new(), event_bytes: 0, dropped_events: 0,
             critical_events: VecDeque::new(), critical_bytes: 0, queued_ipc: 0,
             evaluation_tickets: HashMap::new() })
@@ -189,7 +191,11 @@ impl Engine {
         if self.poisoned { return Err("Engine is poisoned; destroy the renderer".into()); }
         let runtime_handle = self.runtime.handle().clone();
         let _guard = runtime_handle.enter();
-        match value.get("method").and_then(Value::as_str).ok_or("Missing method")? {
+        let method = value.get("method").and_then(Value::as_str).ok_or("Missing method")?;
+        if !matches!(method, "pollEvents" | "getState" | "captureFrameIfChanged" | "captureFrame" | "capturePng") {
+            self.scheduler.idle = false;
+        }
+        match method {
             "configureProtocols" => {
                 if let Some(protocols) = &self.protocols { protocols.configure(&value["schemes"])?; }
                 else if value["schemes"].as_array().is_none_or(|v| !v.is_empty()) { return Err("Resource channel unavailable".into()); }
@@ -326,8 +332,12 @@ impl Engine {
             }
             _ => {
                 if let Some(result) = self.preload.command(&mut self.page, &value) { return result; }
-                desktop::dispatch(&mut self.page, &value)
-                    .unwrap_or_else(|| Err("Unsupported engine method".into()))
+                let result = desktop::dispatch(&mut self.page, &value)
+                    .unwrap_or_else(|| Err("Unsupported engine method".into()));
+                if matches!(method, "captureFrameIfChanged" | "captureFrame") {
+                    self.scheduler.next_frame = std::time::Instant::now() + Duration::from_millis(16);
+                }
+                result
             }
         }
     }
@@ -613,4 +623,26 @@ mod tests {
         assert!(error.contains("timed out"));
         assert!(started.elapsed() < Duration::from_secs(2));
     }
+}
+
+/// Cooperatively wait for the command socket, an actual browser task or frame damage.
+/// fd is borrowed for this engine's lifetime and must remain open on its owner thread.
+/// Returns 0=command readable, 1=browser task, 2=frame due, -1=fatal error.
+#[no_mangle]
+pub extern "C" fn weber_engine_wait(id: u64, fd: i32, watch_frames: bool) -> i32 {
+    catch_unwind(AssertUnwindSafe(|| ENGINE.with(|slot| {
+        let Ok(mut slot) = slot.try_borrow_mut() else { return -1; };
+        let Some((engine_id, engine)) = slot.as_mut() else { return -1; };
+        if *engine_id != id || engine.poisoned { return -1; }
+        match engine.scheduler.wait(&engine.runtime, &mut engine.page, engine.loaded, fd, watch_frames) {
+            Ok(kind) => {
+                if kind == 1 {
+                    engine.collect_navigation_request();
+                    if engine.pump_preload().is_err() { return -1; }
+                }
+                kind
+            }
+            Err(_) => { engine.poisoned = true; -1 }
+        }
+    }))).unwrap_or(-1)
 }

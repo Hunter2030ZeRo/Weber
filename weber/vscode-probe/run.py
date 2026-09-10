@@ -227,9 +227,19 @@ def main() -> int:
             archive, report["archive"] = download(temporary)
             report["stage"] = "extract"
             app, report["application"] = extract_app(archive, temporary)
+            imports = set()
+            for script in (app / "out").rglob("*.js"):
+                if script.stat().st_size > 64 * 1024 * 1024:
+                    continue
+                for group in re.findall(r"import\s*\{([^}]+)\}\s*from\s*['\"]electron['\"]", script.read_text(errors="replace")):
+                    imports.update(part.strip().split(" as ")[0].strip() for part in group.split(","))
+            report["electron_named_imports"] = sorted(imports)
+            print(json.dumps({"kind": "vscode-electron-imports", "names": sorted(imports)}))
+            for directory in ["user-data", "extensions"]:
+                (temporary / directory).mkdir()
             report["stage"] = "startup"
             command = [args.node, str(runtime / "bootstrap.cjs"), str(app), "--new-window",
-                       "--disable-extensions", "--skip-welcome", "--skip-release-notes",
+                       "--no-sandbox", "--disable-crash-reporter", "--disable-extensions", "--skip-welcome", "--skip-release-notes",
                        "--user-data-dir", str(temporary / "user-data"),
                        "--extensions-dir", str(temporary / "extensions")]
             report.update(startup(command, app, temporary, args.timeout))

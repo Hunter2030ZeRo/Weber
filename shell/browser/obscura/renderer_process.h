@@ -2,6 +2,7 @@
 #ifndef WEBER_RENDERER_PROCESS_H_
 #define WEBER_RENDERER_PROCESS_H_
 #include <chrono>
+#include <functional>
 #include <cstdint>
 #include <string>
 #include <thread>
@@ -11,14 +12,19 @@ namespace electron::obscura {
 // GUI thread: startup and Command wait for a bounded response. No V8 dependency.
 class RendererProcess final {
  public:
+  using Notification = std::function<void(uint32_t, std::vector<uint8_t>)>;
   explicit RendererProcess(const std::string& executable,
-                           std::chrono::milliseconds timeout = std::chrono::seconds(30), int resource_fd = -1);
+                           std::chrono::milliseconds timeout = std::chrono::seconds(30), int resource_fd = -1, Notification notification = {});
   ~RendererProcess();
   RendererProcess(const RendererProcess&) = delete;
   RendererProcess& operator=(const RendererProcess&) = delete;
   std::vector<uint8_t> Command(const std::string& json);
+  void ReceiveNotification();
+  int channel_fd() const { return fd_; }
   int process_id() const { return pid_; }
  private:
+  bool Notify(uint32_t sequence, uint32_t kind, std::vector<uint8_t>& payload);
+  Notification notification_;
   void Stop() noexcept;
   int fd_ = -1;
   int pid_ = -1;

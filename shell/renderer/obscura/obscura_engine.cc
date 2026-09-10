@@ -32,4 +32,11 @@ std::vector<uint8_t> ObscuraEngine::Command(const std::string& json) {
   if (status) throw std::runtime_error(std::string(reply.bytes.begin(), reply.bytes.end()));
   return reply.bytes;
 }
+int ObscuraEngine::Wait(int fd, bool watch_frames) {
+  if (owner_ != std::this_thread::get_id()) throw std::runtime_error("Wrong Obscura owner thread");
+  const int status = weber_engine_wait(handle_, fd, watch_frames);
+  if (status < 0) throw std::runtime_error("Obscura event loop failed; restart required");
+  return status;
+}
+
 }

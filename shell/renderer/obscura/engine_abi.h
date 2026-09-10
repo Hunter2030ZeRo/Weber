@@ -3,6 +3,7 @@
 #define WEBER_ENGINE_ABI_H_
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -14,6 +15,7 @@ uint32_t weber_engine_abi_version(void);
 uint64_t weber_engine_create(void);
 uint64_t weber_engine_create_with_resources(int32_t);
 int32_t weber_engine_command(uint64_t, const uint8_t*, size_t, weber_engine_reply, void*);
+int32_t weber_engine_wait(uint64_t, int32_t, bool);
 int32_t weber_engine_destroy(uint64_t);
 #ifdef __cplusplus
 }

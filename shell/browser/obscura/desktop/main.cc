@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Linux desktop surface for Electron's source-level API adapters. No Chromium.
 #include "../renderer_process.h"
+#include "../../../common/obscura/wire.h"
 #include "menu.h"
 #include "platform_sync.h"
 #include "async_output.h"
@@ -11,7 +12,9 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
+#include <poll.h>
+#include <sys/eventfd.h>
+#include <cerrno>
 #include <cstring>
 #include <deque>
 #include <functional>
@@ -71,14 +74,21 @@ struct Window {
   std::unique_ptr<weber::desktop::MenuView> menu;
   std::atomic<bool> closed{false};
   std::mutex mutex;
-  std::condition_variable wake;
+  int wake_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+  Window() { if (wake_fd < 0) throw std::runtime_error("Window wake channel creation failed"); }
+  ~Window() { close(wake_fd); }
+  void Wake() {
+    uint64_t one = 1;
+    while (write(wake_fd, &one, sizeof(one)) < 0 && errno == EINTR) {}
+  }
   std::deque<Json> commands;
   std::thread worker;
   std::shared_ptr<weber::desktop::ResourceBroker> resources;
   std::atomic<bool> worker_done{false};
   std::vector<uint8_t> pixels; // Cairo native-endian premultiplied ARGB32, UI-owned.
   unsigned frame_width = 0, frame_height = 0;
-  std::atomic<bool> frame_pending{false};
+  bool frame_pending = false; // protected with pending_frame by mutex
+  std::vector<uint8_t> pending_frame;
   int width = 800, height = 600;
   unsigned click_count = 1;
   bool frame_ready = false;
@@ -91,11 +101,11 @@ void Queue(const std::shared_ptr<Window>& window, Json command) {
   if (window->closed) { Error(command, "Window is destroyed"); return; }
   if (window->commands.size() >= 1024) { Error(command, "Window command queue is full"); return; }
   window->commands.push_back(std::move(command));
-  window->wake.notify_one();
+  window->Wake();
 }
 void Close(std::shared_ptr<Window> window) {
   if (window->closed.exchange(true)) return;
-  window->wake.notify_all();
+  window->Wake();
   { std::lock_guard<std::mutex> lock(window->mutex); if (window->resources) window->resources->Cancel(); }
   window->menu.reset();
   gtk_widget_destroy(window->window);
@@ -114,24 +124,33 @@ void Present(const std::shared_ptr<Window>& window, std::vector<uint8_t> frame) 
       frame.size() != 12 + uint64_t(width) * height * 4)
     throw std::runtime_error("Invalid raw Obscura frame dimensions");
   // tiny-skia exports premultiplied RGBA; Cairo consumes a native-endian ARGB word.
-  std::vector<uint8_t> pixels(frame.size() - 12);
-  for (size_t i = 0; i < pixels.size(); i += 4) {
-    const uint32_t argb = uint32_t(frame[12+i+3]) << 24 | uint32_t(frame[12+i]) << 16 |
-        uint32_t(frame[12+i+1]) << 8 | uint32_t(frame[12+i+2]);
-    std::memcpy(pixels.data() + i, &argb, 4);
+  for (size_t i = 12; i < frame.size(); i += 4) {
+    const uint32_t argb = uint32_t(frame[i+3]) << 24 | uint32_t(frame[i]) << 16 |
+        uint32_t(frame[i+1]) << 8 | uint32_t(frame[i+2]);
+    std::memcpy(frame.data() + i, &argb, 4);
   }
-  window->frame_pending = true;
-  Ui([window, width, height, pixels = std::move(pixels)]() mutable {
-    if (!window->closed) {
-      window->pixels = std::move(pixels);
-      window->frame_width = width; window->frame_height = height;
-      if (!window->frame_ready) {
-        window->frame_ready = true;
-        Emit({{"event", "frame-ready"}, {"windowId", window->id}, {"width", width}, {"height", height}});
-      }
-      gtk_widget_queue_draw(window->area);
+  {
+    std::lock_guard<std::mutex> lock(window->mutex);
+    window->pending_frame = std::move(frame);
+    // Slow UI presentation retains only the newest complete frame and one
+    // queued callback. IPC and renderer completions remain independently live.
+    if (window->frame_pending) return;
+    window->frame_pending = true;
+  }
+  Ui([window]() {
+    {
+      std::lock_guard<std::mutex> lock(window->mutex);
+      window->frame_pending = false;
+      if (window->closed) { window->pending_frame.clear(); return; }
+      window->pixels = std::move(window->pending_frame);
     }
-    window->frame_pending = false;
+    window->frame_width = ReadLE(window->pixels.data() + 4);
+    window->frame_height = ReadLE(window->pixels.data() + 8);
+    if (!window->frame_ready) {
+      window->frame_ready = true;
+      Emit({{"event", "frame-ready"}, {"windowId", window->id}, {"width", window->frame_width}, {"height", window->frame_height}});
+    }
+    gtk_widget_queue_draw(window->area);
   });
 }
 Json Decode(const std::vector<uint8_t>& bytes) {
@@ -144,65 +163,52 @@ void Work(std::shared_ptr<Window> window, Json create) {
       Emit({{"event", "resource-request"}, {"windowId", id}, {"resourceId", request.at("resourceId")}, {"request", request.at("request")}});
     });
     { std::lock_guard<std::mutex> lock(window->mutex); window->resources = resources; }
-    RendererProcess renderer(renderer_path, 30000ms, resources->child_fd());
+    bool frame_requested = false;
+    RendererProcess renderer(renderer_path, 30000ms, resources->child_fd(), [&](uint32_t kind, std::vector<uint8_t> bytes) {
+      if (kind == electron::obscura::wire::kFrameReady) { frame_requested = true; return; }
+      const auto batch = Decode(bytes);
+      if (batch.value("dropped", 0u)) Emit({{"event", "engine-event-overflow"}, {"windowId", window->id}});
+      for (const auto& event : batch.at("events"))
+        Emit({{"event", "engine-event"}, {"windowId", window->id}, {"data", event}});
+    });
     resources->ChildSpawned();
     renderer.Command(Json{{"method", "viewport"}, {"width", create.value("options", Json::object()).value("width", 800)}, {"height", create.value("options", Json::object()).value("height", 600)}}.dump());
     Reply(create, {{"windowId", window->id}, {"rendererPid", renderer.process_id()}});
     created = true;
-    bool loaded = false;
-    auto drain_events = [&] {
-      const auto batch = Decode(renderer.Command(R"({"method":"pollEvents"})"));
-      if (batch.value("dropped", 0u))
-        Emit({{"event", "engine-event-overflow"}, {"windowId", window->id}});
-      for (const auto& event : batch.at("events"))
-        Emit({{"event", "engine-event"}, {"windowId", window->id}, {"data", event}});
-    };
-    auto next_frame = std::chrono::steady_clock::now();
     while (!window->closed && !quitting) {
       Json request;
       {
-        std::unique_lock<std::mutex> lock(window->mutex);
-        window->wake.wait_until(lock, next_frame, [&] { return window->closed || !window->commands.empty(); });
-        if (window->closed) break;
+        std::lock_guard<std::mutex> lock(window->mutex);
         if (!window->commands.empty()) { request = std::move(window->commands.front()); window->commands.pop_front(); }
+      }
+      if (request.is_null() && !frame_requested) {
+        pollfd channels[] = {{window->wake_fd, POLLIN, 0}, {renderer.channel_fd(), POLLIN, 0}};
+        int ready;
+        do { ready = poll(channels, 2, -1); } while (ready < 0 && errno == EINTR);
+        if (ready < 0) throw std::runtime_error("Desktop event wait failed");
+        if (channels[0].revents) { uint64_t count; while (read(window->wake_fd, &count, sizeof(count)) < 0 && errno == EINTR) {} }
+        if (window->closed || quitting) break;
+        if (channels[1].revents) renderer.ReceiveNotification();
       }
       if (!request.is_null()) {
         try {
           const Json& command = request.at("command");
           const auto method = command.value("method", "");
-          if (method == "loadFile" || method == "loadURL" || method == "navigate") loaded = false;
           auto response = renderer.Command(command.dump());
-          if (method == "loadFile" || method == "loadURL" || method == "navigate") loaded = true;
           if (method == "capturePng") {
             gchar* encoded = g_base64_encode(response.data(), response.size());
             Reply(request, {{"encoding", "base64"}, {"data", encoded}}); g_free(encoded);
           } else Reply(request, Decode(response));
         } catch (const std::exception& error) { Error(request, error.what()); }
-        // Return IPC and evaluation completions immediately after commands;
-        // their latency must not depend on the frame-presentation interval.
-        if (loaded) drain_events();
       }
-      const auto now = std::chrono::steady_clock::now();
-      if (now >= next_frame) {
-        next_frame = now + 16ms;
-        if (loaded) {
-          try {
-            drain_events();
-          } catch (const std::exception& error) {
-            Emit({{"event", "render-process-gone"}, {"windowId", window->id}, {"error", error.what()}});
-            Ui([window] { Close(window); });
-            break;
-          }
-        }
-        if (loaded && !window->frame_pending) {
-          try {
-            auto frame = renderer.Command(R"({"method":"captureFrameIfChanged"})");
-            if (!frame.empty()) Present(window, std::move(frame));
-          }
-          catch (const std::exception& error) {
-            Emit({{"event", "frame-error"}, {"windowId", window->id}, {"error", error.what()}});
-            loaded = false; // Do not flood errors or conceal unsupported presentation.
-          }
+      if (frame_requested && !window->closed) {
+        frame_requested = false;
+        try {
+          auto frame = renderer.Command(R"({"method":"captureFrameIfChanged"})");
+          if (!frame.empty()) Present(window, std::move(frame));
+        } catch (const std::exception& error) {
+          Emit({{"event", "frame-error"}, {"windowId", window->id}, {"error", error.what()}});
+          throw; // Do not conceal a failed presentation or leave a stuck subscription.
         }
       }
     }
@@ -315,7 +321,7 @@ void Create(const Json& request) {
   g_signal_connect(window->area, "draw", G_CALLBACK((+[](GtkWidget*, cairo_t* context, gpointer data) -> gboolean {
     auto* w = static_cast<Window*>(data);
     if (w->pixels.empty()) return FALSE;
-    auto* surface = cairo_image_surface_create_for_data(w->pixels.data(), CAIRO_FORMAT_ARGB32,
+    auto* surface = cairo_image_surface_create_for_data(w->pixels.data() + 12, CAIRO_FORMAT_ARGB32,
         static_cast<int>(w->frame_width), static_cast<int>(w->frame_height), static_cast<int>(w->frame_width * 4));
     cairo_set_source_surface(context, surface, 0, 0); cairo_paint(context); cairo_surface_destroy(surface);
     if (!w->presented) { w->presented = true; Emit({{"event", "frame-presented"}, {"windowId", w->id}, {"width", w->frame_width}, {"height", w->frame_height}}); }
@@ -471,7 +477,7 @@ int main(int argc, char** argv) {
   Emit({{"event", "ready"}, {"protocol", 1}, {"engine", "obscura"}});
   gtk_main(); quitting = true;
   platform.reset();
-  for (const auto& item : windows) { item.second->closed = true; item.second->wake.notify_all(); retired.push_back(item.second); }
+  for (const auto& item : windows) { item.second->closed = true; item.second->Wake(); retired.push_back(item.second); }
   windows.clear();
   for (auto& window : retired) if (window->worker.joinable()) window->worker.join();
   // Keep shared ownership available to any final detached reader callback.

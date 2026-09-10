@@ -1,0 +1,19 @@
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -3830,6 +3830,16 @@
+     /// CSS/Web Animations continue producing frames until their active interval
+     /// ends; JavaScript timers remain owned by the normal browser event loop.
+     #[cfg(feature = "render")]
++    pub fn desktop_frame_changed(&self) -> bool {
++        let Some(js) = self.js.as_ref() else { return false; };
++        let (document, activity, dirty) = js.desktop_render_damage();
++        dirty || self.desktop_frame_stamp.get() != Some((
++            self.document_timeline_origin, document, activity,
++            self.viewport.0.to_bits(), self.viewport.1.to_bits(), self.capture_surface_color(),
++        ))
++    }
++
++    #[cfg(feature = "render")]
+     pub fn render_frame_rgba_if_changed(
+         &self,
+     ) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
