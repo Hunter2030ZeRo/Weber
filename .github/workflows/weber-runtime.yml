@@ -122,6 +122,7 @@ jobs:
         run: |
           node --test weber/electron-runtime/test-message-port.cjs
           node --test weber/electron-runtime/test-ipc-reply-queue.cjs
+          node --test weber/electron-runtime/test-preload-boundary.cjs
           bun test ./weber/electron-runtime/test-message-port.cjs
           bun test ./weber/electron-runtime/test-ipc-reply-queue.cjs
           node weber/electron-runtime/platform-sync/test.cjs
@@ -133,6 +134,8 @@ jobs:
       - name: Test native desktop notification protocol on Node and Bun
         id: notifications
         continue-on-error: true
+        env:
+          WEBER_NOTIFICATION_TRACE: '1'
         run: |
           dbus-run-session -- xvfb-run -a /usr/bin/python3 weber/tests/notification-service.py node
           dbus-run-session -- xvfb-run -a /usr/bin/python3 weber/tests/notification-service.py bun

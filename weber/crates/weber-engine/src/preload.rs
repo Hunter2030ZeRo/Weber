@@ -461,6 +461,39 @@ mod tests {
     }
 
     #[test]
+    fn owned_json_transport_preserves_copying_and_ignores_prototype_hooks() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let _guard = runtime.enter();
+        let mut page = Page::new("owned-json-test".into(), Arc::new(BrowserContext::new("owned-json-test".into())));
+        let mut driver = Preload::new(&mut page);
+        command(&mut driver, &mut page, json!({"method":"configurePreload", "source":r#"
+            let hooks = 0;
+            require('electron').contextBridge.exposeInMainWorld('copyApi', {
+                mutate: value => {
+                    value.nested[0] = 'changed';
+                    return { value, localPrototype: Object.getPrototypeOf(value) === Object.prototype,
+                        polluted: Object.prototype.polluted === true, hooks };
+                },
+            });
+            Object.defineProperty(Object.prototype, 'toJSON', { get() { hooks++; throw Error('inherited serialization hook'); } });
+            Object.defineProperty(Array.prototype, 'toJSON', { get() { hooks++; throw Error('array serialization hook'); } });
+        "#})).unwrap();
+        driver.before_navigation().unwrap();
+        runtime.block_on(page.navigate("about:blank")).unwrap();
+        let result = evaluate(&mut driver, &mut page, "owned", r#"
+            globalThis.serializationHooks = 0;
+            Object.defineProperty(Object.prototype, 'toJSON', { get() { serializationHooks++; throw Error('page hook'); } });
+            const original = JSON.parse('{"__proto__":{"polluted":true},"nested":["한글🙂\\u0000"],"constructor":"data"}');
+            copyApi.mutate(original).then(result => [original.nested[0], result.value.nested[0],
+                result.localPrototype, result.polluted, result.hooks, serializationHooks,
+                Object.getPrototypeOf(result.value) === Object.prototype,
+                Object.prototype.polluted === true, result.value.__proto__.polluted, result.value.constructor]);
+        "#);
+        assert_eq!(result["ok"], true, "{result}");
+        assert_eq!(result["value"], json!(["한글🙂\u{0000}", "changed", true, false, 0, 0, true, false, true, "data"]));
+    }
+
+    #[test]
     fn isolated_dynamic_import_cannot_execute_in_the_page_realm() {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         let _guard = runtime.enter();

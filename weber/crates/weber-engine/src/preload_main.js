@@ -24,7 +24,7 @@
   const NativePromise = Promise;
   const promiseThen = Promise.prototype.then;
   const stringSlice = String.prototype.slice;
-  const charCodeAt = String.prototype.charCodeAt;
+  const charCodeAt = Function.prototype.call.bind(String.prototype.charCodeAt);
   const MAX_BYTES = 1024 * 1024;
   const MAX_PENDING = 256;
   const MAX_DEPTH = 32;
@@ -48,11 +48,11 @@
   function bytes(text) {
     let count = 0;
     for (let i = 0; i < text.length; i++) {
-      const code = apply(charCodeAt, text, [i]);
+      const code = charCodeAt(text, i);
       if (code < 0x80) count++;
       else if (code < 0x800) count += 2;
       else if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
-        const next = apply(charCodeAt, text, [i + 1]);
+        const next = charCodeAt(text, i + 1);
         if (next >= 0xdc00 && next <= 0xdfff) { count += 4; i++; }
         else count += 3;
       } else count += 3;
@@ -126,9 +126,10 @@
       ancestors.length--;
       return out;
     }
-    const result = visit(value, 0);
-    if (bytes(stringify(result)) > MAX_BYTES - 4096) fail('JSON value exceeds the byte limit');
-    return result;
+    // account() counts every encoded scalar/key and conservatively counts
+    // punctuation. The null-prototype output cannot run a toJSON hook, so
+    // serializing this whole tree a second time adds no validation.
+    return visit(value, 0);
   }
   function publicValue(value) {
     // Copies exposed to application code have ordinary local-realm prototypes.
@@ -163,10 +164,29 @@
     if (bytes(result) > MAX_BYTES) fail('Dispatcher response exceeds the byte limit');
     return result;
   }
+  function parseOwned(input) {
+    // The captured JSON parser creates a fresh local tree, with no accessors,
+    // functions, aliases, or proxies. Validate bounds and remove prototypes in
+    // place; no application object can enter this private path.
+    let nodes = 0;
+    function visit(value, depth) {
+      if (++nodes > MAX_NODES || depth > MAX_DEPTH) fail('JSON value is too complex');
+      if (value !== null && typeof value === 'object') {
+        const names = ownKeys(value);
+        for (let i = 0; i < names.length; i++) {
+          const name = names[i];
+          if (!(isArray(value) && name === 'length')) visit(value[name], depth + 1);
+        }
+        setPrototype(value, null);
+      } else if (typeof value === 'number' && !isFiniteNumber(value)) fail('JSON numbers must be finite');
+      return value;
+    }
+    return visit(parse(input), 0);
+  }
   function command(input, handler) {
     try {
-      if (typeof input !== 'string' || bytes(input) > MAX_BYTES) fail('Invalid dispatcher payload');
-      const payload = clone(parse(input));
+      if (typeof input !== 'string' || bytes(input) > MAX_BYTES - 4096) fail('Invalid dispatcher payload');
+      const payload = parseOwned(input);
       if (!payload || isArray(payload) || typeof payload.method !== 'string') fail('Missing method');
       return encodeResponse(true, handler(payload));
     } catch (error) {
@@ -299,7 +319,7 @@
         if (!has(bridgePending, id)) fail('Unknown bridge call ticket');
         if (typeof payload.ok !== 'boolean') fail('Settlement requires a boolean status');
         const entry = bridgePending[id];
-        const value = payload.ok ? publicValue(clone(payload.value)) : new NativeError(errorText(payload.error));
+        const value = payload.ok ? publicValue(payload.value) : new NativeError(errorText(payload.error));
         delete bridgePending[id];
         pendingCount--;
         if (payload.ok) entry.resolve(value); else entry.reject(value);
@@ -316,7 +336,7 @@
           if (typeof reply.ok !== 'boolean') fail('Settlement requires a boolean status');
           put(seen, id, true);
           put(prepared, prepared.length, record({ id, entry: bridgePending[id], ok: reply.ok,
-            value: reply.ok ? publicValue(clone(reply.value)) : new NativeError(errorText(reply.error)) }));
+            value: reply.ok ? publicValue(reply.value) : new NativeError(errorText(reply.error)) }));
         }
         for (let i = 0; i < prepared.length; i++) {
           const reply = prepared[i];
