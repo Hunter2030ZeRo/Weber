@@ -1,7 +1,8 @@
 # Electron source runtime on Obscura
 
-This build compiles the fork's original `lib/browser/api/browser-window.ts`,
-`base-window.ts`, `web-contents.ts`, and their internal dependencies. It executes
+This build compiles 43 Electron TypeScript modules, including the fork's original
+`lib/browser/api/browser-window.ts`, `base-window.ts`, `web-contents.ts`,
+`native-theme.ts`, and their internal dependencies. It executes
 those modules with replacement bindings that send native window and document
 operations to `weber-desktop-host`. Each window has an Obscura renderer process.
 Chromium `content`, Blink, Viz, and Chromium renderer binaries are not used by
@@ -34,6 +35,14 @@ Most replacement code lives at the native binding boundary:
   networking remains separate. See [NETWORK.md](NETWORK.md).
 * `commonjs-loader.cjs` executes CommonJS modules on Bun, whose `Module._load`
   interception differs from Node. Builtins and native addons remain Bun's.
+* `asar.cjs` reads authentic packed/unpacked ASAR entries and resolves application
+  modules without extracting or rewriting their package layout. See [ASAR.md](ASAR.md).
+* `web-request.cjs` enforces session-owned request callbacks through the main
+  HTTP/HTTPS and renderer custom-resource transports.
+* `session-permissions.cjs` validates browser permission decisions against their
+  session and document owner before native operations.
+* `native-theme-binding.cjs` connects the original nativeTheme module to GTK
+  system appearance and change events. See [SESSION.md](SESSION.md).
 
 ## Build and run
 
@@ -62,11 +71,16 @@ uses `module.registerHooks`; Bun ESM app loading is explicitly unsupported at
 this stage. `WEBER_ENTRY` allows the TOML selector to choose an entry file that
 differs from `package.json.main` without editing that application metadata.
 
-`original-fs` and `node:original-fs` resolve to the actual `node:fs` module on
-Node CommonJS/ESM and Bun CommonJS. This runtime has no ASAR filesystem wrapper,
-so `.asar` paths remain ordinary native paths. Providing this import does not
-implement ASAR archive loading; adding an archive-aware `fs` layer later must
-preserve `original-fs` as the unwrapped native filesystem implementation.
+`original-fs` and `node:original-fs` return an unwrapped native filesystem snapshot,
+including promise methods, on Node CommonJS/ESM and Bun CommonJS. The ASAR view
+adds bounded read/stat/list/access/realpath operations and range streams for real
+archives; ordinary paths and real directories ending in `.asar` retain native
+behavior. Node synchronous module hooks resolve packed CJS/ESM/JSON modules;
+Bun CommonJS uses Weber's application loader. Declared unpacked native addons
+load from their existing paths and still require backend ABI compatibility.
+Archive writes, descriptors, watchers, packed native-addon extraction and
+renderer ASAR URL reads are not implemented. The view is not a permissions
+boundary; see [ASAR.md](ASAR.md) for filesystem, resolver and trust limits.
 
 The development opt-in is mandatory because the renderer has process separation
 but no operating-system sandbox. Do not mistake a different process for an OS
@@ -78,6 +92,26 @@ Exposed function calls currently return Promises and transport copied JSON
 values; this is a subset of Electron's full contextBridge contract.
 
 ## Actual scope and validation
+
+Current validation: [71ac31a](../packaging/results/71ac31a.json) passed all 16
+runtime gates in [CI run 34501264566](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34501264566),
+including 11 engine tests, actual GTK nativeTheme changes, Node/Bun protocol and
+browser-clipboard permission fixtures, and extracted Node/Bun/native bundles.
+The local ASAR/session/webRequest/nativeTheme suites report 68 passes on Node and
+50 passes with four skips on Bun; their subtest counting differs.
+
+The [45c56bb full validation](../packaging/results/45c56bb.json) remains historical
+evidence. The intermediate [2b8adbd result](../packaging/results/2b8adbd.json)
+passed 13 of 16 gates: Node/Bun/bundle fixtures failed an obsolete
+`original-fs === fs` assertion. The current fixtures verify actual raw/archive
+behavior instead; the failed record is retained.
+
+A direct smoke check loaded the pinned VS Code distribution's unmodified
+ASAR-backed `@vscode/spdlog` and its original unpacked native addon. The full
+`71ac31a` application diagnostic still reports `Cannot find module` for that
+archive entry. The expanded-dependency run reaches the explicit powerMonitor
+shutdown-inhibition error. Both exit 1 without timing out and report
+`ready: false`; successful native fixtures do not establish workbench startup.
 
 `test-live.cjs` checks source provenance and launches an ordinary Electron app
 that creates two native windows. The app checks actual native draw completion,
@@ -106,6 +140,27 @@ checks are enforced; file interception is explicit. `protocol.handle` uses the
 original Request/Response adapter. Persistent cookies/storage, HTTP protocol
 handlers, full redirects, service workers and CSP bypass remain unsupported.
 Declaring a scheme privilege does not implement all associated browser features.
+
+Each session now owns `onBeforeRequest` and `onHeadersReceived` policies.
+Main `net.request`/`session.fetch` HTTP/HTTPS requests and renderer custom/file
+resources enforce cancellation and header/status changes. Main HTTP/HTTPS
+redirects re-enter policy; custom-protocol policy redirects fail explicitly.
+Direct Obscura HTTP/HTTPS, WebSocket and utility networking are not intercepted.
+The other webRequest events, browser cookies, persistent storage, proxy and
+shared cache remain unsupported.
+
+Session permission check/request/display-media handlers are connected to
+browser-owned policy. Renderer clipboard text operations use the native
+clipboard only after permission succeeds in a secure context. Pending grants
+are invalidated when their owner or policy changes. Media/display streams,
+geolocation and browser Notification delivery remain unavailable even after a
+grant; no synthetic successful acquisition is returned. Main-process Electron
+APIs retain their separate trusted-operation scope. See [SESSION.md](SESSION.md).
+
+The original nativeTheme module reads GTK foreground/background colors and
+high-contrast settings and emits `updated` on native changes without polling.
+Only `themeSource = 'system'` is supported. Forced light/dark themes, reduced
+transparency and renderer color-scheme/forced-colors propagation remain absent.
 
 The original modern clipboard and ClipboardItem modules use native GTK/X11
 ownership; a compatibility adapter provides the legacy synchronous text, HTML,

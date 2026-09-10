@@ -372,6 +372,23 @@ function installAsar() {
   const originalLoad = Module._load;
   Module._load = function(specifier, parent, isMain) {
     if (isOriginalFs(specifier)) return originalFs;
+    const internalOptions = arguments[3];
+    if (internalOptions?.shouldSkipModuleHooks && !internalOptions.resolved && split(specifier)) {
+      // An application resolver may try native resolution, catch its failure,
+      // then resolve inside ASAR. Node still records that native resolution ran
+      // and asks its CJS translator to skip hooks, without a resolved filename.
+      // Supply the same verified archive source/format a successful hook would
+      // supply; keep Node's actual module cache, compilation and cycle handling.
+      const filename = resolveArchive(specifier, parent?.filename && pathToFileURL(parent.filename).href);
+      const physical = physicalModule(filename);
+      const url = pathToFileURL(physical).href;
+      const archived = physical === filename;
+      return originalLoad.call(this, specifier, parent, isMain, {
+        ...internalOptions,
+        resolved: { filename: physical, url, format: archived ? format(filename) : undefined },
+        ...(archived ? { source: readFileSync(filename, 'utf8') } : {}),
+      });
+    }
     // Node forwards resolved format/source as a fourth internal argument when
     // an ESM import evaluates CommonJS. Dropping it re-enters native package
     // type detection outside the archive and can create a false require(esm)

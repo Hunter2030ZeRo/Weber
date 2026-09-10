@@ -283,3 +283,36 @@ test('ESM-first CommonJS archive imports preserve Node format/source across appl
   assert.equal(imported.default, request('./dep'));
   assert.equal(hash(archive), before);
 });
+
+test('failed native ESM resolution followed by archive self-reference retains CJS loading and cycles', { skip: !runtime.nodeModuleHooks }, async t => {
+  const addon = original.readFileSync(path.join(__dirname, 'dist/native/weber_platform.node'));
+  const { archive, filename, directory } = fixture(t, {
+    'dep/package.json': '{"name":"dep","main":"index.js"}',
+    'dep/index.js': 'exports.answer=42; exports.partial=require("./cycle.js").answer; exports.addon=require("./native.node");',
+    'dep/cycle.js': 'exports.answer=require("./index.js").answer;',
+    'dep/native.node': { data: addon, unpacked: true },
+  });
+  original.writeFileSync(path.join(directory, 'package.json'), '{"type":"module"}');
+  const source = path.join(directory, 'consumer.mjs');
+  original.writeFileSync(source, 'import result from "dep"; export default result;');
+  const request = Module.createRequire(filename('x.js'));
+  let failedNativeResolutions = 0;
+  const applicationHook = Module.registerHooks({ resolve(specifier, context, nextResolve) {
+    if (specifier !== 'dep' || context.parentURL !== pathToFileURL(source).href) return nextResolve(specifier, context);
+    // VS Code first tries ordinary resolution, then retries from archive
+    // package.json. A direct short-circuit alone does not cover this path.
+    try { return nextResolve(specifier, context); }
+    catch (error) { assert.equal(error.code, 'ERR_MODULE_NOT_FOUND'); failedNativeResolutions++; }
+    const metadata = request.resolve('./dep/package.json');
+    return nextResolve(specifier, { ...context, parentURL: pathToFileURL(metadata).href });
+  } });
+  t.after(() => applicationHook.deregister());
+  const before = hash(archive);
+  const imported = await import(pathToFileURL(source).href);
+  assert.equal(failedNativeResolutions, 1);
+  assert.equal(imported.default.answer, 42); assert.equal(imported.default.partial, 42);
+  assert.equal(typeof imported.default.addon.guardParent, 'function');
+  assert.equal(imported.default, request('./dep'));
+  assert.equal(original.existsSync(path.join(directory, 'node_modules', 'dep')), false);
+  assert.equal(hash(archive), before);
+});

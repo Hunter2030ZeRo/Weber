@@ -1,0 +1,209 @@
+{
+  "kind": "validated-linux-development-bundle",
+  "commit": "71ac31aae878e7e96d0f36ab0ce6538dabcfcbb6",
+  "workflowRun": 34501264566,
+  "allRuntimeGatesPassed": true,
+  "runtimeGates": 16,
+  "runtimeGateEvidence": "Final RESULTS assertion uses every step.outcome, not continue-on-error step.conclusion",
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34501264566/artifacts/10162289597",
+  "artifactZipBytes": 56918405,
+  "artifactZipSha256": "f4ce07e82c644de7da0bc86ce3d4fcdce72cb3cc8fb685f6b176a4fca2f3601d",
+  "archive": "weber-x86_64-unknown-linux-gnu-development-71ac31aae878.tar.gz",
+  "archiveBytes": 56914224,
+  "archiveSha256": "8c080b71c0877377d43c76627c59556523b53061fd88aeda0212c30fde079e98",
+  "sourceEvidenceArtifact": 10162288252,
+  "sourceEvidenceZipSha256": "8a53d25620cc0ff061e533ae46235071da37b4d7a2444dc68012e7a0b82ca44f",
+  "electronSourceModules": 43,
+  "adaptedSources": [
+    "lib/browser/api/net-fetch.ts",
+    "lib/common/api/net-client-request.ts"
+  ],
+  "compiledForkSourcesVerified": true,
+  "extractedBackendSmokes": {
+    "node": true,
+    "bun": true,
+    "native": true
+  },
+  "chromiumBrowserRuntimeIncluded": false,
+  "nodeAndBunExecutablesIncluded": false,
+  "osSandbox": false,
+  "engineTestsPassed": 11,
+  "nativeThemeTestPassed": true,
+  "localNewFeatureSuites": {
+    "node": 68,
+    "bun": 50,
+    "bunSkipped": 4,
+    "scope": "ASAR, webRequest, session permissions, renderer permission bridge and nativeTheme; runners count nested subtests differently"
+  },
+  "vscode": {
+    "kind": "vscode-startup-diagnostic",
+    "ready": false,
+    "readiness_checked": false,
+    "diagnostic_completed": true,
+    "version": "1.136.2",
+    "dependency_layout_expanded": false,
+    "bundled_electron_executed": false,
+    "exit_code": 1,
+    "timed_out": false,
+    "error": "Error: Cannot find module '/tmp/weber-vscode-probe-wn_bn0c2/VSCode-linux-x64/resources/app/node_modules.asar/@vscode/spdlog/index.js'",
+    "stack": [
+      "at Module._resolveFilename (node:internal/modules/cjs/loader:1564:15)",
+      "at wrapResolveFilename (node:internal/modules/cjs/loader:1118:27)",
+      "at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1142:10)",
+      "at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1169:12)",
+      "at Module.<anonymous> (node:internal/modules/cjs/loader:1341:5)",
+      "at Module._load (/home/runner/work/Weber/Weber/weber/electron-runtime/asar.cjs:379:25)",
+      "at Module._load (/home/runner/work/Weber/Weber/weber/electron-runtime/bootstrap.cjs:98:25)",
+      "at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)",
+      "at loadCJSModuleWithModuleLoad (node:internal/modules/esm/translators:372:15)",
+      "at ModuleWrap.<anonymous> (node:internal/modules/esm/translators:244:9)",
+      "at ModuleJob.run (node:internal/modules/esm/module_job:561:25)",
+      "at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+    ]
+  },
+  "vscodeExpandedDependencies": {
+    "kind": "vscode-expanded-dependency-diagnostic",
+    "ready": false,
+    "readiness_checked": false,
+    "diagnostic_completed": true,
+    "version": "1.136.2",
+    "dependency_layout_expanded": true,
+    "bundled_electron_executed": false,
+    "exit_code": 1,
+    "timed_out": false,
+    "error": "Error: Weber has not implemented powerMonitor shutdown inhibition",
+    "stack": [
+      "at unsupported (/home/runner/work/Weber/Weber/weber/electron-runtime/bindings.cjs:17:17)",
+      "at source.setListeningForShutdown (/home/runner/work/Weber/Weber/weber/electron-runtime/power-binding.cjs:16:27)",
+      "at PowerMonitor.<anonymous> (/home/runner/work/Weber/Weber/weber/electron-runtime/dist/browser/api/power-monitor.js:26:28)",
+      "at PowerMonitor.emit (node:events:514:28)",
+      "at _addListener (node:events:560:14)",
+      "at PowerMonitor.addListener (node:events:616:10)",
+      "at Object.oe [as onWillAddFirstListener] (file:///tmp/weber-vscode-probe-ifb3m4uy/VSCode-linux-x64/resources/app/out/main.js:432:9623)",
+      "at _event (file:///tmp/weber-vscode-probe-ifb3m4uy/VSCode-linux-x64/resources/app/out/main.js:434:2627)",
+      "at Object.P [as buffer] (file:///tmp/weber-vscode-probe-ifb3m4uy/VSCode-linux-x64/resources/app/out/main.js:432:8408)",
+      "at Object.i [as fromService] (file:///tmp/weber-vscode-probe-ifb3m4uy/VSCode-linux-x64/resources/app/out/main.js:437:5186)",
+      "at $s.initChannels (file:///tmp/weber-vscode-probe-ifb3m4uy/VSCode-linux-x64/resources/app/out/main.js:561:22438)",
+      "at file:///tmp/weber-vscode-probe-ifb3m4uy/VSCode-linux-x64/resources/app/out/main.js:561:11594"
+    ],
+    "dependency_expansion": {
+      "kind": "temporary-asar-dependency-expansion",
+      "archive": "node_modules.asar",
+      "archiveBytes": 55535362,
+      "archiveSHA256": "00a7b8fe98c49773439ad404def377554701b6873e4b0a0e7e18388518b471e4",
+      "sourceBytesPreserved": true,
+      "appSourceModified": false,
+      "packageLayoutExpanded": true,
+      "fileCount": 5089,
+      "dependencyBytes": 335829627,
+      "expandedFiles": 4420,
+      "expandedBytes": 328529630,
+      "preservedFiles": 669,
+      "nativeAddonCount": 16,
+      "newExecutableFiles": 75,
+      "permissionPolicy": "New files use 0755/0644 from unpacked owner-execute or packed executable flag; existing modes retained",
+      "filesSHA256": "d95b471e5260310f1fe6646c708d2842578759c67a85fee7a29504a59ac19350",
+      "filesHashFormat": "Sorted path + NUL + decimal size + NUL + file SHA256 + LF; UTF-8",
+      "transparentAsarFilesystem": false
+    }
+  },
+  "monaco": {
+    "version": "0.52.2",
+    "ready": false,
+    "coreEditingReady": true,
+    "checks": [
+      "document-load",
+      "editor-construction",
+      "model-edit",
+      "undo",
+      "native-keyboard-input",
+      "visible-line-dom-and-capture",
+      "thousand-line-scroll-and-visible-range"
+    ],
+    "error": "Error: Editor worker: Unexpected token 'export'\n    at /home/runner/work/Weber/Weber/weber/monaco-probe/main.cjs:92:42\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+  },
+  "performance": {
+    "comparisonComplete": true,
+    "wholeVscodeVerified": false,
+    "summary": "Same-app three-trial fixture collected. No whole-VS-Code memory or latency claim."
+  },
+  "developmentBundleReleased": true,
+  "previousFailedRun": {
+    "commit": "2b8adbd732da0077187b29c436421d9ab2375a41",
+    "workflowRun": 34499982917,
+    "record": "2b8adbd.json",
+    "fix": "Forward Node internal CommonJS loader metadata and verify actual raw original-fs behavior rather than object identity"
+  },
+  "nativePermissionChecks": [
+    {
+      "backend": "node",
+      "checked": [
+        "ordinary renderer has no IPC or private dispatcher",
+        "default browser denial preserves real native clipboard",
+        "permission checks grant real native read/write and remain session scoped",
+        "asynchronous request grants settle once",
+        "navigation discards pending grants without stale native writes",
+        "handler removal restores denial and geolocation cannot return spoofed coordinates",
+        "grants do not fabricate unsupported media, display, geolocation, or notification delivery"
+      ],
+      "kind": "browser-permission-acceptance",
+      "ok": true
+    },
+    {
+      "backend": "bun",
+      "checked": [
+        "ordinary renderer has no IPC or private dispatcher",
+        "default browser denial preserves real native clipboard",
+        "permission checks grant real native read/write and remain session scoped",
+        "asynchronous request grants settle once",
+        "navigation discards pending grants without stale native writes",
+        "handler removal restores denial and geolocation cannot return spoofed coordinates",
+        "grants do not fabricate unsupported media, display, geolocation, or notification delivery"
+      ],
+      "kind": "browser-permission-acceptance",
+      "ok": true
+    }
+  ],
+  "protocolChecks": [
+    {
+      "checked": [
+        "document",
+        "CSS",
+        "classic script",
+        "ES module graph",
+        "fetch",
+        "origin separation",
+        "file interception",
+        "partition ownership",
+        "Request/Response handle",
+        "session request cancellation",
+        "session response headers"
+      ],
+      "kind": "protocol-acceptance",
+      "ok": true,
+      "sourceModules": [
+        "protocol"
+      ]
+    },
+    {
+      "checked": [
+        "document",
+        "CSS",
+        "classic script",
+        "ES module graph",
+        "fetch",
+        "origin separation",
+        "file interception",
+        "partition ownership",
+        "Request/Response handle",
+        "session request cancellation",
+        "session response headers"
+      ],
+      "kind": "protocol-acceptance",
+      "ok": true,
+      "sourceModules": [
+        "protocol"
+      ]
+    }
+  ]
+}
