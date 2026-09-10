@@ -1,0 +1,121 @@
+{
+  "kind": "linux-runtime-validation-failed",
+  "commit": "2b8adbd732da0077187b29c436421d9ab2375a41",
+  "workflowRun": 34499982917,
+  "sourceEvidenceArtifact": 10161768379,
+  "allRuntimeGatesPassed": false,
+  "passedRuntimeGates": 13,
+  "runtimeGates": 16,
+  "failedRuntimeGates": [
+    "node",
+    "bun",
+    "bundle"
+  ],
+  "failureCause": "Legacy fixture asserted original-fs === fs before ASAR wrapping. New implementation intentionally preserves unwrapped original-fs separately; follow-up replaces identity assumption with actual raw/archive behavior checks.",
+  "nativePermissionChecks": [
+    {
+      "backend": "node",
+      "checked": [
+        "ordinary renderer has no IPC or private dispatcher",
+        "default browser denial preserves real native clipboard",
+        "permission checks grant real native read/write and remain session scoped",
+        "asynchronous request grants settle once",
+        "navigation discards pending grants without stale native writes",
+        "handler removal restores denial and geolocation cannot return spoofed coordinates",
+        "grants do not fabricate unsupported media, display, geolocation, or notification delivery"
+      ],
+      "kind": "browser-permission-acceptance",
+      "ok": true
+    },
+    {
+      "backend": "bun",
+      "checked": [
+        "ordinary renderer has no IPC or private dispatcher",
+        "default browser denial preserves real native clipboard",
+        "permission checks grant real native read/write and remain session scoped",
+        "asynchronous request grants settle once",
+        "navigation discards pending grants without stale native writes",
+        "handler removal restores denial and geolocation cannot return spoofed coordinates",
+        "grants do not fabricate unsupported media, display, geolocation, or notification delivery"
+      ],
+      "kind": "browser-permission-acceptance",
+      "ok": true
+    }
+  ],
+  "protocolChecks": [
+    {
+      "checked": [
+        "document",
+        "CSS",
+        "classic script",
+        "ES module graph",
+        "fetch",
+        "origin separation",
+        "file interception",
+        "partition ownership",
+        "Request/Response handle",
+        "session request cancellation",
+        "session response headers"
+      ],
+      "kind": "protocol-acceptance",
+      "ok": true,
+      "sourceModules": [
+        "protocol"
+      ]
+    },
+    {
+      "checked": [
+        "document",
+        "CSS",
+        "classic script",
+        "ES module graph",
+        "fetch",
+        "origin separation",
+        "file interception",
+        "partition ownership",
+        "Request/Response handle",
+        "session request cancellation",
+        "session response headers"
+      ],
+      "kind": "protocol-acceptance",
+      "ok": true,
+      "sourceModules": [
+        "protocol"
+      ]
+    }
+  ],
+  "engineTestsPassed": 11,
+  "nativeThemeTestPassed": true,
+  "newFeatureSuites": {
+    "node": 67,
+    "bun": 50,
+    "bunSkipped": 3
+  },
+  "vscode": {
+    "diagnostic_completed": true,
+    "error": "Error [ERR_REQUIRE_CYCLE_MODULE]: Cannot require() ES Module /tmp/weber-vscode-probe-vno7w2vm/VSCode-linux-x64/resources/app/node_modules.asar/@vscode/spdlog/index.js in a cycle. A cycle involving require(esm) is not allowed to maintain invariants mandated by the ECMAScript specification. Try making at least part of the dependency in the graph lazily loaded.",
+    "exit_code": 1,
+    "kind": "vscode-startup-diagnostic",
+    "ready": false,
+    "stage": "complete",
+    "timed_out": false,
+    "version": "1.136.2"
+  },
+  "vscodeExpanded": {
+    "diagnostic_completed": true,
+    "error": "Error: Weber has not implemented powerMonitor shutdown inhibition",
+    "exit_code": 1,
+    "kind": "vscode-expanded-dependency-diagnostic",
+    "ready": false,
+    "stage": "complete",
+    "timed_out": false,
+    "version": "1.136.2"
+  },
+  "monaco": {
+    "coreEditingReady": true,
+    "ready": false,
+    "error": "Editor worker: Unexpected token 'export'"
+  },
+  "benchmarkCollectionCompleted": true,
+  "developmentBundleReleased": false
+}

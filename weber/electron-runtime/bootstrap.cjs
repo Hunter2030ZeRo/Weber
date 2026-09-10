@@ -95,7 +95,7 @@ async function main() {
     if (isOriginalFs(request)) return archiveRuntime.originalFs;
     if (request === 'electron/renderer') return runtime.unsupported('renderer API in the main process');
     if (request.startsWith('@electron/internal/')) return loadInternal(request.slice('@electron/internal/'.length));
-    return originalLoad.call(this, request, parent, isMain);
+    return originalLoad.apply(this, arguments);
   };
   globalThis[Symbol.for('weber.electron.api')] = api;
   // Node's synchronous hooks preserve ordinary ESM import { app } from

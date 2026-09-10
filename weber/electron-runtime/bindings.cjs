@@ -215,6 +215,9 @@ function createBindings(host, appPath, loadInternal) {
       this.mainFrame = {
         frameTreeNodeId: this.id, routingId: this.id,
         get processId() { return owner.webContents?._rendererPid || 0; },
+        get url() { return owner.webContents?._url || ''; },
+        parent: null,
+        isDestroyed: () => this._destroyed,
         _sendInternal: (command, requestId, method, ...args) => this._invokeFrame(command, requestId, method, args),
         send: (channel, ...args) => this._sendToRenderer(channel, args),
         postMessage: () => unsupported('webContents.postMessage and transferred ports'),

@@ -39,9 +39,10 @@ function finish(error, details = {}) {
 
 app.whenReady().then(async () => {
   // original-fs is a real filesystem API, not an Electron namespace stub.
-  // With no ASAR patch installed, all three imports are the same native module.
-  assert.equal(originalFs, fs);
-  assert.equal(nodeOriginalFs, fs);
+  // ASAR-aware fs and unwrapped original-fs deliberately have distinct APIs.
+  assert.notEqual(originalFs, fs);
+  assert.equal(nodeOriginalFs, originalFs);
+  assert.notEqual(originalFs.readFileSync, fs.readFileSync);
   const packageFile = path.join(__dirname, 'package.json');
   const packageContents = fs.readFileSync(packageFile, 'utf8');
   assert.equal(originalFs.readFileSync(packageFile, 'utf8'), packageContents);
@@ -57,9 +58,9 @@ app.whenReady().then(async () => {
     assert.equal(electronEsm.desktopCapturer, desktopCapturer);
     const esm = await import('original-fs');
     const nodeEsm = await import('node:original-fs');
-    assert.equal(esm.default, fs);
-    assert.equal(nodeEsm.default, fs);
-    assert.equal(esm.readFileSync, fs.readFileSync);
+    assert.equal(esm.default, originalFs);
+    assert.equal(nodeEsm.default, originalFs);
+    assert.equal(esm.readFileSync, originalFs.readFileSync);
     assert.equal(esm.readFileSync(packageFile, 'utf8'), packageContents);
   }
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'weber-original-fs-'));
@@ -69,6 +70,20 @@ app.whenReady().then(async () => {
     fs.writeFileSync(archive, bytes);
     assert.equal(originalFs.statSync(archive).isFile(), true);
     assert.deepEqual(await originalFs.promises.readFile(archive), bytes);
+    const packed = path.join(temporary, 'packed.asar');
+    const body = Buffer.from('real packed fixture bytes');
+    const header = Buffer.from(JSON.stringify({ files: { 'data.txt': { size: body.length, offset: '0' } } }));
+    const payload = Math.ceil((4 + header.length) / 4) * 4;
+    const data = Buffer.alloc(12 + payload + body.length);
+    data.writeUInt32LE(4, 0); data.writeUInt32LE(payload + 4, 4);
+    data.writeUInt32LE(payload, 8); data.writeUInt32LE(header.length, 12);
+    header.copy(data, 16); body.copy(data, 12 + payload);
+    originalFs.writeFileSync(packed, data);
+    assert.equal(originalFs.statSync(packed).isFile(), true);
+    assert.equal(fs.statSync(packed).isDirectory(), true);
+    assert.deepEqual(fs.readFileSync(path.join(packed, 'data.txt')), body);
+    assert.deepEqual(await originalFs.promises.readFile(packed), data);
+    assert.throws(() => originalFs.readFileSync(path.join(packed, 'data.txt')), /ENOTDIR|ENOENT/);
   } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
   const preferences = { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true };
   const first = new BrowserWindow({ width: 640, height: 480, title: 'First Obscura window', webPreferences: preferences });

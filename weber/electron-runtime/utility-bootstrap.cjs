@@ -118,10 +118,10 @@ async function main() {
       const file = resolveInternal(request);
       return file ? { value: bunLoader.load(file) } : undefined;
     }, archiveRuntime);
-  } else Module._load = function(request, parent, isMain) {
+  } else Module._load = function(request, ...args) {
     if (isElectron(request)) return api;
     rejectBrowser(request);
-    return originalLoad.call(this, resolveInternal(request) || request, parent, isMain);
+    return originalLoad.call(this, resolveInternal(request) || request, ...args);
   };
   const loadInternal = id => {
     const filename = resolveInternal('@electron/internal/' + id);

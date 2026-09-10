@@ -372,7 +372,11 @@ function installAsar() {
   const originalLoad = Module._load;
   Module._load = function(specifier, parent, isMain) {
     if (isOriginalFs(specifier)) return originalFs;
-    return originalLoad.call(this, specifier, parent, isMain);
+    // Node forwards resolved format/source as a fourth internal argument when
+    // an ESM import evaluates CommonJS. Dropping it re-enters native package
+    // type detection outside the archive and can create a false require(esm)
+    // cycle under a consumer with "type": "module".
+    return originalLoad.apply(this, arguments);
   };
   if (!process.versions.bun && typeof Module.registerHooks === 'function') Module.registerHooks({
     resolve(specifier, context, nextResolve) {

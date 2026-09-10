@@ -33,7 +33,11 @@ app.whenReady().then(async()=>{
   assert.equal(await first.webContents.executeJavaScript("fetch('weber-test://app/classic.js').then(()=>false,()=>true)"),true);
   assert.equal(requested.length,beforeCount);
   policy.onBeforeRequest(null);
-  policy.onHeadersReceived({urls:['weber-test://app/classic.js']},(details,callback)=>callback({responseHeaders:{...details.responseHeaders,'x-session-policy':['enforced']}}));
+  policy.onHeadersReceived({urls:['weber-test://app/classic.js']},(details,callback)=>{
+    assert.equal(details.frame.isDestroyed(),false);assert.equal(details.frame.url,first.webContents.getURL());
+    assert.equal(details.frame.parent,null);
+    callback({responseHeaders:{...details.responseHeaders,'x-session-policy':['enforced']}});
+  });
   assert.equal(await first.webContents.executeJavaScript("fetch('weber-test://app/classic.js').then(r=>r.headers.get('x-session-policy'))"),'enforced');
   policy.onHeadersReceived(null);
   assert.equal(await first.webContents.executeJavaScript("fetch('weber-test://other/classic.js').then(()=>false,()=>true)"),true);

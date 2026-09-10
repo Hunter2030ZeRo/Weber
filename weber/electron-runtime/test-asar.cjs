@@ -255,3 +255,31 @@ test('ESM package lookup matches ordinary Node package boundaries and index fall
   await assert.rejects(import(pathToFileURL(filename('extensionless.mjs')).href), { code: 'ERR_MODULE_NOT_FOUND' });
   await assert.rejects(import(pathToFileURL(path.join(ordinary, 'extensionless.mjs')).href), { code: 'ERR_MODULE_NOT_FOUND' });
 });
+
+test('ESM-first CommonJS archive imports preserve Node format/source across application hooks', { skip: !runtime.nodeModuleHooks }, async t => {
+  const { archive, filename, directory } = fixture(t, {
+    'dep/package.json': '{"name":"dep","main":"index.js"}',
+    'dep/index.js': 'exports.answer=require("./value.json").answer; exports.identity={};',
+    'dep/value.json': '{"answer":42}',
+  });
+  // The actual VS Code package has this outer ESM type. Native package readers
+  // cannot see the archive's inner package.json and must retain hook metadata.
+  original.writeFileSync(path.join(directory, 'package.json'), '{"type":"module"}');
+  const source = path.join(directory, 'consumer.mjs');
+  original.writeFileSync(source, 'import result, { answer } from "dep"; export { answer }; export default result;');
+  const request = Module.createRequire(filename('x.js'));
+  const applicationHook = Module.registerHooks({ resolve(specifier, context, nextResolve) {
+    if (specifier === 'dep' && context.parentURL === pathToFileURL(source).href) {
+      // Match the application's createRequire archive fallback composed with
+      // Weber's prior hooks, without changing archive bytes or consumer code.
+      return { url: pathToFileURL(request.resolve('./dep')).href, shortCircuit: true };
+    }
+    return nextResolve(specifier, context);
+  } });
+  t.after(() => applicationHook.deregister());
+  const before = hash(archive);
+  const imported = await import(pathToFileURL(source).href);
+  assert.equal(imported.answer, 42);
+  assert.equal(imported.default, request('./dep'));
+  assert.equal(hash(archive), before);
+});
