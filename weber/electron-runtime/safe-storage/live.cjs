@@ -15,6 +15,15 @@ const unlock = () => {
     input: 'weber-owned-test-keyring-password\n', encoding: 'utf8', timeout: 10000,
   });
   if (result.error || result.status) throw Error('Could not unlock owned test keyring');
+  const control = result.stdout.match(/^GNOME_KEYRING_CONTROL=(.+)$/m)?.[1];
+  if (control) process.env.GNOME_KEYRING_CONTROL = control;
+  // --unlock is the PAM-style first phase. Start the same daemon explicitly
+  // so D-Bus activation cannot create another instance with a different control
+  // socket, which would make a later --unlock target the wrong daemon.
+  const started = spawnSync('/usr/bin/gnome-keyring-daemon', ['--start', '--components=secrets'], {
+    encoding: 'utf8', timeout: 10000,
+  });
+  if (started.error || started.status) throw Error('Could not start owned test keyring');
 };
 function invocation(runtime, options, env = {}) {
   const output = path.join(root, 'result-' + counter++ + '.json');
@@ -76,6 +85,7 @@ function dbus(method, args = []) {
   unlock();
   for (const runtime of ['node', 'bun']) {
     const restored = run(runtime, { ...options, ciphertexts: results[0].ciphertexts });
+    assert.equal(restored.available, true, 'owned keyring was unlocked');
     assert.deepEqual(restored.plaintexts, options.texts, 'locked calls did not rotate the existing key');
   }
   console.log(JSON.stringify({ safeStorage: true, runtimes: Object.keys(runtimes), crossProcessReadCases: crossReads,

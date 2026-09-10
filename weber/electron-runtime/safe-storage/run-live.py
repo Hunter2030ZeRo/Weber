@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Own the entire temporary HOME and D-Bus session; never use a user's keyring."""
 import os
+import signal
 from pathlib import Path
 import subprocess
 import sys
@@ -15,6 +16,14 @@ with tempfile.TemporaryDirectory(prefix="weber-safe-storage-test-") as temporary
         env[key] = str(root / directory)
     for key in ("DBUS_SESSION_BUS_ADDRESS", "GNOME_KEYRING_CONTROL", "GNOME_KEYRING_PID"):
         env.pop(key, None)
-    result = subprocess.run(["dbus-run-session", "--", "node", str(Path(__file__).with_name("live.cjs")), *sys.argv[1:]],
-                            env=env, timeout=100)
-    sys.exit(result.returncode)
+    process = subprocess.Popen(["dbus-run-session", "--", "node", str(Path(__file__).with_name("live.cjs")), *sys.argv[1:]],
+                               env=env, start_new_session=True)
+    try:
+        code = process.wait(timeout=100)
+    finally:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+    sys.exit(code)
