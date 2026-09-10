@@ -21,7 +21,7 @@ ELECTRON_COMMIT = "c1aad3df47dcae19bad6d12157c7f06ad72ea409"
 LEGAL_NAME = re.compile(r"^(?:LICEN[CS]E|NOTICE|COPYING|COPYRIGHT|PATENTS)(?:[._-].*)?$", re.I)
 RUNTIME_HELPERS = (
     "bootstrap.cjs", "bindings.cjs", "commonjs-loader.cjs", "electron-api.cjs",
-    "host-client.cjs", "menu-binding.cjs", "protocol-binding.cjs", "clipboard-binding.cjs", "display-binding.cjs", "message-port-binding.cjs", "global-shortcut-binding.cjs", "platform-app.cjs",
+    "host-client.cjs", "ipc-reply-queue.cjs", "menu-binding.cjs", "protocol-binding.cjs", "clipboard-binding.cjs", "display-binding.cjs", "message-port-binding.cjs", "global-shortcut-binding.cjs", "platform-app.cjs",
 )
 
 

@@ -11,6 +11,7 @@ const { createClipboardBinding } = require('./clipboard-binding.cjs');
 const { attachPlatformApp } = require('./platform-app.cjs');
 const { createProtocolBinding } = require('./protocol-binding.cjs');
 const { createGlobalShortcutBinding } = require('./global-shortcut-binding.cjs');
+const { IpcReplyQueue } = require('./ipc-reply-queue.cjs');
 
 function unsupported(name) {
   const error = new Error(`Weber has not implemented ${name}`);
@@ -192,6 +193,8 @@ function createBindings(host, appPath, loadInternal) {
       this._evaluations = new Map();
       this._nextEvaluation = 0;
       this._ipcRequests = new Set();
+      this._ipcReplies = new IpcReplyQueue(command => this._command(command),
+        error => app.emit('weber-error', error));
       this._deferredEvents = [];
       this._history = [];
       this._historyIndex = -1;
@@ -268,6 +271,7 @@ function createBindings(host, appPath, loadInternal) {
       }
       this._evaluations.clear();
       this._ipcRequests.clear();
+      this._ipcReplies.clear();
     }
     _engineEvent(message) {
       if (this._destroyed || !message || typeof message !== 'object') return;
@@ -314,12 +318,12 @@ function createBindings(host, appPath, loadInternal) {
       if (this._destroyed || request.generation !== this._generation) return;
       const command = { method: 'resolveIpc', generation: request.generation, id: request.id, ok,
         ...(ok ? { value: result === undefined ? null : result } : { error: result }) };
-      try { JSON.stringify(command); } catch {
+      try { this._ipcReplies.push(command); } catch {
         command.ok = false;
         delete command.value;
-        command.error = 'IPC result is not representable by the current JSON transport';
+        command.error = 'IPC result is not representable within the current JSON transport limit';
+        this._ipcReplies.push(command);
       }
-      this._command(command).catch(error => app.emit('weber-error', error));
     }
     _loadURL(target, options = {}) {
       if (this._destroyed) throw new Error('Object has been destroyed');

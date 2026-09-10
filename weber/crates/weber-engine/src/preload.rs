@@ -92,6 +92,39 @@ impl Preload {
                 self.pending_ipc.remove(&id);
                 Ok(b"null".to_vec())
             })()),
+            "resolveIpcBatch" => Some((|| {
+                if request.get("generation").and_then(Value::as_u64) != Some(self.generation) {
+                    return Err("Stale IPC document generation".into());
+                }
+                let items = request.get("replies").and_then(Value::as_array)
+                    .filter(|items| !items.is_empty() && items.len() <= 32)
+                    .ok_or("Invalid IPC reply batch")?;
+                let mut ids = HashSet::new();
+                let mut replies = Vec::with_capacity(items.len());
+                // Validate the entire batch before settling any ticket. A
+                // malformed/duplicate/stale member cannot partly consume it.
+                for item in items {
+                    if item.get("generation").and_then(Value::as_u64) != Some(self.generation) {
+                        return Err("Stale IPC document generation in batch".into());
+                    }
+                    let text = item.get("id").and_then(Value::as_str).ok_or("Invalid IPC ID")?;
+                    let id = text.parse::<u64>().map_err(|_| "Invalid IPC ID")?;
+                    if id.to_string() != text || !self.pending_ipc.contains(&id) || !ids.insert(id) {
+                        return Err("Unknown, completed or duplicate IPC request in batch".into());
+                    }
+                    let ok = item.get("ok").and_then(Value::as_bool).ok_or("Missing IPC outcome")?;
+                    replies.push(if ok {
+                        json!({"id": id, "ok": true, "value": item.get("value").cloned().unwrap_or(Value::Null)})
+                    } else {
+                        json!({"id": id, "ok": false,
+                            "error": item.get("error").and_then(Value::as_str).ok_or("Missing IPC error")?})
+                    });
+                }
+                // One V8 bridge entry and microtask checkpoint for the batch.
+                bridge(page, true, json!({"method": "resolveIpcBatch", "replies": replies}))?;
+                for id in ids { self.pending_ipc.remove(&id); }
+                Ok(b"null".to_vec())
+            })()),
             _ => None,
         }
     }
@@ -363,6 +396,50 @@ mod tests {
         let result = wait_for(&mut driver, &mut page, "evaluation-result");
         assert_eq!(result["ok"], true);
         assert_eq!(result["value"], 12345);
+    }
+
+    #[test]
+    fn batch_settlement_validates_all_members_before_consuming_tickets() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let _guard = runtime.enter();
+        let mut page = Page::new("batch-ipc-test".into(),
+            Arc::new(BrowserContext::new("batch-ipc-test".into())));
+        let mut driver = Preload::new(&mut page);
+        command(&mut driver, &mut page, json!({"method": "configurePreload", "source": r#"
+            const { contextBridge, ipcRenderer } = require('electron');
+            contextBridge.exposeInMainWorld('api', { echo: n => ipcRenderer.invoke('echo', n) });
+        "#})).unwrap();
+        driver.before_navigation().unwrap();
+        runtime.block_on(page.navigate("about:blank")).unwrap();
+        command(&mut driver, &mut page, json!({"method": "startEvaluation", "id": "batch",
+            "source": "Promise.all(Array.from({length:8}, (_,n) => api.echo(n).then(value=>value,error=>error.message)))"
+        })).unwrap();
+        let mut replies = Vec::new();
+        for _ in 0..16 {
+            for event in driver.pump(&mut page).unwrap() {
+                assert_eq!(event["type"], "ipc-invoke");
+                let n = event["args"][0].as_u64().unwrap();
+                replies.push(json!({"id": event["id"], "generation": event["generation"],
+                    "ok": n % 2 == 0, "value": n, "error": "expected"}));
+            }
+            if replies.len() == 8 { break; }
+        }
+        assert_eq!(replies.len(), 8);
+        let generation = driver.generation;
+        let batch = |items: Vec<Value>| json!({"method": "resolveIpcBatch", "generation": generation, "replies": items});
+        let mut invalid = replies.clone();
+        invalid[7]["id"] = replies[0]["id"].clone();
+        assert!(command(&mut driver, &mut page, batch(invalid)).unwrap_err().contains("duplicate"));
+        assert_eq!(driver.pending_ipc.len(), 8);
+        let mut stale = replies.clone();
+        stale[7]["generation"] = json!(generation - 1);
+        assert!(command(&mut driver, &mut page, batch(stale)).unwrap_err().contains("Stale"));
+        assert_eq!(driver.pending_ipc.len(), 8);
+        command(&mut driver, &mut page, batch(replies.clone())).unwrap();
+        let completion = wait_for(&mut driver, &mut page, "evaluation-result");
+        assert_eq!(completion["value"], json!([0, "expected", 2, "expected", 4, "expected", 6, "expected"]));
+        assert!(driver.pending_ipc.is_empty());
+        assert!(command(&mut driver, &mut page, batch(replies)).unwrap_err().contains("completed"));
     }
 
     #[test]

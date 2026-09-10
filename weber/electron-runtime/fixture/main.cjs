@@ -74,6 +74,14 @@ app.whenReady().then(async () => {
   assert.equal(await first.webContents.executeJavaScript('weberTest.secret()'), 'visible only inside the isolated preload context');
   assert.equal(await first.webContents.executeJavaScript('weberTest.add(3, 4)'), 7);
   assert.equal(await second.webContents.executeJavaScript('weberTest.add(8, 9)'), 17);
+  const bursts = await Promise.all([first, second].map((window, index) =>
+    window.webContents.executeJavaScript(`Promise.all(Array.from({ length: 64 }, (_, n) =>
+      weberTest.add(n, ${index * 1000})))`)));
+  assert.deepEqual(bursts[0], Array.from({ length: 64 }, (_, n) => n));
+  assert.deepEqual(bursts[1], Array.from({ length: 64 }, (_, n) => n + 1000));
+  const mixed = await first.webContents.executeJavaScript(`Promise.all(Array.from({ length: 32 }, (_, n) =>
+    (n % 2 ? weberTest.fail() : weberTest.add(n, 1)).then(value => ({ value }), error => ({ error: error.message }))))`);
+  mixed.forEach((value, n) => n % 2 ? assert.match(value.error, /Expected main-process rejection/) : assert.equal(value.value, n + 1));
   assert.equal(await first.webContents.executeJavaScript('weberTest.ping(40)'), 41);
   assert.equal(await second.webContents.executeJavaScript('weberTest.ping(70)'), 71);
   first.webContents.send('test:push', 1);

@@ -98,6 +98,53 @@ app.whenReady().then(async () => {
     ipcRoundTripMs: ipcRoundTrips, domUpdateAndCaptureMs: domAndCapture });
   await delay(500);
   send({ phase: 'idle-ready' });
+  assert.equal((await receive()).command, 'extended');
+  // Keep the original measurements above unchanged. This second phase probes
+  // concurrent IPC and larger component trees independently of that baseline.
+  const ipcBurstMs = [];
+  for (let trial = 0; trial < 8; trial++) {
+    const start = performance.now();
+    const results = await Promise.all(windows.map((window, index) =>
+      window.webContents.executeJavaScript(`Promise.all(Array.from({ length: 32 }, (_, n) => benchmark.add(n, ${index * 1000})))`)));
+    ipcBurstMs.push(performance.now() - start);
+    for (let index = 0; index < results.length; index++) {
+      assert.deepEqual(results[index], Array.from({ length: 32 }, (_, n) => n + index * 1000));
+    }
+  }
+  await Promise.all(windows.map(window => window.webContents.executeJavaScript(`
+    (() => {
+      const rows = document.getElementById('rows');
+      for (let index = 100; index < 1000; index++) {
+        const row = document.createElement('div');
+        row.className = 'row'; row.textContent = 'Component ' + index;
+        rows.appendChild(row);
+      }
+      return document.querySelectorAll('.row').length;
+    })()
+  `).then(count => assert.equal(count, 1000))));
+  const componentUpdateAndCaptureMs = [];
+  const previousCaptures = [null, null];
+  for (let trial = 0; trial < 6; trial++) {
+    const start = performance.now();
+    await Promise.all(windows.map(async (window, index) => {
+      await window.webContents.executeJavaScript(`
+        (() => {
+          const rows = document.querySelectorAll('.row');
+          for (let n = 0; n < 256; n++) rows[n].textContent = 'Window ${index}, update ${trial}, component ' + n;
+          document.getElementById('counter').textContent = 'Components ${index}:${trial}';
+          return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))));
+        })()
+      `);
+      const png = (await window.capturePage()).toPNG();
+      assert.deepEqual(png.subarray(0, 8), pngMagic);
+      const hash = createHash('sha256').update(png).digest('hex');
+      if (previousCaptures[index]) assert.notEqual(hash, previousCaptures[index]);
+      previousCaptures[index] = hash;
+    }));
+    componentUpdateAndCaptureMs.push(performance.now() - start);
+  }
+  await delay(500);
+  send({ phase: 'extended-ready', ipcBurstMs, componentUpdateAndCaptureMs });
   assert.equal((await receive()).command, 'finish');
   clearTimeout(deadline);
   send({ phase: 'complete' });

@@ -125,6 +125,23 @@ async function trial(framework, index, config, clockTicks) {
       Object.assign(idle, { stableProcessSet: false, cpuTimeMs: null, oneCorePercent: null,
         reason: 'The observed process tree changed during idle sampling; CPU delta is omitted' });
     }
+    child.stdin.write('{"command":"extended"}\n');
+    const extendedWorkload = await phase('extended-ready');
+    const extendedSamples = [];
+    const extendedStart = performance.now();
+    for (let sample = 0; sample < 5; sample++) {
+      if (sample) await delay(500);
+      const elapsedMs = performance.now() - extendedStart;
+      const value = snapshot(child.pid);
+      tracked.observe(value);
+      extendedSamples.push({ ...value, elapsedMs });
+    }
+    const extendedElapsedMs = extendedSamples.at(-1).elapsedMs - extendedSamples[0].elapsedMs;
+    const extendedIdle = idleCpu(extendedSamples[0], extendedSamples.at(-1), extendedElapsedMs, clockTicks);
+    if (extendedSamples.some(sample => identity(sample) !== identity(extendedSamples[0]))) {
+      Object.assign(extendedIdle, { stableProcessSet: false, cpuTimeMs: null, oneCorePercent: null,
+        reason: 'The observed process tree changed during extended idle sampling' });
+    }
     child.stdin.write('{"command":"finish"}\n');
     await phase('complete');
     const status = await new Promise((resolve, reject) => {
@@ -138,6 +155,13 @@ async function trial(framework, index, config, clockTicks) {
       javascriptRoundTripMs: workload.javascriptRoundTripMs,
       ipcRoundTripMs: workload.ipcRoundTripMs,
       domUpdateAndCaptureMs: workload.domUpdateAndCaptureMs,
+      extended: { ipcBurstMs: extendedWorkload.ipcBurstMs,
+        componentUpdateAndCaptureMs: extendedWorkload.componentUpdateAndCaptureMs,
+        idle: { ...extendedIdle, elapsedMs: extendedElapsedMs,
+          pssBytesMedian: median(extendedSamples.map(sample => sample.pssBytes)),
+          rssBytesMedian: median(extendedSamples.map(sample => sample.rssBytes)),
+          completeMemorySamples: extendedSamples.filter(sample => sample.errors.length === 0).length,
+          samples: extendedSamples } },
       idle: { ...idle, elapsedMs: idleElapsedMs,
         completeMemorySamples: samples.filter(sample => sample.errors.length === 0).length,
         pssBytesMedian: median(samples.map(sample => sample.pssBytes)),
@@ -192,6 +216,21 @@ function summarize(trials) {
   return summary;
 }
 
+function summarizeExtended(trials) {
+  const summary = {};
+  for (const framework of ['electron', 'weber']) {
+    const samples = trials.filter(trial => trial.framework === framework).map(trial => trial.extended);
+    summary[framework] = {
+      trials: samples.length,
+      ipcBurst64CallsMs: median(samples.flatMap(sample => sample.ipcBurstMs)),
+      update512ComponentsAndCaptureTwoWindowsMs: median(samples.flatMap(sample => sample.componentUpdateAndCaptureMs)),
+      idlePssBytes: median(samples.map(sample => sample.idle.pssBytesMedian)),
+      idleCpuOneCorePercent: median(samples.map(sample => sample.idle.oneCorePercent)),
+    };
+  }
+  return summary;
+}
+
 async function main() {
   if (process.platform !== 'linux') throw new Error('Process-tree comparison currently requires Linux');
   if (Number(fs.readlinkSync('/proc/self')) !== process.pid) {
@@ -216,6 +255,11 @@ async function main() {
       cpuDefinition: 'sum of per-process user+system ticks; 100% means one fully occupied logical CPU',
       launchOrder: 'alternates per trial; operating-system page caches are not flushed',
       scope: 'small local HTML fixture under the current display; not a VS Code, general web compatibility, or production sandbox benchmark' },
+    extendedConditions: { version: 1, afterBaselineIdleMeasurement: true,
+      ipcBurst: 'eight rounds, each 32 simultaneous ipcRenderer.invoke calls per window, 64 total; verifies all ordered results',
+      components: '1000 row elements per window; six rounds update 256 rows per window then wait two animation frames and capture both PNGs',
+      idle: 'five descendant-tree samples 500 ms apart, after a further 500 ms settling; both 1000-row documents remain loaded',
+      scope: 'synthetic component and IPC workload; not Monaco, extension hosting, or a VS Code memory prediction' },
     complete: false, trials: [], summary: null };
   const save = () => {
     fs.mkdirSync(path.dirname(config.output), { recursive: true });
@@ -246,6 +290,7 @@ async function main() {
             cpuTimeMs: initial ? (value.ticks - initial.ticks) * 1000 / clockTicks : null };
         }) }));
       report.summary = summarize(report.trials);
+      report.extendedSummary = summarizeExtended(report.trials);
       save();
       await delay(300);
     }
@@ -253,6 +298,8 @@ async function main() {
   report.complete = true;
   save();
   console.log(JSON.stringify(report.summary, null, 2));
+  console.log('Extended workload summary');
+  console.log(JSON.stringify(report.extendedSummary, null, 2));
 }
 
 main().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

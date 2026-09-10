@@ -121,7 +121,9 @@ jobs:
           WEBER_OBSCURA_RENDERER: ${{ github.workspace }}/out/runtime/obscura/weber-obscura-renderer
         run: |
           node --test weber/electron-runtime/test-message-port.cjs
+          node --test weber/electron-runtime/test-ipc-reply-queue.cjs
           bun test ./weber/electron-runtime/test-message-port.cjs
+          bun test ./weber/electron-runtime/test-ipc-reply-queue.cjs
           node weber/electron-runtime/platform-sync/test.cjs
           bun weber/electron-runtime/platform-sync/test.cjs
           node weber/electron-runtime/platform-sync/tests/test-foreign-wrapper.cjs

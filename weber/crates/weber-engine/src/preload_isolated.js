@@ -392,15 +392,28 @@
         }
         return null;
       }
-      case 'resolveIpc': {
-        const id = validId(payload.id);
-        if (!has(ipcPending, id)) fail('Unknown IPC invocation ticket');
-        if (typeof payload.ok !== 'boolean') fail('IPC settlement requires a boolean status');
-        const entry = ipcPending[id];
-        const value = payload.ok ? publicValue(clone(payload.value)) : new NativeError(errorText(payload.error));
-        delete ipcPending[id];
-        pendingCount--;
-        if (payload.ok) entry.resolve(value); else entry.reject(value);
+      case 'resolveIpc':
+      case 'resolveIpcBatch': {
+        const replies = payload.method === 'resolveIpc' ? [payload] : payload.replies;
+        if (!isArray(replies) || !replies.length || replies.length > 32) fail('Invalid IPC reply batch');
+        const seen = create(null);
+        const prepared = array();
+        for (let i = 0; i < replies.length; i++) {
+          const reply = replies[i];
+          const id = validId(reply.id);
+          if (!has(ipcPending, id) || has(seen, id)) fail('Unknown or duplicate IPC invocation ticket');
+          if (typeof reply.ok !== 'boolean') fail('IPC settlement requires a boolean status');
+          put(seen, id, true);
+          const value = reply.ok ? publicValue(clone(reply.value)) : new NativeError(errorText(reply.error));
+          put(prepared, prepared.length, record({ id, entry: ipcPending[id], ok: reply.ok, value }));
+        }
+        // Finish all copying before resolving any Promise in this batch.
+        for (let i = 0; i < prepared.length; i++) {
+          const reply = prepared[i];
+          delete ipcPending[reply.id];
+          pendingCount--;
+          if (reply.ok) reply.entry.resolve(reply.value); else reply.entry.reject(reply.value);
+        }
         return null;
       }
       case 'drain': {
