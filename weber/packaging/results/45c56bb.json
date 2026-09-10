@@ -1,0 +1,126 @@
+{
+  "kind": "validated-linux-development-bundle",
+  "commit": "45c56bbd9a1d29518b435b9cfd9ff604a74756b6",
+  "workflowRun": 34474995762,
+  "allRuntimeGatesPassed": true,
+  "runtimeGates": 16,
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34474995762/artifacts/10151448508",
+  "artifactZipBytes": 56901103,
+  "artifactZipSha256": "da567c4b6427ef9edbfdb37cd0dc88b1353938748004e34231c15baf10976a6b",
+  "sourceEvidenceArtifact": 10151447644,
+  "sourceEvidenceZipSha256": "5a4d1d5489e1afbdd7d7dfea4938a000abde82d3a2fd71b1f5f3ef20ee7d1bb0",
+  "electronSourceModules": 42,
+  "adaptedSources": [
+    "lib/browser/api/net-fetch.ts",
+    "lib/common/api/net-client-request.ts"
+  ],
+  "compiledForkSourcesVerified": true,
+  "extractedBackendSmokes": {
+    "node": true,
+    "bun": true,
+    "native": true
+  },
+  "chromiumBrowserRuntimeIncluded": false,
+  "nodeAndBunExecutablesIncluded": false,
+  "osSandbox": false,
+  "desktopCapture": {
+    "nodeUnitTests": 7,
+    "bunUnitTests": 7,
+    "nativeChecks": [
+      "actual window pixels",
+      "window icons",
+      "UTF-8 titles",
+      "screen IDs",
+      "aspect ratio",
+      "PNG dimensions",
+      "zero thumbnails",
+      "type selection",
+      "invalid dimensions",
+      "EWMH lists",
+      "destroyed windows",
+      "malformed icons"
+    ],
+    "nodeLivePassed": true,
+    "bunLivePassed": true,
+    "platform": "Linux/X11",
+    "fullNativeImage": false,
+    "waylandPortal": false,
+    "displayMediaStreams": false
+  },
+  "vscode": {
+    "version": "1.136.2",
+    "ready": false,
+    "diagnostic_completed": true,
+    "error": "Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@vscode/spdlog' imported from /tmp/weber-vscode-probe-w83yai_9/VSCode-linux-x64/resources/app/out/main.js",
+    "exit_code": 1,
+    "timed_out": false
+  },
+  "monaco": {
+    "version": "0.52.2",
+    "ready": false,
+    "coreEditingReady": true,
+    "checks": [
+      "document-load",
+      "editor-construction",
+      "model-edit",
+      "undo",
+      "native-keyboard-input",
+      "visible-line-dom-and-capture",
+      "thousand-line-scroll-and-visible-range"
+    ],
+    "error": "Error: Editor worker: Unexpected token 'export'\n    at /home/runner/work/Weber/Weber/weber/monaco-probe/main.cjs:92:42\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+  },
+  "performance": {
+    "comparisonComplete": true,
+    "wholeVscodeVerified": false,
+    "summary": "Same-app three-trial fixture; Weber IPC remains slower than Electron. No whole-VS-Code memory or latency claim."
+  },
+  "artifactZipDigestSource": "GitHub Actions artifact metadata",
+  "vscodeExpandedDependencies": {
+    "kind": "vscode-expanded-dependency-diagnostic",
+    "ready": false,
+    "diagnostic_completed": true,
+    "exit_code": 1,
+    "timed_out": false,
+    "dependency_layout_expanded": true,
+    "dependency_expansion": {
+      "kind": "temporary-asar-dependency-expansion",
+      "archive": "node_modules.asar",
+      "archiveBytes": 55535362,
+      "archiveSHA256": "00a7b8fe98c49773439ad404def377554701b6873e4b0a0e7e18388518b471e4",
+      "sourceBytesPreserved": true,
+      "appSourceModified": false,
+      "packageLayoutExpanded": true,
+      "fileCount": 5089,
+      "dependencyBytes": 335829627,
+      "expandedFiles": 4420,
+      "expandedBytes": 328529630,
+      "preservedFiles": 669,
+      "nativeAddonCount": 16,
+      "newExecutableFiles": 75,
+      "permissionPolicy": "New files use 0755/0644 from unpacked owner-execute or packed executable flag; existing modes retained",
+      "filesSHA256": "d95b471e5260310f1fe6646c708d2842578759c67a85fee7a29504a59ac19350",
+      "filesHashFormat": "Sorted path + NUL + decimal size + NUL + file SHA256 + LF; UTF-8",
+      "transparentAsarFilesystem": false
+    },
+    "error": "TypeError: Va.defaultSession.setPermissionRequestHandler is not a function",
+    "stack": [
+      "at $s.configureSession (file:///tmp/weber-vscode-probe-z37hcvmr/VSCode-linux-x64/resources/app/out/main.js:561:4589)",
+      "at new $s (file:///tmp/weber-vscode-probe-z37hcvmr/VSCode-linux-x64/resources/app/out/main.js:561:3883)",
+      "at i._createInstance (file:///tmp/weber-vscode-probe-z37hcvmr/VSCode-linux-x64/resources/app/out/main.js:588:1994)",
+      "at i.createInstance (file:///tmp/weber-vscode-probe-z37hcvmr/VSCode-linux-x64/resources/app/out/main.js:588:1434)",
+      "at file:///tmp/weber-vscode-probe-z37hcvmr/VSCode-linux-x64/resources/app/out/main.js:592:55260",
+      "at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+      "at async Jx.startup (file:///tmp/weber-vscode-probe-z37hcvmr/VSCode-linux-x64/resources/app/out/main.js:592:54632)"
+    ],
+    "originalDiagnosticError": "Process exited with code 1; no readiness acceptance test was performed",
+    "errorExtraction": "Reparsed the archived stderr with the anchored VS Code main-log prefix fix; no new application run implied",
+    "applicationSourceModified": false,
+    "applicationPackageLayoutModified": true
+  },
+  "diagnosticParserValidation": {
+    "localTestsPassed": 13,
+    "archivedExpandedStderrReplayed": true,
+    "scope": "Parser-only follow-up after this full runtime CI commit"
+  }
+}

@@ -2,7 +2,7 @@
 
 Target: the unmodified Linux x64 VS Code 1.136.2 application at the revision in
 `pin.json`, running through the original Electron source modules on Obscura.
-The latest full native probe (5ea3180) passes the previous `desktopCapturer`
+The latest full native probe (45c56bb) passes the previous `desktopCapturer`
 import failure and exits while resolving `@vscode/spdlog`. That package is present
 inside the original `node_modules.asar`; transparent archive filesystem/module
 loading is missing. A diagnostic exit code of zero means evidence collection
@@ -10,7 +10,17 @@ succeeded; the report itself has `ready: false`. No whole-app compatibility
 percentage is inferred from exported names or module counts. Bun bare Electron
 ESM imports remain unresolved.
 
-Latest validated runtime: [5ea3180](../packaging/results/5ea3180.json), with 16
+A separate `--expand-dependencies` run copies authentic ASAR dependency bytes
+inside its temporary app tree. It preserves 669 existing identical files and
+expands 4,420 files, with 75 newly executable files and 16 native addons in the
+dependency inventory. The app source remains unchanged; its package layout changes.
+That run reaches `CodeApplication.configureSession` and exits at
+`session.defaultSession.setPermissionRequestHandler`. This is an observed failure,
+not transparent ASAR support or a workbench pass. The archive's original diagnostic
+used a generic exit message; the exact exception is recovered from its saved stderr
+by the separately tested VS Code log-prefix parser.
+
+Latest validated runtime: [45c56bb](../packaging/results/45c56bb.json), with 16
 execution gates and extracted Node/Bun/native examples passing. Utility tests
 pass seven per JavaScript backend, startup services pass four on Node and three
 on Bun (one Node-only skip), and safeStorage unit checks pass four per backend.
@@ -25,7 +35,7 @@ scenarios pass across Node/Bun: GNOME, freedesktop fallback, missing service,
 refused upgrade/downgrade, daemon loss, app/host SIGKILL and late responses. Every
 scenario ends with zero owned inhibitors. Service loss is recoverable; fatal host
 exit status remains intact. Physical sleep/display policy remains unverified.
-The startup diagnostic also has three regression tests to distinguish actual
+The startup diagnostic also has four regression tests to distinguish actual
 exceptions from error-like text embedded in minified source lines.
 
 Successive unmodified VS Code runs moved from missing crashReporter to shell,
@@ -104,8 +114,8 @@ cancellation and partition ownership; accepting registrations alone is insuffici
 The pinned [theme service](https://github.com/microsoft/vscode/blob/88e44fa0e00b08f7758b4f6d05632e4fd5e4df6f/src/vs/platform/theme/electron-main/themeMainServiceImpl.ts)
 subscribes to `nativeTheme.updated` and reads/writes theme properties through the
 default Electron import. This dependency is outside the named-import inventory.
-These are source-audited gaps; only the startup report establishes which one is
-encountered next during execution.
+The expanded-dependency run confirms `setPermissionRequestHandler` is encountered
+first in session configuration. `nativeTheme` remains a source-audited later gap.
 
 ## Acceptance work still required
 

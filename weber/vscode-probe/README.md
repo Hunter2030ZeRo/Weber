@@ -76,3 +76,8 @@ The report kind becomes `vscode-expanded-dependency-diagnostic`; it records
 `app_modified: true` for the expanded package layout, `source_files_modified: false`, archive/file hashes, copied bytes and native-addon count. `ready` remains
 false. This can reveal later startup failures, but is neither an unmodified-layout
 pass nor a transparent ASAR implementation. CI retains both reports independently.
+
+The verified [45c56bb run](../packaging/results/45c56bb.json) reached session
+configuration after expansion and stopped at `setPermissionRequestHandler`.
+The log parser now recognizes VS Code's timestamped `[main ...]` error prefix;
+it was checked against the archived stderr and regression tests.

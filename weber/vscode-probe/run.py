@@ -136,6 +136,9 @@ def extract_exception(stderr: str, stdout: str) -> tuple[str | None, list[str]]:
     stack = []
     for line in (stderr + "\n" + stdout).splitlines():
         clean = re.sub(r"\x1b\[[0-9;]*m", "", line).strip()
+        # VS Code's own logger prefixes exceptions; strip only its anchored,
+        # timestamped main-process prefix, never arbitrary source text.
+        clean = re.sub(r"^\[main \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\]\s+", "", clean)
         # Node prints the minified source line before an exception. Error-like
         # strings embedded in that source are not diagnostic messages.
         if error is None and re.match(r"^(?:[A-Za-z]+Error|Error)(?:\s*\[[^]]+\])?:", clean):
