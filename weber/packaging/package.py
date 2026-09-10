@@ -23,6 +23,7 @@ RUNTIME_HELPERS = (
     "bootstrap.cjs", "bindings.cjs", "commonjs-loader.cjs", "electron-api.cjs",
     "host-client.cjs", "ipc-reply-queue.cjs", "menu-binding.cjs", "protocol-binding.cjs", "clipboard-binding.cjs", "display-binding.cjs", "notification-binding.cjs", "message-port-binding.cjs", "global-shortcut-binding.cjs", "platform-app.cjs",
     "power-binding.cjs",
+    "utility-binding.cjs", "utility-bootstrap.cjs", "utility-wire.cjs", "utility-inbox.cjs",
 )
 
 
@@ -204,7 +205,7 @@ def build(repo: Path, output: Path) -> Path:
                 copy_file(path, bundle / "electron-runtime/dist" / path.relative_to(runtime / "dist"))
         for backend in ("node", "bun"):
             project = bundle / "examples" / backend
-            for filename in ("main.cjs", "preload.cjs", "index.html", "package.json"):
+            for filename in ("main.cjs", "preload.cjs", "index.html", "package.json", "utility.cjs"):
                 copy_file(runtime / "fixture" / filename, project / filename)
             (project / "weber.toml").write_text(f'[backend]\nkind = "{backend}"\nentry = "main.cjs"\n')
         copy_file(repo / "weber/native-example/index.html", bundle / "examples/native/index.html")

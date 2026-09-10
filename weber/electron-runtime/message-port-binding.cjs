@@ -20,6 +20,7 @@ function wrap(endpoint) {
     if (!state) throw cloneError('MessagePort has been transferred');
     if (state.closed || !state.peer || state.peer.closed) return;
     if (!Array.isArray(transfer) || transfer.length > 64) throw cloneError('Invalid MessagePort transfer list');
+    if (state.peer.remote && transfer.length) throw cloneError('Nested transfers to a utility process are not implemented');
     const moved = transfer.map(port => endpoints.get(port));
     if (new Set(moved).size !== moved.length || moved.some(endpoint => !endpoint || endpoint.closed || endpoint === state))
       throw cloneError('Duplicate, closed, detached or self-transferred MessagePort');
@@ -75,4 +76,29 @@ function createPair() {
   const first = endpoint(), second = endpoint(); first.peer = second; second.peer = first;
   return { port1: wrap(first), port2: wrap(second) };
 }
-module.exports = { createPair };
+// Prepare all ownership changes before reserving the external wire message.
+// The returned commit is used synchronously, without yielding to application JS.
+function prepareRemoteTransfer(ports) {
+  if (!Array.isArray(ports) || ports.length > 64) throw cloneError('Invalid utility transfer list');
+  const moved = ports.map(port => endpoints.get(port));
+  if (new Set(moved).size !== moved.length || moved.some(state => !state || state.closed || state.remote))
+    throw cloneError('Duplicate, closed or detached utility transfer port');
+  // A previously queued nested transfer cannot be represented by this first
+  // cross-process implementation. Reject before moving any ownership.
+  if (moved.some(state => state.queue.some(message => message.ports.length)))
+    throw cloneError('Queued nested utility transfers are not implemented');
+  return deliver => {
+    if (moved.some((state, n) => endpoints.get(ports[n]) !== state || state.closed || state.remote))
+      throw cloneError('Utility port ownership changed during transfer');
+    return moved.map((state, index) => {
+    endpoints.delete(ports[index]);
+    state.remote = true;
+    state.started = false;
+    const owner = wrap(state);
+    owner.emit = (name, event) => deliver(index, name, event);
+    owner.start();
+    return owner;
+    });
+  };
+}
+module.exports = { createPair, prepareRemoteTransfer };

@@ -125,6 +125,8 @@ jobs:
           node --test weber/electron-runtime/test-preload-boundary.cjs
           bun test ./weber/electron-runtime/test-message-port.cjs
           bun test ./weber/electron-runtime/test-ipc-reply-queue.cjs
+          node --test weber/electron-runtime/test-utility.cjs
+          bun test ./weber/electron-runtime/test-utility.cjs
           node weber/electron-runtime/platform-sync/test.cjs
           bun weber/electron-runtime/platform-sync/test.cjs
           node weber/electron-runtime/platform-sync/tests/test-foreign-wrapper.cjs

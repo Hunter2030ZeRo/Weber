@@ -5,6 +5,8 @@
 #include "../../../shell/browser/obscura/desktop/platform_wire.h"
 #include <memory>
 #include <vector>
+#include <sys/prctl.h>
+#include <signal.h>
 
 namespace {
 using namespace weber::platform_wire;
@@ -62,6 +64,31 @@ napi_value ChildFd(napi_env env, napi_callback_info info) {
     napi_value result; Check(napi_create_int32(env, channel->child, &result)); return result;
   } catch (const std::exception& error) { return Throw(env, error); }
 }
+napi_value TakeParent(napi_env env, napi_callback_info info) {
+  try {
+    size_t argc = 1; napi_value argv[1];
+    Check(napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr));
+    if (argc != 1) throw std::runtime_error("Expected platform channel");
+    auto* channel = Get(env, argv[0]);
+    if (channel->parent < 0) throw std::runtime_error("Platform parent descriptor is already released");
+    napi_value result; Check(napi_create_int32(env, channel->parent, &result));
+    channel->parent = -1; // Ownership moves to the receiving Node/Bun Socket.
+    return result;
+  } catch (const std::exception& error) { return Throw(env, error); }
+}
+napi_value GuardParent(napi_env env, napi_callback_info info) {
+  try {
+    size_t argc = 1; napi_value argv[1]; int32_t expected;
+    Check(napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr));
+    if (argc != 1) throw std::runtime_error("Expected utility parent PID");
+    Check(napi_get_value_int32(env, argv[0], &expected));
+    if (expected < 1 || prctl(PR_SET_PDEATHSIG, SIGKILL) != 0)
+      throw std::runtime_error("Cannot guard utility process lifetime");
+    // Covers the race where the parent exits before the death signal is armed.
+    if (getppid() != expected) throw std::runtime_error("Utility parent already exited");
+    napi_value result; Check(napi_get_undefined(env, &result)); return result;
+  } catch (const std::exception& error) { return Throw(env, error); }
+}
 napi_value ReleaseChild(napi_env env, napi_callback_info info) {
   try {
     size_t argc = 1; napi_value argv[1];
@@ -117,8 +144,10 @@ napi_value Init(napi_env env, napi_value exports) {
     {"releaseChild", nullptr, ReleaseChild, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"request", nullptr, Request, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"close", nullptr, Close, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"takeParent", nullptr, TakeParent, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"guardParent", nullptr, GuardParent, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
-  if (napi_define_properties(env, exports, 5, methods) != napi_ok) return nullptr;
+  if (napi_define_properties(env, exports, 7, methods) != napi_ok) return nullptr;
   return exports;
 }
 }  // namespace

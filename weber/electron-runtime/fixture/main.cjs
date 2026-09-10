@@ -1,6 +1,6 @@
 'use strict';
 // Ordinary Electron application imports. No alternate framework API is loaded.
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, utilityProcess, MessageChannelMain } = require('electron');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const fs = require('node:fs');
@@ -109,8 +109,24 @@ app.whenReady().then(async () => {
   assert.equal(first.isDestroyed(), true);
   assert.equal(BrowserWindow.fromId(first.id), null);
   assert.equal(await second.webContents.executeJavaScript('Promise.resolve(17)'), 17);
+  const utility = utilityProcess.fork(path.join(__dirname, 'utility.cjs'), [], { stdio: 'pipe' });
+  utility.stdout.resume(); utility.stderr.resume();
+  const utilityExit = once(utility, 'exit');
+  const channel = new MessageChannelMain();
+  const utilityReply = once(channel.port1, 'message'); channel.port1.start();
+  channel.port1.postMessage(41); // Must survive ownership transfer and start.
+  utility.postMessage('take-port', [channel.port2]);
+  const [{ data: utilityResult }] = await utilityReply;
+  assert.equal(utilityResult.answer, 42);
+  assert.equal(utilityResult.pid, utility.pid);
+  assert.notEqual(utility.pid, process.pid);
+  assert.ok(!rendererPids.includes(utility.pid));
+  channel.port1.close();
+  const stopped = once(utility, 'message'); utility.postMessage('stop');
+  assert.equal((await stopped)[0], 'stopped'); assert.equal((await utilityExit)[0], 0);
   finish(null, { rendererPids, rendererExecutables, windowsPresented: 2,
     sourceReuse: ['BrowserWindow', 'BaseWindow', 'WebContents'],
     tested: ['original-fs real filesystem access', ...(process.versions.bun ? [] : ['original-fs ESM named and default exports']), 'original loadFile/loadURL', 'Promise evaluation', 'isolated preload', 'contextBridge function calls', 'ipcMain.invoke round trip and rejection', 'ipcRenderer.send and event.reply', 'webContents.send, once and listener removal', 'DOM events', 'window isolation', 'native drawing', 'PNG capture', 'close lifecycle'],
+    utilityProcess: { independentPid: utilityResult.pid, transferredPortRoundTrip: true, cleanExit: true },
     osSandbox: false, privilegedPreload: 'electron bridge subset', fullElectronCompatibility: false });
 }).catch(finish);

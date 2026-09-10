@@ -18,6 +18,7 @@ const entries = [
   'browser/api/menu', 'browser/api/menu-item',
   'browser/api/notification',
   'browser/api/power-monitor',
+  'browser/api/utility-process', 'utility/parent-port',
   'browser/api/screen', 'browser/api/system-preferences', 'browser/api/message-channel', 'browser/api/clipboard', 'browser/api/global-shortcut', 'browser/api/protocol',
 ];
 const seen = new Set();
