@@ -36,6 +36,7 @@ app.whenReady().then(async () => {
     const a = api.start(strong);
     app.prependOnceListener('weber-error', () => {
       assert.equal(api.isStarted(a), false);
+      fs.writeFileSync(process.env.WEBER_INHIBIT_ASSERTION_FILE, JSON.stringify({ ownershipInvalidated: true }), { mode: 0o600 });
       console.log(JSON.stringify({ kind: 'native-power-save-integration', backend: process.versions.bun ? 'bun' : 'node', scenario, passed: true, expectedFatalHostExit: true }));
     });
     // Only inspect this fixture's direct children, then kill its own host.

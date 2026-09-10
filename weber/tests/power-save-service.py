@@ -8,6 +8,7 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from gi.repository import Gio, GLib
 
@@ -26,6 +27,8 @@ weak_attempts = 0
 next_cookie = 100
 started = time.monotonic()
 exit_code = None
+temporary = tempfile.TemporaryDirectory(prefix='weber-inhibitor-test-')
+assertion_file = Path(temporary.name) / 'host-exit-assertion.json'
 GNOME = 'org.gnome.SessionManager'
 POWER = 'org.freedesktop.PowerManagement'
 SCREEN = 'org.freedesktop.ScreenSaver'
@@ -100,7 +103,7 @@ def launch():
     global child
     child = subprocess.Popen([backend, str(root / 'weber/electron-runtime/bootstrap.cjs'),
                               str(root / 'weber/electron-runtime/power-save-fixture')],
-                             env=dict(os.environ, WEBER_INHIBIT_CASE=scenario), start_new_session=True)
+                             env=dict(os.environ, WEBER_INHIBIT_CASE=scenario, WEBER_INHIBIT_ASSERTION_FILE=str(assertion_file)), start_new_session=True)
 
 def acquired(connection, name):
     owned.add(name)
@@ -138,6 +141,12 @@ finally:
         Gio.bus_unown_name(owner)
 
 expected = -signal.SIGKILL if scenario == 'crash' else 1 if scenario == 'host-crash' else 0
+if scenario == 'host-crash':
+    # Exit 1 is expected, but an assertion failure also exits 1. Require proof
+    # that the ownership assertion actually ran before the fatal host handler.
+    assert assertion_file.is_file(), records
+    assert json.loads(assertion_file.read_text()) == {'ownershipInvalidated': True}
+temporary.cleanup()
 assert exit_code == expected and not active and not pending, (scenario, exit_code, active, records)
 assert all(record['valid'] for record in records if record['event'] == 'release'), records
 acquisitions = [record for record in records if record['event'] == 'acquire']
