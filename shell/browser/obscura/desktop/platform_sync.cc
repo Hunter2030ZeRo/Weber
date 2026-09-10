@@ -1,5 +1,6 @@
 // Copyright (c) Weber contributors. SPDX-License-Identifier: MIT
 #include "platform_sync.h"
+#include "clipboard.h"
 #include "platform_wire.h"
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
@@ -175,6 +176,7 @@ struct PlatformSync::State {
   }
   Json Dispatch(const Json& request) {
     const auto method = request.at("method").get<std::string>();
+    if (method.rfind("clipboard.", 0) == 0) return Clipboard(request);
     if (!xdisplay) throw std::runtime_error("Global shortcuts currently require X11; Wayland portal support is not implemented");
     if (method == "globalShortcut.unregisterAll") { UnregisterAll(); return nullptr; }
     if (method != "globalShortcut.register" && method != "globalShortcut.isRegistered" && method != "globalShortcut.unregister")
@@ -231,7 +233,7 @@ struct PlatformSync::State {
     try {
       while (!stopping) {
         pollfd item{fd, POLLIN, 0};
-        const int status = poll(&item, 1, 500);
+        const int status = poll(&item, 1, -1);
         if (status < 0 && errno == EINTR) continue;
         if (status == 0) continue;
         if (status < 0 || !(item.revents & POLLIN)) break;

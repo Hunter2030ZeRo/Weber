@@ -13,7 +13,7 @@
 
 namespace weber::platform_wire {
 using Clock = std::chrono::steady_clock;
-constexpr size_t kLimit = 64 * 1024;
+constexpr size_t kLimit = 4 * 1024 * 1024;
 inline void Nonblocking(int fd) {
   const int flags = fcntl(fd, F_GETFL);
   if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
@@ -44,7 +44,7 @@ inline void Transfer(int fd, char* bytes, size_t size, bool writing, Clock::time
   }
 }
 inline void Write(int fd, const std::string& bytes, Clock::time_point deadline) {
-  if (bytes.empty() || bytes.size() > kLimit) throw std::runtime_error("Platform frame exceeds 64 KiB");
+  if (bytes.empty() || bytes.size() > kLimit) throw std::runtime_error("Platform frame exceeds 4 MiB");
   const uint32_t size = static_cast<uint32_t>(bytes.size());
   char header[4];
   for (unsigned i = 0; i < 4; ++i) header[i] = static_cast<char>(size >> (i * 8));

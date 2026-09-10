@@ -40,7 +40,7 @@ jobs:
             weber -> target
             weber/runtime-config -> target
           cache-on-failure: true
-      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libgtk-3-dev nlohmann-json3-dev cmake xvfb xauth xdotool
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libgtk-3-dev nlohmann-json3-dev cmake xvfb xauth xdotool xclip
       - name: Test real engine APIs
         id: engine
         continue-on-error: true
@@ -135,6 +135,15 @@ jobs:
         run: |
           xvfb-run -a node weber/electron-runtime/bootstrap.cjs weber/electron-runtime/protocol-fixture
           xvfb-run -a bun weber/electron-runtime/bootstrap.cjs weber/electron-runtime/protocol-fixture
+      - name: Test original and legacy clipboard APIs against X11
+        id: clipboard
+        continue-on-error: true
+        env:
+          WEBER_DESKTOP_HOST: ${{ github.workspace }}/out/runtime/weber-desktop-host
+          WEBER_OBSCURA_RENDERER: ${{ github.workspace }}/out/runtime/obscura/weber-obscura-renderer
+        run: |
+          xvfb-run -a node weber/electron-runtime/bootstrap.cjs weber/electron-runtime/clipboard-fixture
+          xvfb-run -a bun weber/electron-runtime/bootstrap.cjs weber/electron-runtime/clipboard-fixture
       - name: Assemble and execute Linux development bundle
         id: bundle
         continue-on-error: true
@@ -167,12 +176,12 @@ jobs:
       - name: Require every runtime check to pass
         if: always()
         env:
-          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.bundle.outcome }} ${{ steps.protocols.outcome }}
+          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.clipboard.outcome }} ${{ steps.bundle.outcome }} ${{ steps.protocols.outcome }}
         run: |
           python3 - <<'PY_GATE'
           import os
           outcomes = os.environ['RESULTS'].split()
-          assert len(outcomes) == 11 and all(result == 'success' for result in outcomes), outcomes
+          assert len(outcomes) == 12 and all(result == 'success' for result in outcomes), outcomes
           PY_GATE
       - name: Require measurements and startup diagnostic to complete
         if: always()

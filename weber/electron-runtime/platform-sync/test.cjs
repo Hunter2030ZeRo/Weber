@@ -36,7 +36,7 @@ async function peer(test) {
     });
   }
   const channel = transport.create();
-  assert.throws(() => transport.request(channel, 'x'.repeat(65537), 100), /64 KiB/);
+  assert.throws(() => transport.request(channel, 'x'.repeat(4 * 1024 * 1024 + 1), 100), /4 MiB/);
   assert.throws(() => transport.request(channel, '{}', 100), /closed/);
   transport.close(channel);
   console.log(`Private synchronous Node-API transport passed on ${process.versions.bun ? 'Bun' : 'Node.js'}`);

@@ -7,6 +7,7 @@ const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createMenuBinding } = require('./menu-binding.cjs');
+const { createClipboardBinding } = require('./clipboard-binding.cjs');
 const { attachPlatformApp } = require('./platform-app.cjs');
 const { createProtocolBinding } = require('./protocol-binding.cjs');
 const { createGlobalShortcutBinding } = require('./global-shortcut-binding.cjs');
@@ -423,6 +424,9 @@ function createBindings(host, appPath, loadInternal) {
   bindings.set('electron_browser_view', { View });
   bindings.set('electron_browser_web_contents_view', { WebContentsView });
   bindings.set('electron_browser_printing', { getPrinterListAsync: () => unsupported('printing') });
+  const clipboard = createClipboardBinding({ host, app });
+  bindings.set('electron_browser_clipboard', clipboard.clipboard);
+  bindings.set('electron_browser_clipboard_item', clipboard.NativeClipboardItem);
   bindings.set('electron_browser_protocol', protocolRuntime.binding);
   bindings.set('electron_browser_menu', menuBinding);
   bindings.set('electron_browser_global_shortcut', createGlobalShortcutBinding({ host, app }));
@@ -463,7 +467,7 @@ function createBindings(host, appPath, loadInternal) {
     if (!quitting) app.emit('weber-error', error);
   });
 
-  return { app, bindings, unsupported, session: protocolRuntime.session,
+  return { app, bindings, unsupported, decorateClipboard: clipboard.decorate, session: protocolRuntime.session,
     finishStartup() {
       app.emit('will-finish-launching');
       ready = true;

@@ -60,6 +60,7 @@ async function main() {
     webContents: 'browser/api/web-contents', View: 'browser/api/view',
     WebContentsView: 'browser/api/web-contents-view', ipcMain: 'browser/api/ipc-main',
     Menu: 'browser/api/menu', MenuItem: 'browser/api/menu-item',
+    clipboard: 'browser/api/clipboard', ClipboardItem: 'browser/api/clipboard-item',
     globalShortcut: 'browser/api/global-shortcut', protocol: 'browser/api/protocol',
   };
   api.app = runtime.app;
@@ -68,7 +69,8 @@ async function main() {
       if (!loaded.has(name)) {
         const value = loadInternal(id);
         if (value === undefined) throw new Error(`Electron source module returned no exports: ${id}`);
-        loaded.set(name, value.default ?? value);
+        const exported = value.default ?? value;
+        loaded.set(name, name === 'clipboard' ? runtime.decorateClipboard(exported) : exported);
       }
       return loaded.get(name);
     } });

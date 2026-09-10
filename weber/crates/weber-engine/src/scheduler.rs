@@ -35,7 +35,7 @@ impl Scheduler {
                     // The wire reader runs immediately after returning. Clearing
                     // before that read ensures a later edge can wake us again.
                     ready.map_err(|e| e.to_string())?.clear_ready();
-                    Ok(0)
+                    Ok::<i32, String>(0)
                 }
                 _ = tokio::time::sleep_until(deadline), if frame => Ok(2),
                 turn = page.run_autonomous_event_loop_turn(), if loaded && !self.idle => {

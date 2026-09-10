@@ -82,7 +82,7 @@ napi_value Request(napi_env env, napi_callback_info info) {
     if (channel->parent < 0) throw std::runtime_error("Platform channel is closed");
     size_t size = 0;
     Check(napi_get_value_string_utf8(env, argv[1], nullptr, 0, &size));
-    if (!size || size > kLimit) throw std::runtime_error("Platform request exceeds 64 KiB");
+    if (!size || size > kLimit) throw std::runtime_error("Platform request exceeds 4 MiB");
     std::vector<char> bytes(size + 1);
     Check(napi_get_value_string_utf8(env, argv[1], bytes.data(), bytes.size(), &size));
     uint32_t timeout;

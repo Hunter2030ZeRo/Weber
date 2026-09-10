@@ -15,3 +15,5 @@ exports.Menu = api.Menu;
 exports.MenuItem = api.MenuItem;
 exports.globalShortcut = api.globalShortcut;
 exports.protocol = api.protocol;
+exports.clipboard = api.clipboard;
+exports.ClipboardItem = api.ClipboardItem;

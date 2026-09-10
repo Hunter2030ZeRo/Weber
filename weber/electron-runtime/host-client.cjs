@@ -85,7 +85,7 @@ class HostClient extends EventEmitter {
     if (this.closed) throw new Error('Weber desktop host is closed');
     const id = ++this.syncId;
     const request = JSON.stringify({ ...parameters, id, method });
-    if (Buffer.byteLength(request) > 64 * 1024) throw new Error('Weber platform request exceeds 64 KiB');
+    if (Buffer.byteLength(request) > 4 * 1024 * 1024) throw new Error('Weber platform request exceeds 4 MiB');
     try {
       const response = JSON.parse(this.platform.request(this.syncChannel, request, 5000));
       if (response?.id !== id || (!Object.hasOwn(response, 'result') && !Object.hasOwn(response, 'error'))) {

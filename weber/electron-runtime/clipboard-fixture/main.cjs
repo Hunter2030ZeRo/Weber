@@ -1,0 +1,46 @@
+const assert = require('node:assert/strict');
+const { spawn, spawnSync } = require('node:child_process');
+const { app, clipboard, ClipboardItem } = require('electron');
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+let owner;
+const timeout = setTimeout(() => { owner?.kill(); app.exit(1); }, 20000);
+app.whenReady().then(async () => {
+  const externalRead = selection => {
+    const result = spawnSync('xclip', ['-selection', selection, '-out'], { encoding: 'utf8', timeout: 3000 });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout;
+  };
+  clipboard.writeText('Weber 한글 — system clipboard');
+  assert.equal(clipboard.readText(), 'Weber 한글 — system clipboard');
+  assert.equal(externalRead('clipboard'), clipboard.readText());
+  clipboard.writeText('primary selection', 'selection');
+  assert.equal(externalRead('primary'), 'primary selection');
+  assert.equal(clipboard.readText(), 'Weber 한글 — system clipboard');
+  clipboard.write({ text: 'plain', html: '<b>rich</b>', rtf: '{\\rtf1 rich}' });
+  assert.equal(clipboard.readText(), 'plain');
+  assert.equal(clipboard.readHTML(), '<b>rich</b>');
+  assert.equal(clipboard.readRTF(), '{\\rtf1 rich}');
+  assert.ok(clipboard.availableFormats().includes('text/html'));
+  const binary = Buffer.from([0, 1, 128, 255]);
+  clipboard.writeBuffer('application/x-weber-fixture', binary);
+  assert.deepEqual(clipboard.readBuffer('application/x-weber-fixture'), binary);
+  await clipboard.write([new ClipboardItem({ 'text/plain': new Blob(['modern']), 'text/html': Promise.resolve('<i>modern</i>') })]);
+  const items = await clipboard.read();
+  assert.equal(await (await items[0].getType('text/html')).text(), '<i>modern</i>');
+  assert.equal(externalRead('clipboard'), 'modern');
+  const large = 'x'.repeat(128 * 1024);
+  clipboard.writeText(large);
+  assert.equal(externalRead('clipboard'), large);
+  assert.throws(() => clipboard.writeBuffer('application/octet-stream', Buffer.alloc(2 * 1024 * 1024 + 1)), /2 MiB/);
+  assert.equal(clipboard.readText(), large, 'rejected write preserves previous ownership');
+  owner = spawn('xclip', ['-quiet', '-selection', 'clipboard', '-in'], { stdio: ['pipe', 'ignore', 'ignore'] });
+  owner.stdin.end('external owner');
+  for (let attempt = 0; attempt < 30 && clipboard.readText() !== 'external owner'; ++attempt) await delay(20);
+  assert.equal(clipboard.readText(), 'external owner');
+  owner.kill();
+  clipboard.writeText('clear me'); clipboard.clear();
+  assert.equal(clipboard.readText(), '');
+  console.log(JSON.stringify({ kind: 'clipboard-acceptance', ok: true,
+    checked: ['external X11 reader and writer', 'primary selection', 'Unicode', 'text/HTML/RTF', 'binary', 'ClipboardItem', '128 KiB text', 'bounded write rejection'] }));
+  clearTimeout(timeout); app.exit(0);
+}).catch(error => { owner?.kill(); clearTimeout(timeout); console.error(error); app.exit(1); });
