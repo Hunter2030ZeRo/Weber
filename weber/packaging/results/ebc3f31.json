@@ -1,0 +1,34 @@
+{
+  "kind": "validated-linux-development-bundle",
+  "commit": "ebc3f31617d939ff3aa856cd8b99a7afb59cd891",
+  "workflowRun": 34432683003,
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34432683003/artifacts/10135190722",
+  "filename": "weber-x86_64-unknown-linux-gnu-development-ebc3f31617d9.tar.gz",
+  "bytes": 56789607,
+  "sha256": "3aa196f5b9f528227c63da91339b5397a9c82d35d9f7c166a2deac2b64af11dc",
+  "allRuntimeGatesPassed": true,
+  "runtimeGates": 13,
+  "extractedBackendSmokes": [
+    "node",
+    "bun",
+    "native"
+  ],
+  "originalElectronSourceModules": 29,
+  "osSandbox": false,
+  "nodeAndBunExecutablesIncluded": false,
+  "chromiumBrowserRuntimeIncluded": false,
+  "vscode": {
+    "version": "1.136.2",
+    "ready": false,
+    "blocker": "Named export crashReporter is missing; workbench, terminal and extension-host acceptance remain incomplete."
+  },
+  "monaco": {
+    "version": "0.52.2",
+    "coreEditingReady": true,
+    "ready": false,
+    "passedChecks": 7,
+    "blocker": "Original module editor worker does not answer; diff does not complete."
+  },
+  "nativePlatformValidation": "Actual Node/Bun native transport to controlled D-Bus protocol peers, with real X11 idle queries; not full desktop-daemon acceptance."
+}
+

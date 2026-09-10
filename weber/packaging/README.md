@@ -14,7 +14,8 @@ Obscura's standalone JavaScript engine still uses V8.
 ## Use an extracted archive
 
 Use a Linux distribution compatible with the build machine. Install GTK 3,
-fontconfig, fonts, X11 libraries and libstdc++; run inside an X11 desktop session.
+fontconfig, fonts, libpng, X11/XScreenSaver libraries and libstdc++; run inside
+an X11 desktop session.
 `bundle-manifest.json` records the build target, glibc version, required ELF symbol
 versions, direct shared libraries, source commits and hashes of every other file.
 Those symbol versions are a lower bound for the binaries themselves; system
@@ -103,9 +104,10 @@ without notice files are explicitly listed; some native components bundled by a
 crate may require additional notices or source distribution. This collection is
 evidence for a later distribution review, not a complete third-party license audit.
 
-The latest recorded validated bundle is
-[a4cf783](results/a4cf783.json), from
-[CI run 34424348801](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34424348801).
-It contains 27 compiled original Electron modules, the current native protocol,
-clipboard/display bindings and batched renderer IPC. All three backend examples
+The IPC/frame optimization bundle is
+[56cfe40](results/56cfe40.json), from
+[CI run 34433240209](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34433240209).
+It contains 29 compiled original Electron modules, native protocol,
+clipboard/display/notification/power bindings, batched renderer IPC and shared
+immutable capture/presentation frames. All three backend examples
 passed after extraction. See its record for the archive link and checksum.

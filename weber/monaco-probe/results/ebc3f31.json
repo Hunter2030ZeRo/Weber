@@ -1,0 +1,126 @@
+{
+  "workflow_run": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34432683003",
+  "raw_artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34432683003/artifacts/10135189678",
+  "reports": [
+    {
+      "kind": "standalone-monaco-diagnostic",
+      "version": "0.52.2",
+      "ready": true,
+      "vscodeReady": false,
+      "osSandbox": false,
+      "checks": [
+        "document-load",
+        "editor-construction",
+        "model-edit",
+        "undo",
+        "native-keyboard-input",
+        "visible-line-dom-and-capture",
+        "thousand-line-scroll-and-visible-range",
+        "original-editor-worker-and-diff"
+      ],
+      "error": null,
+      "assets": {
+        "monaco": "0.52.2",
+        "monacoSourceTag": "v0.52.2",
+        "monacoSourceCommit": "404545bded1df6ffa41ea0af4e8ddb219018c6c1",
+        "esbuild": "0.25.5",
+        "applicationSourceModified": false,
+        "files": [
+          {
+            "name": "editor.css",
+            "bytes": 82347,
+            "sha256": "d36f0b585df619f66f30af707574d3201f884df4e5971332ebbb9c94a96bf846"
+          },
+          {
+            "name": "editor.js",
+            "bytes": 4469986,
+            "sha256": "3d72b8984c3b62daece1fd793ba2d86f66ff5e867bfc0a6c3459a87c7f68261b"
+          },
+          {
+            "name": "editor.worker.js",
+            "bytes": 528848,
+            "sha256": "221623fe7f5ff2852ec88d1d53ec58f8f8e02e71f7c38b7b13852b94773f3ad0"
+          },
+          {
+            "name": "index.html",
+            "bytes": 1019,
+            "sha256": "fbc4fba5057b4fb3979c2e47ecb31a770e28c3e2b294beffb0cf1c7c5b354ada"
+          }
+        ]
+      },
+      "page": {
+        "stage": "editor",
+        "errors": [],
+        "workers": 1,
+        "workerMessages": 5
+      },
+      "coreEditingReady": true,
+      "framework": "electron",
+      "sourceCommit": "ebc3f31617d939ff3aa856cd8b99a7afb59cd891",
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "outputTail": "[8218:0910/032203.186431:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n[8218:0910/032203.217153:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n[8218:0910/032203.242981:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n[8218:0910/032203.280686:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: \n[8218:0910/032203.281353:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are \"tcp\" and on UNIX \"unix\")\n[8218:0910/032203.292703:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: \n[8218:0910/032203.295177:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: \n{\"kind\":\"standalone-monaco-diagnostic\",\"version\":\"0.52.2\",\"ready\":true,\"vscodeReady\":false,\"osSandbox\":false,\"checks\":[\"document-load\",\"editor-construction\",\"model-edit\",\"undo\",\"native-keyboard-input\",\"visible-line-dom-and-capture\",\"thousand-line-scroll-and-visible-range\",\"original-editor-worker-and-diff\"],\"error\":null,\"assets\":{\"monaco\":\"0.52.2\",\"monacoSourceTag\":\"v0.52.2\",\"monacoSourceCommit\":\"404545bded1df6ffa41ea0af4e8ddb219018c6c1\",\"esbuild\":\"0.25.5\",\"applicationSourceModified\":false,\"files\":[{\"name\":\"editor.css\",\"bytes\":82347,\"sha256\":\"d36f0b585df619f66f30af707574d3201f884df4e5971332ebbb9c94a96bf846\"},{\"name\":\"editor.js\",\"bytes\":4469986,\"sha256\":\"3d72b8984c3b62daece1fd793ba2d86f66ff5e867bfc0a6c3459a87c7f68261b\"},{\"name\":\"editor.worker.js\",\"bytes\":528848,\"sha256\":\"221623fe7f5ff2852ec88d1d53ec58f8f8e02e71f7c38b7b13852b94773f3ad0\"},{\"name\":\"index.html\",\"bytes\":1019,\"sha256\":\"fbc4fba5057b4fb3979c2e47ecb31a770e28c3e2b294beffb0cf1c7c5b354ada\"}]},\"page\":{\"stage\":\"editor\",\"errors\":[],\"workers\":1,\"workerMessages\":5},\"coreEditingReady\":true}\n"
+    },
+    {
+      "kind": "standalone-monaco-diagnostic",
+      "version": "0.52.2",
+      "ready": false,
+      "vscodeReady": false,
+      "osSandbox": false,
+      "checks": [
+        "document-load",
+        "editor-construction",
+        "model-edit",
+        "undo",
+        "native-keyboard-input",
+        "visible-line-dom-and-capture",
+        "thousand-line-scroll-and-visible-range"
+      ],
+      "error": "AssertionError [ERR_ASSERTION]: Original Monaco diff did not complete\n\nundefined !== 1\n\n    at /home/runner/work/Weber/Weber/weber/monaco-probe/main.cjs:97:10",
+      "assets": {
+        "monaco": "0.52.2",
+        "monacoSourceTag": "v0.52.2",
+        "monacoSourceCommit": "404545bded1df6ffa41ea0af4e8ddb219018c6c1",
+        "esbuild": "0.25.5",
+        "applicationSourceModified": false,
+        "files": [
+          {
+            "name": "editor.css",
+            "bytes": 82347,
+            "sha256": "d36f0b585df619f66f30af707574d3201f884df4e5971332ebbb9c94a96bf846"
+          },
+          {
+            "name": "editor.js",
+            "bytes": 4469986,
+            "sha256": "3d72b8984c3b62daece1fd793ba2d86f66ff5e867bfc0a6c3459a87c7f68261b"
+          },
+          {
+            "name": "editor.worker.js",
+            "bytes": 528848,
+            "sha256": "221623fe7f5ff2852ec88d1d53ec58f8f8e02e71f7c38b7b13852b94773f3ad0"
+          },
+          {
+            "name": "index.html",
+            "bytes": 1019,
+            "sha256": "fbc4fba5057b4fb3979c2e47ecb31a770e28c3e2b294beffb0cf1c7c5b354ada"
+          }
+        ]
+      },
+      "page": {
+        "errors": [],
+        "stage": "editor",
+        "workerMessages": 0,
+        "workers": 1
+      },
+      "coreEditingReady": true,
+      "framework": "weber",
+      "sourceCommit": "ebc3f31617d939ff3aa856cd8b99a7afb59cd891",
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "outputTail": "\n(weber-desktop-host:8325): dbind-WARNING **: 03:22:04.034: AT-SPI: Error retrieving accessibility bus address: org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files\n{\"kind\":\"standalone-monaco-diagnostic\",\"version\":\"0.52.2\",\"ready\":false,\"vscodeReady\":false,\"osSandbox\":false,\"checks\":[\"document-load\",\"editor-construction\",\"model-edit\",\"undo\",\"native-keyboard-input\",\"visible-line-dom-and-capture\",\"thousand-line-scroll-and-visible-range\"],\"error\":\"AssertionError [ERR_ASSERTION]: Original Monaco diff did not complete\\n\\nundefined !== 1\\n\\n    at /home/runner/work/Weber/Weber/weber/monaco-probe/main.cjs:97:10\",\"assets\":{\"monaco\":\"0.52.2\",\"monacoSourceTag\":\"v0.52.2\",\"monacoSourceCommit\":\"404545bded1df6ffa41ea0af4e8ddb219018c6c1\",\"esbuild\":\"0.25.5\",\"applicationSourceModified\":false,\"files\":[{\"name\":\"editor.css\",\"bytes\":82347,\"sha256\":\"d36f0b585df619f66f30af707574d3201f884df4e5971332ebbb9c94a96bf846\"},{\"name\":\"editor.js\",\"bytes\":4469986,\"sha256\":\"3d72b8984c3b62daece1fd793ba2d86f66ff5e867bfc0a6c3459a87c7f68261b\"},{\"name\":\"editor.worker.js\",\"bytes\":528848,\"sha256\":\"221623fe7f5ff2852ec88d1d53ec58f8f8e02e71f7c38b7b13852b94773f3ad0\"},{\"name\":\"index.html\",\"bytes\":1019,\"sha256\":\"fbc4fba5057b4fb3979c2e47ecb31a770e28c3e2b294beffb0cf1c7c5b354ada\"}]},\"page\":{\"errors\":[],\"stage\":\"editor\",\"workerMessages\":0,\"workers\":1},\"coreEditingReady\":true}\n"
+    }
+  ]
+}
+

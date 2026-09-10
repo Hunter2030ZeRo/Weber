@@ -1,0 +1,85 @@
+{
+  "kind": "benchmark-summary-from-ci-log",
+  "commit": "ebc3f31617d939ff3aa856cd8b99a7afb59cd891",
+  "workflow_run": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34432683003",
+  "raw_artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34432683003/artifacts/10135189678",
+  "completeBenchmark": true,
+  "fullWorkflowPassed": true,
+  "methodologyVersion": 2,
+  "conditions": {
+    "windows": 2,
+    "trialsPerFramework": 3,
+    "build": "Release",
+    "osSandboxEnabled": false,
+    "display": "Xvfb 1600x900; nonoverlapping 768x512 windows",
+    "electronVersion": "42.0.0",
+    "workload": "Identical application files; original 100-row fixture before independent extended phase and final warm renderer IPC.",
+    "scope": "Synthetic workload; not a VS Code, Monaco, extension-host or production desktop benchmark",
+    "idleCpuZero": "Zero means below process CPU tick resolution during roughly two seconds of sampling.",
+    "comparisonWithPrevious": "Shared CI runner timings vary; no same-run optimization ablation. IPC and larger component latency still exceed Electron."
+  },
+  "summary": {
+    "electron": {
+      "domUpdateAndCaptureMs": 48.995949499999995,
+      "idleCpuOneCorePercent": 0,
+      "idlePssBytes": 394799104,
+      "idleRssBytes": 921939968,
+      "ipcRoundTripMs": 0.5608599999999342,
+      "javascriptRoundTripMs": 0.30534149999999727,
+      "rendererOriginatedWarmIpcMs": 0.24780000000004657,
+      "startupToLoadAndCaptureMs": 638.256688999998,
+      "trials": 3
+    },
+    "weber": {
+      "domUpdateAndCaptureMs": 49.59538150000003,
+      "idleCpuOneCorePercent": 0,
+      "idlePssBytes": 183812096,
+      "idleRssBytes": 286056448,
+      "ipcRoundTripMs": 1.2445519999999988,
+      "javascriptRoundTripMs": 0.5110274999999831,
+      "rendererOriginatedWarmIpcMs": 0.486,
+      "startupToLoadAndCaptureMs": 250.8191939999997,
+      "trials": 3
+    },
+    "weberDividedByElectron": {
+      "domUpdateAndCaptureMs": 1.012234317451079,
+      "idleCpuOneCorePercent": null,
+      "idlePssBytes": 0.46558387326025946,
+      "idleRssBytes": 0.3102766535011529,
+      "ipcRoundTripMs": 2.2190065256929445,
+      "javascriptRoundTripMs": 1.6736260875118112,
+      "rendererOriginatedWarmIpcMs": 1.9612590799027791,
+      "startupToLoadAndCaptureMs": 0.3929754255971464
+    }
+  },
+  "extendedConditions": {
+    "version": 1,
+    "ipc": "Eight rounds of 32 concurrent invokes per window, 64 total, checking every result.",
+    "components": "1000 row elements per window; six rounds change 256 rows per window then wait two animation frames and capture both windows.",
+    "idle": "Five process-tree samples 500 ms apart after 500 ms settling."
+  },
+  "extendedSummary": {
+    "electron": {
+      "idleCpuOneCorePercent": 0.48016408228480817,
+      "idlePssBytes": 436679680,
+      "ipcBurst64CallsMs": 5.101425500000005,
+      "trials": 3,
+      "update512ComponentsAndCaptureTwoWindowsMs": 65.30837149999957
+    },
+    "weber": {
+      "idleCpuOneCorePercent": 0,
+      "idlePssBytes": 230409216,
+      "ipcBurst64CallsMs": 5.40228900000011,
+      "trials": 3,
+      "update512ComponentsAndCaptureTwoWindowsMs": 96.11122199999954
+    }
+  },
+  "rendererIpcConditions": {
+    "warmupCalls": 200,
+    "calls": 500,
+    "checksum": 125250,
+    "timing": "Inside one renderer script, after both original idle phases. Same isolated contextBridge/preload path; excludes per-invocation executeJavaScript request/completion.",
+    "aggregation": "Median of three per-trial mean round-trip times."
+  }
+}
+

@@ -21,6 +21,10 @@ The replacement code is intentionally at the native binding boundary:
 * `menu-binding.cjs` maps original Menu/MenuItem policy to actual GTK menus.
 * `global-shortcut-binding.cjs` uses the private synchronous Node-API channel for
   actual X11 registration and ownership booleans; callbacks remain asynchronous.
+* `notification-binding.cjs` routes the original Notification lifecycle through
+  the desktop D-Bus notification service, with bounded asynchronous delivery.
+* `power-binding.cjs` connects the original lazy powerMonitor wrapper to native
+  XScreenSaver idle queries and UPower/logind events, without periodic polling.
 * `commonjs-loader.cjs` executes CommonJS modules on Bun, whose `Module._load`
   interception differs from Node. Builtins and native addons remain Bun's.
 
@@ -120,7 +124,25 @@ in the batch is settled. Main-world contextBridge still transports JSON and
 async function proxies; arbitrary callbacks and Electron's full structured-clone
 contract are not implemented.
 
-Tray, drag and drop, notifications, persistent sessions, transferred renderer or
+ContextBridge call/settlement traffic is also batched, up to 32 per context
+entry. Native host event batches stay batched into the backend. Page commands
+can enter the window worker queue directly when no earlier GTK operation forms
+an ordering barrier. Small replies on an empty Unix socket output queue are sent
+without waking the output writer; partial sends retain the bounded ordered path.
+Fresh private JSON parse trees are validated in place. Application-owned values
+still require strict copying that rejects accessors and unsafe serialization
+hooks. Overflow, stale generations, timeouts and receiver failure remain tested.
+
+Notification delivery, replacement, default click, close, silent hints and
+absent-service failure are exercised on Node and Bun using a private D-Bus
+protocol peer. The peer is test infrastructure; the runtime uses the real native
+GDBus transport. Image-object icons, full custom actions, daemon restarts and
+platform-specific notification behavior remain acceptance work. Native power
+tests use real X11 idle queries and a D-Bus peer for power/suspend/resume/session
+lock events. Shutdown inhibition is explicitly unsupported; Linux thermal state
+can be unknown. These tests do not claim complete desktop-daemon coverage.
+
+Tray, drag and drop, persistent sessions, transferred renderer or
 utility-process message ports, an OS sandbox, full navigation history, general
 WebContentsView embedding, production installers and VS Code acceptance remain
 unimplemented. Unsupported binding operations fail explicitly. Many upstream

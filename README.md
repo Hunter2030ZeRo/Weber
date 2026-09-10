@@ -12,8 +12,10 @@ Electron's MIT license remains at the repository root; its README is
 
 ## Executable implementation
 
-The runtime compiles and executes 27 original, unmodified Electron TypeScript
-modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem, globalShortcut, protocol, clipboard, screen, systemPreferences and IPC helpers. A
+The runtime compiles and executes 29 original, unmodified Electron TypeScript
+modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem,
+Notification, powerMonitor, globalShortcut, protocol, clipboard, screen,
+systemPreferences and IPC helpers. A
 replacement `process._linkedBinding` layer routes their native operations to a
 separate GTK host. Each window has its own Obscura process. The build uses no
 Chromium checkout, Content, Blink, Viz or Chromium renderer binary. Obscura and
@@ -23,8 +25,8 @@ The original Chromium-dependent GN build and native Electron implementation rema
 as migration reference in this source fork. Build Weber using the CMake/Cargo path
 below; running the upstream GN build does not produce the replacement runtime.
 
-[The latest verified runtime](weber/packaging/results/a4cf783.json) passed
-12 execution gates, extracted Node/Bun/native bundle checks, and the identical-app
+[The IPC/frame optimization build](weber/packaging/results/56cfe40.json) passed
+13 execution gates, extracted Node/Bun/native bundle checks, and the identical-app
 Electron comparison. The build also runs an unmodified VS Code startup diagnostic;
 that diagnostic is not a VS Code acceptance pass.
 
@@ -36,14 +38,20 @@ classic script, ES module and fetch requests. Main-process MessageChannelMain
 supports queued structured data and ownership transfer between main-process ports.
 Renderer/utility-process port transfer is still missing.
 
-Download the [Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34424348801/artifacts/10132174968) and follow the
+Linux notifications use the desktop D-Bus service. Power observation uses UPower,
+logind and XScreenSaver; it does not add a periodic idle polling loop. Node and
+Bun checks exercise the actual native transport with controlled D-Bus test peers.
+Full desktop-daemon and operating-system acceptance remains separate.
+
+Download the [Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34433240209/artifacts/10135376840) and follow the
 [packaging instructions](weber/packaging/README.md). Node/Bun executables are
 external. The bundle record identifies the exact runtime commit and checksum.
 
 ## Build and run on Linux
 
-Install Rust, Node.js 24, CMake, a C++17 compiler, pkg-config, GTK3 and fontconfig
-development headers, and nlohmann-json. The CI workflow lists Ubuntu packages.
+Install Rust, Node.js 24, CMake, a C++17 compiler, pkg-config, GTK3, libpng,
+XScreenSaver and fontconfig development headers, and nlohmann-json.
+The CI workflow lists Ubuntu packages.
 
 ```sh
 git submodule update --init --depth 1 weber/vendor/obscura
@@ -86,17 +94,27 @@ the TOML selector automatically.
 The [binding scope](weber/electron-runtime/README.md) and
 [VS Code compatibility matrix](weber/vscode-probe/COMPATIBILITY.md) distinguish
 verified operations from missing behavior. The unmodified VS Code 1.136.2 entry
-currently stops at the missing `Notification` export. Workbench startup, editing,
+currently stops at the missing `crashReporter` export. Workbench startup, editing,
 terminal, extension hosting and full-app migration have not passed acceptance.
 No compatibility percentage is claimed.
+
+The separate [Monaco diagnostic](weber/monaco-probe/README.md) runs upstream
+Monaco 0.52.2 and passes construction, edits, undo, actual X11 keyboard input,
+line rendering/capture and 1,000-line scrolling. Its worker-driven diff still
+fails on Weber. Standalone editor success is not full VS Code acceptance.
 
 The renderer now keeps Obscura's existing timer/network reactor alive and waits
 for actual work. Idle GTK host workers also block on socket/eventfd readiness.
 A frame deadline is armed only for damage or active animation. Frame delivery
 keeps one pending presentation buffer, converts pixels in place, and writes
 Rust-owned replies directly to the renderer socket. Concurrent IPC replies are
-bounded and batched without a timer, with document-generation validation before
-any reply is consumed. Unused CDP network-body retention is disabled by default;
+bounded and batched across both isolated contexts without a timer, with
+document-generation validation before any reply is consumed. Queue-free small
+socket replies avoid the output writer thread; ordered fallback and byte/time
+bounds remain in force. Newly parsed private JSON trees are validated in place;
+application-owned objects still undergo strict copying. Presentation and PNG
+capture share immutable frames, with one pixel conversion and no second engine
+rasterization for an unchanged capture. Unused CDP network-body retention is disabled by default;
 normal page resources and application fetch results are retained as required.
 
 The [recorded measurements](weber/benchmarks/results/README.md) include cases
@@ -110,7 +128,7 @@ costs and scaling behavior.
 Remaining work includes renderer/utility-process MessagePorts, persistent
 session storage and complete network semantics, full preload/structured-clone
 behavior, general WebContentsView embedding, IME/contenteditable editing,
-notifications, tray, drag and drop, production installers and Windows/macOS.
+complete worker execution, tray, drag and drop, production installers and Windows/macOS.
 Separate processes and private transport are implemented; an OS sandbox and
 comprehensive origin/network policy are not. Obscura agent access should share
 application page/input state with explicit application authorization.

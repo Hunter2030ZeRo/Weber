@@ -3,6 +3,87 @@
 These are actual measurements, including regressions. They are not estimates of
 general application compatibility or production performance.
 
+## Final verification: 56cfe40
+
+[CI run 34433240209](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34433240209)
+passed all 13 runtime gates, all three extracted backends and evidence
+collection. Runtime and benchmark source are unchanged from ebc3f31; this commit
+adds observation of Monaco's actual module-worker error. The differing timings
+are another runner sample, not evidence of another implementation speedup.
+
+| Median metric | Electron 42.0.0 | Weber |
+| --- | ---: | ---: |
+| Small fixture process-tree PSS | 373.945 MiB | 174.117 MiB |
+| Startup to paint and capture | 465.365 ms | 204.172 ms |
+| JavaScript round trip | 0.246 ms | 0.344 ms |
+| IPC observed through executeJavaScript | 0.424 ms | 0.822 ms |
+| Warm renderer-originated IPC | 0.175 ms | 0.288 ms |
+| Small DOM update, two frame callbacks and PNG capture | 48.634 ms | 44.156 ms |
+| 64-call IPC burst | 2.389 ms | 3.766 ms |
+| 512 updates, two frame callbacks and both captures | 49.818 ms | 73.246 ms |
+| Extended process-tree PSS | 414.795 MiB | 222.344 MiB |
+| Small and extended idle CPU, one core | 0.000 % | 0.000 % |
+
+Small capture was faster in this run; serial IPC, concurrent IPC and larger
+component updates remained slower. Their Weber/Electron time ratios were
+approximately 1.65, 1.58 and 1.47. The previous run's near-parity burst result
+did not persist. The goal of matching Electron is still unmet across workloads.
+Both development runs show substantially lower synthetic process-tree PSS;
+neither establishes VS Code memory or performance. Capture timing includes frame
+callbacks and PNG encoding, not just UI business logic or input-to-display delay.
+
+[56cfe40-summary.json](56cfe40-summary.json) contains exact values and the raw
+artifact link. Three launches per framework, identical app code, unsandboxed
+Xvfb and CPU tick resolution have the same limitations described below. Monaco
+passes seven individual checks but its worker fails with `Unexpected token
+'export'`; the whole VS Code entry still stops at missing `crashReporter`.
+
+## IPC/frame optimization build: ebc3f31
+
+[CI run 34432683003](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34432683003)
+passed 13 runtime gates and Node/Bun/native execution after archive extraction.
+The same application ran three times per framework, with both the existing
+workloads preserved and a final renderer-originated IPC measurement added.
+
+| Median metric | Electron 42.0.0 | Weber |
+| --- | ---: | ---: |
+| Small fixture: process-tree PSS | 376.510 MiB | 175.297 MiB |
+| Startup to paint and capture | 638.257 ms | 250.819 ms |
+| JavaScript round trip | 0.305 ms | 0.511 ms |
+| IPC observed through executeJavaScript | 0.561 ms | 1.245 ms |
+| Warm renderer-originated IPC | 0.248 ms | 0.486 ms |
+| Small DOM update, two frame callbacks and PNG capture | 48.996 ms | 49.595 ms |
+| Small fixture idle CPU, one core | 0.000 % | 0.000 % |
+| Extended: 64-call IPC burst | 5.101 ms | 5.402 ms |
+| Extended: 512 updates, two frame callbacks and both captures | 65.308 ms | 96.111 ms |
+| Extended process-tree PSS | 416.450 MiB | 219.735 MiB |
+| Extended idle CPU, one core | 0.480 % | 0.000 % |
+
+Warm IPC is measured inside a single renderer script, with 200 warm-up invokes
+and 500 timed sequential invokes through the same isolated preload API. The
+report aggregates the three per-trial means; it does not compare a minimum with
+Electron's median. The original IPC metric remains and includes an additional
+executeJavaScript request/completion around every invoke.
+
+Small capture and burst traffic were close in this run. Serial IPC still took
+about 1.96 times Electron's time even after excluding evaluation transport;
+the larger component phase took about 1.47 times as long. This does **not** meet
+the target of matching or beating Electron across these workloads. A prior
+successful run of the JSON/frame changes, `d1c97ab`, measured component and burst
+ratios around 1.44 and 1.91 respectively. Shared-runner variation prevents
+claiming stable burst parity from the latest run alone.
+
+Changes reduce context entries, host event serialization, output thread hops,
+private JSON tree copies and duplicate capture/presentation buffers. The tests
+retain actual document changes, frame waits, PNG output and input/result checks.
+There is no same-run ablation that assigns a precise speedup to each change.
+
+The synthetic PSS ratios are 46.6% and 52.7%. They cannot be multiplied by VS
+Code's memory use. Idle zero means below CPU tick resolution in the short
+sampling interval. All results remain development Xvfb measurements without
+an OS sandbox. [ebc3f31-summary.json](ebc3f31-summary.json) records exact values
+and links to raw process trees, executable hashes and samples.
+
 ## Native compatibility and wake-driven runtime: a4cf783
 
 [CI run 34424348801](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34424348801)
