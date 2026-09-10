@@ -89,3 +89,19 @@ reports captured immediately after DOM mutation and did not place windows side
 by side. Keep those reports as evidence of the old method. In particular, the
 new DOM/capture numbers cannot be compared against them as if only runtime
 optimizations changed; the timed operation itself now includes two frame waits.
+
+## Concurrent IPC and component workload
+
+After collecting the original small-fixture idle samples, the same application
+now runs an independent extended phase. Eight rounds issue 32 simultaneous
+`ipcRenderer.invoke` calls per window (64 total), verifying every result. Each
+window then grows to 1,000 row elements. Six update rounds change 256 elements
+per window, wait two animation frames and capture both PNGs, checking visible
+changes. Five further process-tree samples measure PSS and idle CPU after a
+500 ms settling period. The larger documents remain loaded while sampling.
+
+`extendedConditions`, each trial's `extended` object, and `extendedSummary`
+record this separately. The original `summary` still describes the original
+100-row fixture measured before the added workload. The extended phase is a
+synthetic test of concurrent traffic and component updates; it does not load
+Monaco, a terminal or extensions and cannot predict whole VS Code memory use.

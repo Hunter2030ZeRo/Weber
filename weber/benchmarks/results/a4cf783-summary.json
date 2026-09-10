@@ -1,0 +1,74 @@
+{
+  "kind": "benchmark-summary-from-ci-log",
+  "commit": "a4cf783b0dfcec186a9ae6f2c6ec795428f8adb1",
+  "workflow_run": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34424348801",
+  "raw_artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34424348801/artifacts/10132174364",
+  "completeBenchmark": true,
+  "fullWorkflowPassed": true,
+  "methodologyVersion": 2,
+  "conditions": {
+    "windows": 2,
+    "trialsPerFramework": 3,
+    "build": "Release",
+    "osSandboxEnabled": false,
+    "display": "Xvfb 1600x900; nonoverlapping 768x512 windows",
+    "electronVersion": "42.0.0",
+    "workload": "Identical application files; original 100-row fixture measured before independent extended phase.",
+    "scope": "Synthetic workload; not a VS Code, Monaco, extension-host or production desktop benchmark",
+    "idleCpuZero": "Zero means below process CPU tick resolution during roughly two seconds of sampling, not literally no work.",
+    "comparisonWithPrevious": "Shared CI runner timings vary. No unbatched control trial was run; these results do not quantify the speedup caused by batching alone."
+  },
+  "summary": {
+    "electron": {
+      "domUpdateAndCaptureMs": 48.608358500000065,
+      "idleCpuOneCorePercent": 0,
+      "idlePssBytes": 397007872,
+      "idleRssBytes": 922120192,
+      "ipcRoundTripMs": 0.4771100000000388,
+      "javascriptRoundTripMs": 0.2657560000000103,
+      "startupToLoadAndCaptureMs": 614.7443439999988,
+      "trials": 3
+    },
+    "weber": {
+      "domUpdateAndCaptureMs": 56.918405000000035,
+      "idleCpuOneCorePercent": 0,
+      "idlePssBytes": 188480512,
+      "idleRssBytes": 290643968,
+      "ipcRoundTripMs": 1.164527000000021,
+      "javascriptRoundTripMs": 0.505417499999993,
+      "startupToLoadAndCaptureMs": 295.49139899999864,
+      "trials": 3
+    },
+    "weberDividedByElectron": {
+      "domUpdateAndCaptureMs": 1.1709592085896083,
+      "idleCpuOneCorePercent": null,
+      "idlePssBytes": 0.4747525812284145,
+      "idleRssBytes": 0.3151909810906733,
+      "ipcRoundTripMs": 2.4407935276978607,
+      "javascriptRoundTripMs": 1.9018103071989847,
+      "startupToLoadAndCaptureMs": 0.4806736359334429
+    }
+  },
+  "extendedConditions": {
+    "version": 1,
+    "ipc": "Eight rounds of 32 simultaneous invokes per window, 64 total, checking every result.",
+    "components": "1000 row elements per window. Six rounds change 256 rows per window then wait two animation frames and capture both windows.",
+    "idle": "Five process-tree samples 500 ms apart after another 500 ms settling; larger documents remain loaded."
+  },
+  "extendedSummary": {
+    "electron": {
+      "idleCpuOneCorePercent": 0,
+      "idlePssBytes": 439020544,
+      "ipcBurst64CallsMs": 3.3608614999996007,
+      "trials": 3,
+      "update512ComponentsAndCaptureTwoWindowsMs": 66.37264950000008
+    },
+    "weber": {
+      "idleCpuOneCorePercent": 0,
+      "idlePssBytes": 235735040,
+      "ipcBurst64CallsMs": 7.5849085000002106,
+      "trials": 3,
+      "update512ComponentsAndCaptureTwoWindowsMs": 101.66556700000001
+    }
+  }
+}

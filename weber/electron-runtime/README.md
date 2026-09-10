@@ -60,7 +60,7 @@ The development opt-in is mandatory because the renderer has process separation
 but no operating-system sandbox. Do not mistake a different process for an OS
 sandbox. The engine's isolated preload context exposes the implemented
 `require('electron')` subset (`contextBridge.exposeInMainWorld` and
-`ipcRenderer.invoke`). Other Node modules and renderer Node integration are
+`ipcRenderer.invoke`, `send`, `on`, `once` and listener removal). Other Node modules and renderer Node integration are
 rejected. Preload code is never substituted with main-world script injection.
 Exposed function calls currently return Promises and transport copied JSON
 values; this is a subset of Electron's full contextBridge contract.
@@ -84,10 +84,45 @@ its actual cross-process input tests are described in
 [platform-sync/README.md](platform-sync/README.md). A relocatable development
 archive is assembled and exercised by [the packaging workflow](../packaging/README.md).
 
-Tray, clipboard, drag and drop, sessions/custom protocols, transferred message
-ports, an operating-system sandbox, full navigation history, general
+Custom protocols use the original `protocol.ts` implementation with native
+resource dispatch for documents, CSS, classic/ES scripts and fetch. Handlers are
+owned by the requesting window's session partition. File handlers pass the path
+to the native host, which sends raw bytes through a private resource socket;
+large application modules do not make a base64 round trip through the JS main.
+Standard custom schemes have authority-based origins. Fetch eligibility and CORS
+checks are enforced; file interception is explicit. `protocol.handle` uses the
+original Request/Response adapter. Persistent cookies/storage, HTTP protocol
+handlers, full redirects, service workers and CSP bypass remain unsupported.
+Declaring a scheme privilege does not implement all associated browser features.
+
+The original modern clipboard and ClipboardItem modules use native GTK/X11
+ownership; a compatibility adapter provides the legacy synchronous text, HTML,
+RTF and binary APIs used by Electron applications. CLIPBOARD and PRIMARY are
+separate. External xclip readers/writers verify actual cross-process data.
+Payloads and native wait time are bounded; full NativeImage and bookmarks are
+not implemented. `screen` reads actual monitor geometry/work area/scale and cursor
+position, with native monitor-change events. Linux systemPreferences returns
+GTK animation preferences and the current theme accent when available. Screen
+rotation/color profiles/touch detection and platform-specific macOS/Windows
+methods are outside this implementation.
+
+The original MessageChannelMain/MessagePortMain wrappers use bounded queues,
+structured data copying, ownership transfer, start and close semantics for ports
+inside the main process. They are tested on Node and Bun. This is not yet the
+cross-process port contract required by VS Code's utility and renderer services.
+
+Renderer IPC supports invoke/rejection plus send/on/once/listener removal,
+webContents.send and event.reply through isolated preload contexts. Simultaneous
+replies are batched up to 32 messages or 256 KiB (an individual reply is limited
+to 768 KiB), with one native bridge entry per batch. A microtask flush adds no
+polling timer. Stale, duplicate or invalid members are rejected before any ticket
+in the batch is settled. Main-world contextBridge still transports JSON and
+async function proxies; arbitrary callbacks and Electron's full structured-clone
+contract are not implemented.
+
+Tray, drag and drop, notifications, persistent sessions, transferred renderer or
+utility-process message ports, an OS sandbox, full navigation history, general
 WebContentsView embedding, production installers and VS Code acceptance remain
-unimplemented.
-Unsupported binding operations fail explicitly. Many upstream public methods
-are present because original Electron source is reused, but their presence must
-not be counted as working compatibility until the underlying binding is tested.
+unimplemented. Unsupported binding operations fail explicitly. Many upstream
+public methods are present because original Electron source is reused; presence
+alone must not be counted as working compatibility.

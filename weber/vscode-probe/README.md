@@ -40,3 +40,11 @@ The startup deadline defaults to 30 seconds, process output is bounded, and the
 probe cleans its entire subprocess group. Download and extraction also have
 size limits. Distribution files and the temporary profile are deleted after
 the report is written; only hashes and bounded error/stack excerpts are kept.
+
+The latest verified probe has advanced past `protocol`, `clipboard` and
+`systemPreferences` imports and now stops at missing `Notification`. Those APIs
+were implemented with native behavior and separate execution checks; no empty
+exports were added to suppress the startup error. The report also inventories
+named Electron imports from the pinned application. See
+[COMPATIBILITY.md](COMPATIBILITY.md) for their current scope and the remaining
+workbench, editing, terminal, extension and multiwindow acceptance work.

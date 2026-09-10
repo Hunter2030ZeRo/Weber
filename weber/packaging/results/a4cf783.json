@@ -1,0 +1,25 @@
+{
+  "kind": "validated-linux-development-bundle",
+  "commit": "a4cf783b0dfcec186a9ae6f2c6ec795428f8adb1",
+  "workflowRun": 34424348801,
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34424348801/artifacts/10132174968",
+  "filename": "weber-x86_64-unknown-linux-gnu-development-a4cf783b0dfc.tar.gz",
+  "bytes": 56742107,
+  "sha256": "034d050f3867167b0f4665d73c0a6a11a597486877391715abeee3a81e49836e",
+  "allRuntimeGatesPassed": true,
+  "runtimeGates": 12,
+  "extractedBackendSmokes": [
+    "node",
+    "bun",
+    "native"
+  ],
+  "originalElectronSourceModules": 27,
+  "osSandbox": false,
+  "nodeAndBunExecutablesIncluded": false,
+  "chromiumBrowserRuntimeIncluded": false,
+  "vscode": {
+    "version": "1.136.2",
+    "ready": false,
+    "blocker": "Named export Notification is missing. Workbench, editing, terminal and extension-host acceptance remain incomplete."
+  }
+}

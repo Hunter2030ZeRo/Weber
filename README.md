@@ -12,8 +12,8 @@ Electron's MIT license remains at the repository root; its README is
 
 ## Executable implementation
 
-The runtime compiles and executes 20 original, unmodified Electron TypeScript
-modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem, globalShortcut and IPC helpers. A
+The runtime compiles and executes 27 original, unmodified Electron TypeScript
+modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem, globalShortcut, protocol, clipboard, screen, systemPreferences and IPC helpers. A
 replacement `process._linkedBinding` layer routes their native operations to a
 separate GTK host. Each window has its own Obscura process. The build uses no
 Chromium checkout, Content, Blink, Viz or Chromium renderer binary. Obscura and
@@ -23,33 +23,22 @@ The original Chromium-dependent GN build and native Electron implementation rema
 as migration reference in this source fork. Build Weber using the CMake/Cargo path
 below; running the upstream GN build does not produce the replacement runtime.
 
-[CI for commit f574b9e](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34381018333)
-passed the following actual execution checks:
+[The latest verified runtime](weber/packaging/results/a4cf783.json) passed
+12 execution gates, extracted Node/Bun/native bundle checks, and the identical-app
+Electron comparison. The build also runs an unmodified VS Code startup diagnostic;
+that diagnostic is not a VS Code acceptance pass.
 
-- Two native GTK windows painted from Obscura raw frames, with real X11 mouse and
-  keyboard input, independent DOMs, JavaScript/Promise evaluation and PNG capture.
-- Original Electron API modules running the same CommonJS application under
-  Node.js 24 and Bun 1.4.2, including separate preload contexts, contextBridge,
-  ipcRenderer.invoke, rejection propagation and window closure.
-- A Rust native application selected through project TOML, using the same native
-  window/Obscura runtime without Node or Bun.
-- Native V8 preload isolation and IPC checks, process transport failures, renderer
-  crash containment, frame invalidation and backend argument/signal handling.
+Verified paths include two independent native GTK windows with real X11 input,
+menus and global shortcuts; isolated preload/contextBridge; invoke, send, reply
+and renderer event listeners; native X11 clipboard/PRIMARY ownership; real monitor
+geometry/cursor/system settings; and custom protocols used by document, CSS,
+classic script, ES module and fetch requests. Main-process MessageChannelMain
+supports queued structured data and ownership transfer between main-process ports.
+Renderer/utility-process port transfer is still missing.
 
-That run also passed TOML selection for Node/Bun, native menu mouse input,
-accelerators and removal, navigation policy and IPC bounds. X11 global shortcuts
-were exercised with another process focused, actual registration conflicts and
-key delivery after unregistering. A bounded output writer keeps GTK responsive
-when a synchronous main-process call temporarily stops reading async replies.
-All three backend examples also passed from the extracted development archive.
-These checks establish a functioning development runtime, not full Electron or
-VS Code compatibility.
-
-Download the verified [Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34381018333/artifacts/10116112677)
-and follow the [packaging instructions](weber/packaging/README.md). The archive
-contains the native executables and compiled source runtime; Node/Bun are external.
-The [bundle record](weber/packaging/results/f574b9e.json) preserves its checksum,
-source commit and extracted execution results.
+Download the [Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34424348801/artifacts/10132174968) and follow the
+[packaging instructions](weber/packaging/README.md). Node/Bun executables are
+external. The bundle record identifies the exact runtime commit and checksum.
 
 ## Build and run on Linux
 
@@ -94,44 +83,34 @@ the TOML selector automatically.
 
 ## Compatibility, security and performance work
 
-The current binding subset is documented in
-[weber/electron-runtime/README.md](weber/electron-runtime/README.md). GTK menu
-integration reuses Electron's template ordering, checkbox/radio policy and click
-dispatch, with native accelerators and window ownership, verified by real native input
-at the commit linked above. Global shortcuts currently require X11; Wayland
-portal support, suspension and live keyboard-map changes remain unsupported. Popup
-menus, icons, sublabels and several built-in roles remain unsupported. Tray,
-clipboard, drag and drop, sessions, MessagePorts, extension hosting, installers,
-Windows/macOS support and full navigation/IME behavior still need implementation.
-Preload exposes copied JSON data and asynchronous function proxies; it does not
-yet provide Electron's complete preload/structured-clone contract. Separate
-renderer processes and private transport are implemented; a production OS sandbox
-and comprehensive origin/network policy are not.
+The [binding scope](weber/electron-runtime/README.md) and
+[VS Code compatibility matrix](weber/vscode-probe/COMPATIBILITY.md) distinguish
+verified operations from missing behavior. The unmodified VS Code 1.136.2 entry
+currently stops at the missing `Notification` export. Workbench startup, editing,
+terminal, extension hosting and full-app migration have not passed acceptance.
+No compatibility percentage is claimed.
 
-The [comparison harness](weber/benchmarks/README.md) runs identical application
-files in pinned Electron and Weber, records all descendant processes' PSS/RSS,
-startup, IPC, DOM/capture and idle CPU, and preserves results even when Weber is
-slower. This small unsandboxed Linux fixture cannot establish VS Code performance.
-The [VS Code probe](weber/vscode-probe/README.md) runs an unmodified official app
-entry and records its first startup blocker; diagnostic completion is explicitly
-not a VS Code acceptance pass. The [f574b9e measurement](weber/benchmarks/results/f574b9e-summary.json) recorded
-median PSS of 181.9 MiB for Weber versus 376.3 MiB for Electron and startup of
-275 ms versus 528 ms. IPC, JavaScript round trips, DOM/capture and idle CPU were
-still worse for Weber. Neither a compatibility percentage nor a general
-performance advantage is currently claimed.
+The renderer now keeps Obscura's existing timer/network reactor alive and waits
+for actual work. Idle GTK host workers also block on socket/eventfd readiness.
+A frame deadline is armed only for damage or active animation. Frame delivery
+keeps one pending presentation buffer, converts pixels in place, and writes
+Rust-owned replies directly to the renderer socket. Concurrent IPC replies are
+bounded and batched without a timer, with document-generation validation before
+any reply is consumed. Unused CDP network-body retention is disabled by default;
+normal page resources and application fetch results are retained as required.
 
-The unmodified VS Code 1.136.2 entry currently stops at the missing `protocol`
-export. Custom schemes need real resource dispatch and origin policy across
-document, subresource and fetch paths; adding an empty export will not satisfy
-that requirement. The next compatibility target is a functioning workbench, followed by
-editing, terminal, extension host, multiwindow and desktop integrations. Obscura's
-agent capabilities should use the same page state and input paths, with explicit
-application authorization rather than a separate uncontrolled browser endpoint.
+The [recorded measurements](weber/benchmarks/results/README.md) include cases
+where Weber is slower. The original small fixture is measured before a separate
+workload with 64 simultaneous IPC calls and 2,000 row components across two
+windows. Neither fixture predicts VS Code memory usage. A ratio measured in a
+small application cannot be multiplied by VS Code's memory use: browser engine,
+window surfaces, application DOM/JS, terminal and extension hosts have different
+costs and scaling behavior.
 
-Idle CPU still includes periodic renderer/host polling. Pinned Obscura already
-provides `Page::run_autonomous_event_loop_turn()` with real timer/network/task
-wakeups, and its CDP loop selects that future against commands. Weber currently
-cancels it after a short tick. The next scheduling change must keep that existing
-reactor active, notify the host of events/damage, and retain presentation
-deadlines while CSS/WAAPI animation is active; reducing polling frequency alone
-would trade latency for idle CPU.
+Remaining work includes renderer/utility-process MessagePorts, persistent
+session storage and complete network semantics, full preload/structured-clone
+behavior, general WebContentsView embedding, IME/contenteditable editing,
+notifications, tray, drag and drop, production installers and Windows/macOS.
+Separate processes and private transport are implemented; an OS sandbox and
+comprehensive origin/network policy are not. Obscura agent access should share
+application page/input state with explicit application authorization.

@@ -102,3 +102,10 @@ closures. Proc-macro packages can appear in that conservative closure. Packages
 without notice files are explicitly listed; some native components bundled by a
 crate may require additional notices or source distribution. This collection is
 evidence for a later distribution review, not a complete third-party license audit.
+
+The latest recorded validated bundle is
+[a4cf783](results/a4cf783.json), from
+[CI run 34424348801](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34424348801).
+It contains 27 compiled original Electron modules, the current native protocol,
+clipboard/display bindings and batched renderer IPC. All three backend examples
+passed after extraction. See its record for the archive link and checksum.

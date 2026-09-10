@@ -5,8 +5,9 @@ The checked-in patches apply to the submodule pinned at
 Electron checkout before building `weber-engine`:
 
 ```sh
-git -C weber/vendor/obscura apply --check ../../patches/obscura/0001-desktop-raw-frame.patch
-git -C weber/vendor/obscura apply ../../patches/obscura/0001-desktop-raw-frame.patch
+for patch in weber/patches/obscura/000*.patch; do
+  git -C weber/vendor/obscura apply "$PWD/$patch"
+done
 ```
 
 `0001-desktop-raw-frame.patch` adds `Page::render_frame_rgba()` and the
@@ -60,3 +61,25 @@ mouse movement, focus, keyboard modifiers and cancelled key default actions.
 It does not provide IME composition, touch, pointer capture, full hover event
 sequences or complete contenteditable keyboard editing. These are explicit
 desktop integration gaps rather than silently successful no-op commands.
+
+`0005-desktop-protocols.patch` connects document, stylesheet, classic script,
+module and fetch resource loading to the private host resource broker. It is
+opt-in desktop behavior; headless clients keep their existing paths. Custom
+standard schemes derive an origin from their authority, and fetch uses scheme
+privileges and CORS checks. The response frame is bounded to 64 MiB and delivers
+raw bytes. Native host file reads avoid JS/base64 copies of large script bundles.
+This does not provide complete Electron session/network semantics.
+
+`0006-desktop-wake.patch` exposes the existing damage and active-animation state
+without rasterizing. Weber's scheduler selects the command FD, actual Obscura
+reactor work and a presentation deadline only while frames are needed. There is
+no fixed 16 ms idle poll or 2 ms reactor cancellation in the desktop runtime.
+The host receives event/frame notifications; one pending frame request and one
+pending GTK presentation buffer coalesce redundant work. The C++ renderer sends
+Rust-owned reply buffers directly, and GTK converts received pixels in place.
+
+The desktop renderer defaults `OBSCURA_NETWORK_BODY_BUFFER_ENTRIES` to `0` and
+releases consumed network diagnostics when disabled. This avoids retaining
+response-body copies used only by CDP diagnostics. Explicit environment values
+can enable retention for diagnostics. Application Response objects, page data,
+and normal resource caches are not removed by this setting.
