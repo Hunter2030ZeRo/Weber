@@ -5,6 +5,15 @@
 `dist/native/weber_platform.node`; no V8 API or Chromium library is linked by this
 transport or the GTK host.
 
+Utility processes also use this addon's socketpair ownership primitives.
+`takeParent` moves a descriptor out of the tagged native owner into an
+asynchronous Socket, so native cleanup cannot close it twice. Those utility
+channels use their own bounded structured-data protocol; they do not call the
+synchronous platform request loop. Linux `guardParent` installs a parent-death
+signal and checks the parent PID again to cover early parent exit. It terminates
+the immediate utility process, including blocked JavaScript, and does not claim
+an arbitrary descendant-tree sandbox.
+
 The parent source compiler's explicit output directory applies to the addon too:
 verification builds write `native/weber_platform.node` inside their temporary
 output directory, without rewriting the installed runtime.

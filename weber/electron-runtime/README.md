@@ -136,7 +136,11 @@ Authentication integration and platform-specific unsigned-library options fail
 explicitly. Browser structured-clone types and automatic Electron-module support
 inside utilities are not implemented. A Node application starts Node children;
 a Bun application starts Bun children. Cross-engine serialized channels are not
-claimed. See `test-utility.cjs` and the real window/bundle fixture.
+claimed. Bun 1.4.2 needs explicit FD adoption in `utility-socket.cjs`; that
+adapter is scoped to Weber's transport and the upstream utility wrapper's stdio
+imports. Application net imports remain Bun's own implementation. Native
+callback checkpoints must not deliver public spawn before the wrapper exists.
+See `test-utility.cjs` and the real window/bundle fixture.
 
 Renderer IPC supports invoke/rejection plus send/on/once/listener removal,
 webContents.send and event.reply through isolated preload contexts. Simultaneous

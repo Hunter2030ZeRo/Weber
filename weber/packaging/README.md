@@ -104,10 +104,13 @@ without notice files are explicitly listed; some native components bundled by a
 crate may require additional notices or source distribution. This collection is
 evidence for a later distribution review, not a complete third-party license audit.
 
-The IPC/frame optimization bundle is
-[56cfe40](results/56cfe40.json), from
-[CI run 34433240209](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34433240209).
-It contains 29 compiled original Electron modules, native protocol,
-clipboard/display/notification/power bindings, batched renderer IPC and shared
-immutable capture/presentation frames. All three backend examples
-passed after extraction. See its record for the archive link and checksum.
+The utility-process compatibility bundle is
+[afa40b1](results/afa40b1.json), from
+[CI run 34445917097](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34445917097).
+It contains 31 compiled original Electron modules, including utilityProcess and
+ParentPort, plus native protocol/clipboard/display/notification/power bindings,
+batched renderer IPC and shared immutable capture/presentation frames. Seven
+real-process tests pass on each of Node 24.20.0 and Bun 1.4.2. All three backend
+examples pass after extraction; Node and Bun also execute an independent utility
+and a transferred-port round trip there. The Native example remains a Rust main.
+See its record for the archive link, checksum and remaining acceptance gaps.

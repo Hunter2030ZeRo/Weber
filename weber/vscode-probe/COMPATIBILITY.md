@@ -7,6 +7,11 @@ missing. A diagnostic exit code of zero means evidence collection succeeded;
 the report itself has `ready: false`. No whole-app compatibility percentage is
 inferred from exported names or module counts.
 
+Latest validated runtime: [afa40b1](../packaging/results/afa40b1.json), with 14
+execution gates and extracted Node/Bun/native examples passing. The utility
+process suite passes seven tests per JavaScript backend. The same run confirms
+the missing crashReporter export and Monaco module-worker blocker below.
+
 The probe records these 24 named imports from the pinned application. An API
 appearing in this table does not mean every method works.
 

@@ -14,8 +14,8 @@ Electron's MIT license remains at the repository root; its README is
 
 The runtime compiles and executes 31 original, unmodified Electron TypeScript
 modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem,
-Notification, powerMonitor, utilityProcess, ParentPort, globalShortcut, protocol, clipboard, screen,
-systemPreferences and IPC helpers. A
+Notification, powerMonitor, utilityProcess, ParentPort, globalShortcut, protocol,
+clipboard, screen, systemPreferences and IPC helpers. A
 replacement `process._linkedBinding` layer routes their native operations to a
 separate GTK host. Each window has its own Obscura process. The build uses no
 Chromium checkout, Content, Blink, Viz or Chromium renderer binary. Obscura and
@@ -25,8 +25,8 @@ The original Chromium-dependent GN build and native Electron implementation rema
 as migration reference in this source fork. Build Weber using the CMake/Cargo path
 below; running the upstream GN build does not produce the replacement runtime.
 
-[The IPC/frame optimization build](weber/packaging/results/56cfe40.json) passed
-13 execution gates, extracted Node/Bun/native bundle checks, and the identical-app
+[The utility-process compatibility build](weber/packaging/results/afa40b1.json) passed
+14 execution gates, extracted Node/Bun/native bundle checks, and the identical-app
 Electron comparison. The build also runs an unmodified VS Code startup diagnostic;
 that diagnostic is not a VS Code acceptance pass.
 
@@ -45,7 +45,7 @@ logind and XScreenSaver; it does not add a periodic idle polling loop. Node and
 Bun checks exercise the actual native transport with controlled D-Bus test peers.
 Full desktop-daemon and operating-system acceptance remains separate.
 
-Download the [Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34433240209/artifacts/10135376840) and follow the
+Download the [Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34445917097/artifacts/10139785437) and follow the
 [packaging instructions](weber/packaging/README.md). Node/Bun executables are
 external. The bundle record identifies the exact runtime commit and checksum.
 

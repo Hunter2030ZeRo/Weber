@@ -1,0 +1,78 @@
+{
+  "kind": "validated-linux-development-bundle",
+  "commit": "afa40b1d7b2435a2e5d8d8fc04d6c2dd59e4b162",
+  "workflowRun": 34445917097,
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34445917097/artifacts/10139785437",
+  "filename": "weber-x86_64-unknown-linux-gnu-development-afa40b1d7b24.tar.gz",
+  "bytes": 56801067,
+  "sha256": "6d89778c1ddc0c0768e271315da83167773768bcdb2cb41508d88ecd16e281fe",
+  "allRuntimeGatesPassed": true,
+  "runtimeGates": 14,
+  "extractedBackendSmokes": [
+    "node",
+    "bun",
+    "native"
+  ],
+  "originalElectronSourceModules": 31,
+  "utilityProcess": {
+    "bun": {
+      "failed": 0,
+      "passed": 7,
+      "version": "1.4.2"
+    },
+    "job": 102770561637,
+    "node": {
+      "failed": 0,
+      "passed": 7,
+      "version": "v24.20.0"
+    },
+    "notEstablished": [
+      "VS Code extension host acceptance",
+      "renderer port transfers",
+      "nested utility port transfers",
+      "arbitrary descendant cleanup",
+      "OS sandbox"
+    ],
+    "runtimeCommit": "afa40b1d7b2435a2e5d8d8fc04d6c2dd59e4b162",
+    "scope": [
+      "real same-backend child with original utilityProcess and ParentPort wrappers",
+      "spawn, stdio, argv, cwd, environment, CJS and ESM entry",
+      "main-to-utility MessagePort ownership and queued/bidirectional data",
+      "failed admissions retain port ownership",
+      "serialization re-entrancy",
+      "natural exit and final reply",
+      "explicit kill and Linux parent-death termination"
+    ],
+    "workflowRun": 34445917097
+  },
+  "extractedUtilityProcesses": [
+    {
+      "backend": "node",
+      "independentPid": 7681,
+      "transferredPortRoundTrip": true,
+      "cleanExit": true
+    },
+    {
+      "backend": "bun",
+      "independentPid": 7739,
+      "transferredPortRoundTrip": true,
+      "cleanExit": true
+    }
+  ],
+  "osSandbox": false,
+  "nodeAndBunExecutablesIncluded": false,
+  "chromiumBrowserRuntimeIncluded": false,
+  "vscode": {
+    "version": "1.136.2",
+    "ready": false,
+    "blocker": "SyntaxError: Named export 'crashReporter' not found. The requested module 'electron' is a CommonJS module, which may not support all module.exports as named exports."
+  },
+  "monaco": {
+    "version": "0.52.2",
+    "coreEditingReady": true,
+    "ready": false,
+    "passedChecks": 7,
+    "blocker": "Module editor worker fails with Unexpected token 'export'; no worker response or diff result."
+  },
+  "performance": "Identical-app measurement completed; utility tests and bundle checks do not establish VS Code resource use or a latency advantage."
+}
