@@ -25,7 +25,7 @@ RUNTIME_HELPERS = (
     "power-binding.cjs",
     "utility-binding.cjs", "utility-bootstrap.cjs", "utility-wire.cjs", "utility-inbox.cjs", "utility-socket.cjs",
     "diagnostics-binding.cjs", "startup-options.cjs",
-    "shell-binding.cjs",
+    "shell-binding.cjs", "safe-storage-binding.cjs",
 )
 
 
@@ -188,6 +188,7 @@ def build(repo: Path, output: Path) -> Path:
             "examples/native/weber-native-example": "weber/native-example/target/release/weber-native-example",
         }
         runtime = repo / "weber/electron-runtime"
+        binary_sources["electron-runtime/dist/native/weber-secret-store"] = "weber/electron-runtime/dist/native/weber-secret-store"
         addon = "dist/native/weber_platform.node"
         binary_sources[f"electron-runtime/{addon}"] = f"weber/electron-runtime/{addon}"
         for relative, source in binary_sources.items():
@@ -200,7 +201,7 @@ def build(repo: Path, output: Path) -> Path:
                 raise RuntimeError(f"Compiled Electron source is stale: {item['path']}")
         for path in sorted((runtime / "dist").rglob("*")):
             if path.is_file():
-                if path == runtime / addon:
+                if path in (runtime / addon, runtime / "dist/native/weber-secret-store"):
                     continue  # Already copied and inspected as a native binary.
                 if path.suffix not in {".js", ".map", ".json"}:
                     raise RuntimeError(f"Unexpected compiler output in runtime: {path}")
@@ -241,7 +242,7 @@ def build(repo: Path, output: Path) -> Path:
             "build": {"sourceDateEpoch": epoch, "target": target, "machine": platform.machine(),
                       "libc": list(platform.libc_ver()), "rustc": command(["rustc", "--version"])},
             "requirements": {"externalJavaScriptBackends": ["Node.js 24", "Bun (CommonJS only; use the tested CI version)"],
-                             "nativeBackendNeedsNodeOrBun": False, "system": ["Linux with glibc", "GTK 3", "X11 display", "fontconfig and fonts", "libstdc++"],
+                             "nativeBackendNeedsNodeOrBun": False, "system": ["Linux with glibc", "GTK 3", "X11 display", "fontconfig and fonts", "libstdc++", "libsecret-1 and an unlocked Secret Service for safeStorage"],
                              "compatibilityNote": "ELF symbol versions below are direct requirements, not a promise of portability. Use the same or newer compatible distribution as the build; system shared libraries can impose additional requirements.",
                              "binaries": {relative: elf_requirements(bundle / relative) for relative in sorted(binary_sources)}},
             "licensing": {"cargoInventory": "licenses/cargo-inventory.json", "completeThirdPartyAudit": False},

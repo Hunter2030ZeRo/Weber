@@ -31,6 +31,8 @@ function attachStartupOptions(app, { unsupported, env = process.env, argv = () =
         throw new TypeError('Invalid switch value');
       if (key === 'no-sandbox' || key === 'disable-gpu-sandbox') {
         if (env.WEBER_UNSANDBOXED_DEVELOPMENT !== '1') return unsupported('unsandboxed runtime without development opt-in');
+      } else if (key === 'password-store') {
+        if (!['basic', 'gnome-libsecret'].includes(value)) return unsupported('password store ' + value);
       } else if (key === 'lang') {
         try { if (!Intl.getCanonicalLocales(value).length) throw Error(); }
         catch { throw new TypeError('Invalid locale'); }

@@ -19,7 +19,7 @@ const entries = [
   'browser/api/notification',
   'browser/api/power-monitor',
   'browser/api/crash-reporter', 'browser/api/content-tracing',
-  'common/api/shell',
+  'common/api/shell', 'browser/api/safe-storage',
   'browser/api/utility-process', 'utility/parent-port',
   'browser/api/screen', 'browser/api/system-preferences', 'browser/api/message-channel', 'browser/api/clipboard', 'browser/api/global-shortcut', 'browser/api/protocol',
 ];

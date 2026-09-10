@@ -454,6 +454,8 @@ function createBindings(host, appPath, loadInternal) {
   bindings.set('electron_browser_notification', require('./notification-binding.cjs').createNotificationBinding({ host, app, unsupported }));
   bindings.set('electron_browser_power_monitor', require('./power-binding.cjs').createPowerBinding({ host, app, unsupported }));
   bindings.set('electron_browser_utility_process', require('./utility-binding.cjs').createUtilityBinding({ app, unsupported }));
+  const safeStorageBinding = require('./safe-storage-binding.cjs').createSafeStorageBinding({ app, unsupported });
+  bindings.set('electron_browser_safe_storage', { safeStorage: safeStorageBinding.safeStorage });
   const diagnostics = require('./diagnostics-binding.cjs').createDiagnosticsBinding({ unsupported });
   bindings.set('electron_browser_crash_reporter', diagnostics.crashReporter);
   bindings.set('electron_browser_content_tracing', diagnostics.tracing);
@@ -508,6 +510,7 @@ function createBindings(host, appPath, loadInternal) {
   return { app, bindings, unsupported, decorateClipboard: clipboard.decorate, session: protocolRuntime.session,
     finishStartup() {
       app.emit('will-finish-launching');
+      safeStorageBinding.freezeConfiguration();
       ready = true;
       app.emit('ready', event(app), {});
       resolveReady();

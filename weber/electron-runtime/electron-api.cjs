@@ -26,3 +26,4 @@ exports.utilityProcess = api.utilityProcess;
 exports.crashReporter = api.crashReporter;
 exports.contentTracing = api.contentTracing;
 exports.shell = api.shell;
+exports.safeStorage = api.safeStorage;
