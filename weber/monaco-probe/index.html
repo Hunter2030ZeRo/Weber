@@ -3,8 +3,14 @@
 <style>html,body,#editor{margin:0;width:100%;height:100%;overflow:hidden}</style>
 <link rel="stylesheet" href="/editor.css">
 <script>
-globalThis.monacoProbe = { stage: 'document', errors: [] };
+globalThis.monacoProbe = { stage: 'document', errors: [], workers: 0, workerMessages: 0 };
 addEventListener('error', event => monacoProbe.errors.push(String(event.error && event.error.stack || event.message)));
 addEventListener('unhandledrejection', event => monacoProbe.errors.push(String(event.reason && event.reason.stack || event.reason)));
-globalThis.MonacoEnvironment = { getWorker: () => new Worker('/editor.worker.js', { type: 'module' }) };
+globalThis.MonacoEnvironment = { getWorker: () => {
+  const worker = new Worker('/editor.worker.js', { type: 'module' });
+  monacoProbe.workers++;
+  worker.addEventListener('message', () => monacoProbe.workerMessages++);
+  worker.addEventListener('error', event => monacoProbe.errors.push('Editor worker: ' + event.message));
+  return worker;
+} };
 </script></head><body><div id="editor"></div><script type="module" src="/editor.js"></script></body></html>

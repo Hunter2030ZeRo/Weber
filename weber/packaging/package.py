@@ -22,6 +22,7 @@ LEGAL_NAME = re.compile(r"^(?:LICEN[CS]E|NOTICE|COPYING|COPYRIGHT|PATENTS)(?:[._
 RUNTIME_HELPERS = (
     "bootstrap.cjs", "bindings.cjs", "commonjs-loader.cjs", "electron-api.cjs",
     "host-client.cjs", "ipc-reply-queue.cjs", "menu-binding.cjs", "protocol-binding.cjs", "clipboard-binding.cjs", "display-binding.cjs", "notification-binding.cjs", "message-port-binding.cjs", "global-shortcut-binding.cjs", "platform-app.cjs",
+    "power-binding.cjs",
 )
 
 

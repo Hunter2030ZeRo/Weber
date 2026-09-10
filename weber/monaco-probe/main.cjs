@@ -76,5 +76,29 @@ app.whenReady().then(async () => {
   assert.deepEqual(png.subarray(0, 8), Buffer.from([137,80,78,71,13,10,26,10]));
   fs.writeFileSync(output.replace(/\.json$/, '') + '.png', png);
   report.checks.push('visible-line-dom-and-capture');
+  report.coreEditingReady = true;
+  await window.webContents.executeJavaScript(`
+    probeEditor.setValue(Array.from({length: 1000}, (_, n) => 'Line ' + (n + 1)).join('\\n'));
+    probeEditor.revealLineInCenter(700);
+    new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))));
+  `);
+  assert.ok(await window.webContents.executeJavaScript(`probeEditor.getScrollTop() > 0 &&
+    probeEditor.getVisibleRanges().some(range => range.startLineNumber <= 700 && range.endLineNumber >= 700)`));
+  report.checks.push('thousand-line-scroll-and-visible-range');
+  await window.webContents.executeJavaScript('probeStartDiff()');
+  let changes;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    report.page = await window.webContents.executeJavaScript('monacoProbe');
+    if (report.page.errors.length) throw new Error(report.page.errors.join('\n'));
+    changes = await window.webContents.executeJavaScript('probeDiff.getLineChanges() || null');
+    if (changes?.length) break;
+    await delay(100);
+  }
+  assert.equal(changes?.length, 1, 'Original Monaco diff did not complete');
+  assert.equal(changes[0].originalStartLineNumber, 2);
+  assert.equal(changes[0].modifiedStartLineNumber, 2);
+  assert.ok(report.page.workers > 0 && report.page.workerMessages > 0,
+    'Diff must exchange messages with the original editor worker');
+  report.checks.push('original-editor-worker-and-diff');
   finish();
 }).catch(finish);

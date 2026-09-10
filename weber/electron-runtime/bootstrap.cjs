@@ -62,6 +62,7 @@ async function main() {
     Menu: 'browser/api/menu', MenuItem: 'browser/api/menu-item',
     screen: 'browser/api/screen', systemPreferences: 'browser/api/system-preferences',
     Notification: 'browser/api/notification',
+    powerMonitor: 'browser/api/power-monitor',
     MessageChannelMain: 'browser/api/message-channel', clipboard: 'browser/api/clipboard', ClipboardItem: 'browser/api/clipboard-item',
     globalShortcut: 'browser/api/global-shortcut', protocol: 'browser/api/protocol',
   };
