@@ -15,6 +15,8 @@ uint32_t weber_engine_abi_version(void);
 uint64_t weber_engine_create(void);
 uint64_t weber_engine_create_with_resources(int32_t);
 int32_t weber_engine_command(uint64_t, const uint8_t*, size_t, weber_engine_reply, void*);
+typedef void (*weber_engine_result_reply)(int32_t, const uint8_t*, size_t, void*);
+int32_t weber_engine_command_result(uint64_t, const uint8_t*, size_t, weber_engine_result_reply, void*);
 int32_t weber_engine_wait(uint64_t, int32_t, bool);
 int32_t weber_engine_destroy(uint64_t);
 #ifdef __cplusplus

@@ -65,6 +65,13 @@ impl Preload {
                 self.pending_evaluations.insert(id.to_string());
                 Ok(json!({"generation": self.generation}).to_string().into_bytes())
             })()),
+            "sendToRenderer" => Some((|| {
+                if request.get("generation").and_then(Value::as_u64) != Some(self.generation) {
+                    return Err("Stale IPC document generation".into());
+                }
+                bridge(page, true, request.clone())?;
+                Ok(b"null".to_vec())
+            })()),
             "resolveIpc" => Some((|| {
                 if request.get("generation").and_then(Value::as_u64) != Some(self.generation) {
                     return Err("Stale IPC document generation".into());
@@ -141,6 +148,11 @@ impl Preload {
                         let mut reply = event.clone();
                         reply["method"] = json!("settle");
                         bridge(page, false, reply)?;
+                    }
+                    Some("ipc-send") => {
+                        let mut event = event.clone();
+                        event["generation"] = json!(self.generation);
+                        outgoing.push(event);
                     }
                     Some("ipc-invoke") => {
                         let id = event.get("id").and_then(Value::as_u64).ok_or("Invalid IPC request ID")?;

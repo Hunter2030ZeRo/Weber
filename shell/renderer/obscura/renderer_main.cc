@@ -50,20 +50,12 @@ int main(int argc, char** argv) {
       auto request = wire::Receive(3, wire::kMaxRequest, wire::Deadline::max());
       if (request.kind != wire::kRequest || !request.sequence || request.sequence != sequence + 1) return 3;
       sequence = request.sequence;
-      wire::Frame response{sequence, wire::kSuccess, {}};
-      try {
-        const std::string command(request.payload.begin(), request.payload.end());
-        // Only the owner emits this exact internal command. A notification
-        // stays outstanding until its corresponding frame request is consumed.
-        if (command == R"({"method":"captureFrameIfChanged"})") frame_pending = false;
-        response.payload = engine.Command(command);
-      }
-      catch (const std::exception& error) {
-        response.kind = wire::kError;
-        const std::string message = error.what();
-        response.payload.assign(message.begin(), message.end());
-      }
-      wire::Send(3, response, std::chrono::steady_clock::now() + std::chrono::seconds(30));
+      const std::string command(request.payload.begin(), request.payload.end());
+      if (command == R"({"method":"captureFrameIfChanged"})") frame_pending = false;
+      engine.ReplyTo(command, [sequence](bool error, const uint8_t* bytes, size_t length) {
+        wire::SendBytes(3, sequence, error ? wire::kError : wire::kSuccess, bytes, length,
+          std::chrono::steady_clock::now() + std::chrono::seconds(30));
+      });
       drain_events();
     }
   } catch (const std::exception& error) {

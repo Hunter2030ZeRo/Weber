@@ -108,6 +108,16 @@ impl Engine {
                 self.critical_bytes += size;
                 self.critical_events.push_back((event, size));
             }
+            Some("ipc-send") => {
+                let size = event.to_string().len();
+                if size > MAX_REQUEST || self.evaluation_tickets.len() + self.queued_ipc >= MAX_CRITICAL_EVENTS
+                    || self.critical_bytes + self.completion_reservations() + size > MAX_CRITICAL_BYTES {
+                    return Err("One-way IPC delivery queue is full; renderer restart required".into());
+                }
+                self.queued_ipc += 1;
+                self.critical_bytes += size;
+                self.critical_events.push_back((event, size));
+            }
             Some("ipc-invoke") => {
                 let size = event.to_string().len();
                 if size > MAX_REQUEST
@@ -377,6 +387,12 @@ pub extern "C" fn weber_engine_create_with_resources(resource_fd: i32) -> u64 {
 pub unsafe extern "C" fn weber_engine_command(id: u64, input: *const u8, len: usize,
     reply: Option<Reply>, user: *mut c_void) -> i32 {
     let Some(reply) = reply else { return 1; };
+    let (status, bytes) = execute_command(id, input, len);
+    reply(bytes.as_ptr(), bytes.len(), user);
+    status
+}
+
+unsafe fn execute_command(id: u64, input: *const u8, len: usize) -> (i32, Vec<u8>) {
     let result = catch_unwind(AssertUnwindSafe(|| -> Result<Vec<u8>, String> {
         if input.is_null() || len == 0 || len > MAX_REQUEST { return Err("Invalid request size/pointer".into()); }
         let value = serde_json::from_slice(std::slice::from_raw_parts(input, len)).map_err(|e| e.to_string())?;
@@ -402,7 +418,17 @@ pub unsafe extern "C" fn weber_engine_command(id: u64, input: *const u8, len: us
         Err(error) if error.len() <= MAX_RESPONSE => (1, error.into_bytes()),
         Err(_) => (1, b"Error response exceeds 64 MiB".to_vec()),
     };
-    reply(bytes.as_ptr(), bytes.len(), user);
+    (status, bytes)
+}
+
+/// Streaming reply variant: status is available before borrowing the body,
+/// allowing the transport to send Rust-owned bytes without a C++ vector copy.
+#[no_mangle]
+pub unsafe extern "C" fn weber_engine_command_result(id: u64, input: *const u8, len: usize,
+    reply: Option<extern "C" fn(i32, *const u8, usize, *mut c_void)>, user: *mut c_void) -> i32 {
+    let Some(reply) = reply else { return 1; };
+    let (status, bytes) = execute_command(id, input, len);
+    reply(status, bytes.as_ptr(), bytes.len(), user);
     status
 }
 

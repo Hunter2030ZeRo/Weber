@@ -203,7 +203,7 @@ function createBindings(host, appPath, loadInternal) {
         frameTreeNodeId: this.id, routingId: this.id,
         get processId() { return owner.webContents?._rendererPid || 0; },
         _sendInternal: (command, requestId, method, ...args) => this._invokeFrame(command, requestId, method, args),
-        send: () => unsupported('webContents.send renderer IPC'),
+        send: (channel, ...args) => this._sendToRenderer(channel, args),
         postMessage: () => unsupported('webContents.postMessage and transferred ports'),
       };
       this.mainFrame.top = this.mainFrame;
@@ -211,6 +211,16 @@ function createBindings(host, appPath, loadInternal) {
       this._init();
     }
     _command(command) { return this._owner._host('page.command', { command }); }
+    _sendToRenderer(channel, args) {
+      if (this._destroyed) throw new Error('Object has been destroyed');
+      if (typeof channel !== 'string' || !channel || Buffer.byteLength(channel) > 1024) throw new TypeError('Invalid IPC channel');
+      if (this._generation === null) throw new Error('Renderer document is not ready for IPC');
+      const command = { method: 'sendToRenderer', generation: this._generation, channel, args };
+      // Validate before enqueueing so obvious serialization failures remain
+      // synchronous, as with Electron's send API.
+      JSON.stringify(command);
+      this._command(command).catch(error => app.emit('weber-error', error));
+    }
     _invokeFrame(command, requestId, method, args) {
       const ipc = loadInternal('browser/ipc-main-internal').ipcMainInternal;
       const response = `${command}_RESPONSE_${requestId}`;
@@ -261,7 +271,7 @@ function createBindings(host, appPath, loadInternal) {
     }
     _engineEvent(message) {
       if (this._destroyed || !message || typeof message !== 'object') return;
-      if (this._loading && ['ipc-invoke', 'evaluation-result'].includes(message.type)) {
+      if (this._loading && ['ipc-invoke', 'ipc-send', 'evaluation-result'].includes(message.type)) {
         if (this._deferredEvents.length >= 256) {
           this._rejectEvaluations('Renderer event queue overflow during navigation');
           app.emit('weber-error', new Error('Too many renderer events during navigation'));
@@ -275,6 +285,15 @@ function createBindings(host, appPath, loadInternal) {
         this._evaluations.delete(message.id);
         if (message.ok) pending.resolve(message.value);
         else pending.reject(new Error(String(message.error || 'JavaScript evaluation failed')));
+      } else if (message.type === 'ipc-send') {
+        if (message.generation !== this._generation || typeof message.channel !== 'string' || !Array.isArray(message.args)) return;
+        const ipcEvent = { type: 'frame', sender: this, senderFrame: this.mainFrame,
+          processId: this._rendererPid, frameId: this.id, frameTreeNodeId: this.id,
+          reply: (channel, ...args) => this._sendToRenderer(channel, args) };
+        const ipc = loadInternal('browser/api/ipc-main').default;
+        this.emit('ipc-message', ipcEvent, message.channel, ...message.args);
+        this.ipc.emit(message.channel, ipcEvent, ...message.args);
+        ipc.emit(message.channel, ipcEvent, ...message.args);
       } else if (message.type === 'ipc-invoke') {
         if (message.generation !== this._generation || typeof message.id !== 'string' ||
             typeof message.channel !== 'string' || !Array.isArray(message.args) || this._ipcRequests.has(message.id)) return;

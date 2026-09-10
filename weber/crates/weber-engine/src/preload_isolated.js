@@ -254,7 +254,56 @@
     if (has(exported, name)) fail('Duplicate exported API name');
     put(exported, name, metadata(api));
   }) }));
-  const ipcRenderer = freeze(record({ invoke: freeze((channel, ...args) => promise((resolve, reject) => {
+  const listeners = create(null);
+  let listenerCount = 0;
+  function ipcChannel(channel) {
+    if (typeof channel !== 'string' || !channel.length || bytes(channel) > 1024)
+      fail('IPC channel must be a nonempty string of at most 1024 bytes');
+    return channel;
+  }
+  function addListener(channel, listener, once) {
+    ipcChannel(channel);
+    if (typeof listener !== 'function') fail('IPC listener must be a function');
+    if (listenerCount >= 1024) fail('Too many IPC listeners');
+    if (!hasOwn(listeners, channel)) put(listeners, channel, array());
+    put(listeners[channel], listeners[channel].length, record({ listener, once }));
+    listenerCount++;
+    return ipcRenderer;
+  }
+  function removeListener(channel, listener) {
+    ipcChannel(channel);
+    const previous = listeners[channel];
+    if (!previous) return ipcRenderer;
+    const next = array();
+    // EventEmitter removes the most recently added matching registration.
+    let index = -1;
+    for (let i = previous.length - 1; i >= 0; i--) if (previous[i].listener === listener) { index = i; break; }
+    for (let i = 0; i < previous.length; i++) if (i !== index) put(next, next.length, previous[i]);
+    if (index >= 0) listenerCount--;
+    if (next.length) put(listeners, channel, next); else delete listeners[channel];
+    return ipcRenderer;
+  }
+  const ipcRenderer = freeze(record({
+    send: freeze((channel, ...args) => {
+      ipcChannel(channel);
+      enqueue(record({ type: 'ipc-send', channel, args: clone(args) }));
+    }),
+    on: freeze((channel, listener) => addListener(channel, listener, false)),
+    addListener: freeze((channel, listener) => addListener(channel, listener, false)),
+    once: freeze((channel, listener) => addListener(channel, listener, true)),
+    removeListener: freeze(removeListener), off: freeze(removeListener),
+    removeAllListeners: freeze(channel => {
+      if (channel === undefined) {
+        const channels = ownKeys(listeners);
+        for (let i = 0; i < channels.length; i++) delete listeners[channels[i]];
+        listenerCount = 0;
+      } else {
+        ipcChannel(channel);
+        if (hasOwn(listeners, channel)) { listenerCount -= listeners[channel].length; delete listeners[channel]; }
+      }
+      return ipcRenderer;
+    }),
+    invoke: freeze((channel, ...args) => promise((resolve, reject) => {
     try {
       if (typeof channel !== 'string' || !channel.length || bytes(channel) > 1024)
         fail('IPC channel must be a nonempty string of at most 1024 bytes');
@@ -312,6 +361,35 @@
           const result = apply(functions[functionId], undefined, publicValue(clone(payload.args)));
           follow(result, value => completeCall(id, true, value), error => completeCall(id, false, error));
         } catch (error) { completeCall(id, false, error); }
+        return null;
+      }
+      case 'sendToRenderer': {
+        const channel = ipcChannel(payload.channel);
+        if (!isArray(payload.args)) fail('IPC arguments must be an array');
+        const callbacks = listeners[channel];
+        if (!callbacks) return null;
+        // Snapshot registrations, preserving EventEmitter behavior if a callback
+        // removes another listener or subscribes while this message is delivered.
+        const snapshot = array();
+        for (let i = 0; i < callbacks.length; i++) put(snapshot, i, callbacks[i]);
+        const event = freeze(record({ sender: ipcRenderer, ports: freeze([]) }));
+        const args = publicValue(clone(payload.args));
+        const invocation = array(); put(invocation, 0, event);
+        for (let i = 0; i < args.length; i++) put(invocation, i + 1, args[i]);
+        for (let i = 0; i < snapshot.length; i++) {
+          if (snapshot[i].once) {
+            const current = listeners[channel];
+            if (current) {
+              const remaining = array();
+              for (let j = 0; j < current.length; j++) {
+                if (current[j] === snapshot[i]) listenerCount--;
+                else put(remaining, remaining.length, current[j]);
+              }
+              if (remaining.length) put(listeners, channel, remaining); else delete listeners[channel];
+            }
+          }
+          apply(snapshot[i].listener, ipcRenderer, invocation);
+        }
         return null;
       }
       case 'resolveIpc': {

@@ -14,6 +14,10 @@ ipcMain.handle('test:add', (event, left, right) => {
   assert.equal(event.senderFrame, event.sender.mainFrame);
   return left + right;
 });
+ipcMain.on('test:ping', (event, value) => {
+  assert.equal(event.senderFrame, event.sender.mainFrame);
+  event.reply('test:pong', value + 1);
+});
 ipcMain.handle('test:failure', () => { throw new Error('Expected main-process rejection'); });
 const deadline = setTimeout(() => finish(new Error('Live Electron-source test timed out')), 90000);
 let completed = false;
@@ -70,6 +74,13 @@ app.whenReady().then(async () => {
   assert.equal(await first.webContents.executeJavaScript('weberTest.secret()'), 'visible only inside the isolated preload context');
   assert.equal(await first.webContents.executeJavaScript('weberTest.add(3, 4)'), 7);
   assert.equal(await second.webContents.executeJavaScript('weberTest.add(8, 9)'), 17);
+  assert.equal(await first.webContents.executeJavaScript('weberTest.ping(40)'), 41);
+  assert.equal(await second.webContents.executeJavaScript('weberTest.ping(70)'), 71);
+  first.webContents.send('test:push', 1);
+  first.webContents.send('test:push', 2);
+  // Commands share one ordered owner queue; this observation follows both sends.
+  assert.deepEqual(await first.webContents.executeJavaScript('weberTest.pushes()'), [1, 1, 2]);
+  assert.deepEqual(await second.webContents.executeJavaScript('weberTest.pushes()'), []);
   await assert.rejects(first.webContents.executeJavaScript('weberTest.fail()'), /Expected main-process rejection/);
   assert.equal(await first.webContents.executeJavaScript('Promise.resolve(6 * 7)'), 42);
   assert.equal(await first.webContents.executeJavaScript("document.getElementById('button').click(); document.getElementById('output').textContent"), '1');
@@ -92,6 +103,6 @@ app.whenReady().then(async () => {
   assert.equal(await second.webContents.executeJavaScript('Promise.resolve(17)'), 17);
   finish(null, { rendererPids, rendererExecutables, windowsPresented: 2,
     sourceReuse: ['BrowserWindow', 'BaseWindow', 'WebContents'],
-    tested: ['original-fs real filesystem access', ...(process.versions.bun ? [] : ['original-fs ESM named and default exports']), 'original loadFile/loadURL', 'Promise evaluation', 'isolated preload', 'contextBridge function calls', 'ipcMain.invoke round trip and rejection', 'DOM events', 'window isolation', 'native drawing', 'PNG capture', 'close lifecycle'],
+    tested: ['original-fs real filesystem access', ...(process.versions.bun ? [] : ['original-fs ESM named and default exports']), 'original loadFile/loadURL', 'Promise evaluation', 'isolated preload', 'contextBridge function calls', 'ipcMain.invoke round trip and rejection', 'ipcRenderer.send and event.reply', 'webContents.send, once and listener removal', 'DOM events', 'window isolation', 'native drawing', 'PNG capture', 'close lifecycle'],
     osSandbox: false, privilegedPreload: 'electron bridge subset', fullElectronCompatibility: false });
 }).catch(finish);

@@ -39,4 +39,17 @@ int ObscuraEngine::Wait(int fd, bool watch_frames) {
   return status;
 }
 
+void ObscuraEngine::ReplyTo(const std::string& json, const ResultReply& callback) {
+  if (owner_ != std::this_thread::get_id()) throw std::runtime_error("Wrong Obscura owner thread");
+  struct Delivery { const ResultReply& callback; std::exception_ptr error; };
+  Delivery delivery{callback, {}};
+  weber_engine_command_result(handle_, reinterpret_cast<const uint8_t*>(json.data()), json.size(),
+    [](int32_t status, const uint8_t* data, size_t length, void* pointer) noexcept {
+      auto& delivery = *static_cast<Delivery*>(pointer);
+      try { delivery.callback(status != 0, data, length); }
+      catch (...) { delivery.error = std::current_exception(); }
+    }, &delivery);
+  if (delivery.error) std::rethrow_exception(delivery.error);
+}
+
 }

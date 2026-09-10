@@ -38,15 +38,18 @@ uint32_t Get(const uint8_t* p) {
   return (uint32_t{p[0]} << 24) | (uint32_t{p[1]} << 16) | (uint32_t{p[2]} << 8) | p[3];
 }
 }
-void Send(int fd, const Frame& frame, Deadline deadline) {
-  if (frame.payload.size() > kMaxResponse) throw std::runtime_error("Renderer response too large");
+void SendBytes(int fd, uint32_t sequence, uint32_t kind, const uint8_t* data, size_t size, Deadline deadline) {
+  if (size > kMaxResponse) throw std::runtime_error("Renderer response too large");
   std::array<uint8_t, 16> header{'W','B','R','1'};
-  Put(header.data() + 4, frame.sequence); Put(header.data() + 8, frame.kind);
-  Put(header.data() + 12, static_cast<uint32_t>(frame.payload.size()));
+  Put(header.data() + 4, sequence); Put(header.data() + 8, kind);
+  Put(header.data() + 12, static_cast<uint32_t>(size));
   Transfer(fd, header.data(), header.size(), true, deadline);
-  // send() does not mutate its buffer; Transfer shares the read/write loop.
-  Transfer(fd, const_cast<uint8_t*>(frame.payload.data()), frame.payload.size(), true, deadline);
+  Transfer(fd, const_cast<uint8_t*>(data), size, true, deadline);
 }
+void Send(int fd, const Frame& frame, Deadline deadline) {
+  SendBytes(fd, frame.sequence, frame.kind, frame.payload.data(), frame.payload.size(), deadline);
+}
+
 Frame Receive(int fd, uint32_t max_size, Deadline deadline) {
   std::array<uint8_t, 16> header{};
   Transfer(fd, header.data(), header.size(), false, deadline);
