@@ -32,6 +32,7 @@ jobs:
           git -C weber/vendor/obscura apply "$PWD/weber/patches/obscura/0002-isolated-preload.patch"
           git -C weber/vendor/obscura apply "$PWD/weber/patches/obscura/0003-frame-invalidation.patch"
           git -C weber/vendor/obscura apply "$PWD/weber/patches/obscura/0004-browser-navigation.patch"
+          git -C weber/vendor/obscura apply "$PWD/weber/patches/obscura/0005-desktop-protocols.patch"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -124,6 +125,15 @@ jobs:
           bun weber/electron-runtime/platform-sync/tests/test-foreign-wrapper.cjs
           xvfb-run -a python3 weber/electron-runtime/test-shortcut-live.py node
           xvfb-run -a python3 weber/electron-runtime/test-shortcut-live.py bun
+      - name: Test original protocol APIs and custom resource origins
+        id: protocols
+        continue-on-error: true
+        env:
+          WEBER_DESKTOP_HOST: ${{ github.workspace }}/out/runtime/weber-desktop-host
+          WEBER_OBSCURA_RENDERER: ${{ github.workspace }}/out/runtime/obscura/weber-obscura-renderer
+        run: |
+          xvfb-run -a node weber/electron-runtime/bootstrap.cjs weber/electron-runtime/protocol-fixture
+          xvfb-run -a bun weber/electron-runtime/bootstrap.cjs weber/electron-runtime/protocol-fixture
       - name: Assemble and execute Linux development bundle
         id: bundle
         continue-on-error: true
@@ -156,12 +166,12 @@ jobs:
       - name: Require every runtime check to pass
         if: always()
         env:
-          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.bundle.outcome }}
+          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.bundle.outcome }} ${{ steps.protocols.outcome }}
         run: |
           python3 - <<'PY_GATE'
           import os
           outcomes = os.environ['RESULTS'].split()
-          assert len(outcomes) == 10 and all(result == 'success' for result in outcomes), outcomes
+          assert len(outcomes) == 11 and all(result == 'success' for result in outcomes), outcomes
           PY_GATE
       - name: Require measurements and startup diagnostic to complete
         if: always()

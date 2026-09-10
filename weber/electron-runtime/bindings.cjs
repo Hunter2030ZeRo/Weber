@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createMenuBinding } = require('./menu-binding.cjs');
 const { attachPlatformApp } = require('./platform-app.cjs');
+const { createProtocolBinding } = require('./protocol-binding.cjs');
 const { createGlobalShortcutBinding } = require('./global-shortcut-binding.cjs');
 
 function unsupported(name) {
@@ -69,6 +70,7 @@ function createBindings(host, appPath, loadInternal) {
   let quittingAfterWindows = false;
   Object.defineProperty(app, 'name', { get: () => name, set: value => { name = String(value); } });
   attachPlatformApp(app, { getName: () => name });
+  const protocolRuntime = createProtocolBinding({ app, host, windows, unsupported });
   const menuBinding = createMenuBinding({ host, windows, app, unsupported });
   Object.defineProperty(app, 'applicationMenu', {
     get: () => loadInternal('browser/api/menu').getApplicationMenu(),
@@ -179,6 +181,7 @@ function createBindings(host, appPath, loadInternal) {
       if (!owner) return unsupported('standalone WebContents without a native view');
       this.id = owner.id;
       this._owner = owner;
+      this.session = options.session || protocolRuntime.session.fromPartition(options.partition || '');
       this._url = '';
       this._title = '';
       this._loading = false;
@@ -310,8 +313,9 @@ function createBindings(host, appPath, loadInternal) {
       this._loading = true;
       this.emit('did-start-loading');
       this.emit('did-start-navigation', event(this), target, false, true);
-      const prepare = this._preloadSource === undefined ? Promise.resolve() :
-        this._command({ method: 'configurePreload', source: this._preloadSource });
+      const configure = this._command({ method: 'configureProtocols', schemes: this.session.protocol._rules() });
+      const prepare = configure.then(() => this._preloadSource === undefined ? undefined :
+        this._command({ method: 'configurePreload', source: this._preloadSource }));
       prepare.then(() => this._command({ method: 'loadURL', url: String(target) })).then(state => {
         if (this._destroyed || serial !== this._navigation) return;
         this._url = state?.url || String(target);
@@ -419,6 +423,7 @@ function createBindings(host, appPath, loadInternal) {
   bindings.set('electron_browser_view', { View });
   bindings.set('electron_browser_web_contents_view', { WebContentsView });
   bindings.set('electron_browser_printing', { getPrinterListAsync: () => unsupported('printing') });
+  bindings.set('electron_browser_protocol', protocolRuntime.binding);
   bindings.set('electron_browser_menu', menuBinding);
   bindings.set('electron_browser_global_shortcut', createGlobalShortcutBinding({ host, app }));
   bindings.set('electron_common_command_line', app.commandLine);
@@ -458,7 +463,7 @@ function createBindings(host, appPath, loadInternal) {
     if (!quitting) app.emit('weber-error', error);
   });
 
-  return { app, bindings, unsupported,
+  return { app, bindings, unsupported, session: protocolRuntime.session,
     finishStartup() {
       app.emit('will-finish-launching');
       ready = true;

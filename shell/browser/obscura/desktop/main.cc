@@ -4,6 +4,7 @@
 #include "menu.h"
 #include "platform_sync.h"
 #include "async_output.h"
+#include "resource_broker.h"
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 #include <nlohmann/json.hpp>
@@ -73,6 +74,7 @@ struct Window {
   std::condition_variable wake;
   std::deque<Json> commands;
   std::thread worker;
+  std::shared_ptr<weber::desktop::ResourceBroker> resources;
   std::atomic<bool> worker_done{false};
   std::vector<uint8_t> pixels; // Cairo native-endian premultiplied ARGB32, UI-owned.
   unsigned frame_width = 0, frame_height = 0;
@@ -94,6 +96,7 @@ void Queue(const std::shared_ptr<Window>& window, Json command) {
 void Close(std::shared_ptr<Window> window) {
   if (window->closed.exchange(true)) return;
   window->wake.notify_all();
+  { std::lock_guard<std::mutex> lock(window->mutex); if (window->resources) window->resources->Cancel(); }
   window->menu.reset();
   gtk_widget_destroy(window->window);
   windows.erase(window->id);
@@ -137,7 +140,12 @@ Json Decode(const std::vector<uint8_t>& bytes) {
 void Work(std::shared_ptr<Window> window, Json create) {
   bool created = false;
   try {
-    RendererProcess renderer(renderer_path, 30000ms);
+    auto resources = std::make_shared<weber::desktop::ResourceBroker>([id = window->id](const Json& request) {
+      Emit({{"event", "resource-request"}, {"windowId", id}, {"resourceId", request.at("resourceId")}, {"request", request.at("request")}});
+    });
+    { std::lock_guard<std::mutex> lock(window->mutex); window->resources = resources; }
+    RendererProcess renderer(renderer_path, 30000ms, resources->child_fd());
+    resources->ChildSpawned();
     renderer.Command(Json{{"method", "viewport"}, {"width", create.value("options", Json::object()).value("width", 800)}, {"height", create.value("options", Json::object()).value("height", 600)}}.dump());
     Reply(create, {{"windowId", window->id}, {"rendererPid", renderer.process_id()}});
     created = true;
@@ -206,6 +214,7 @@ void Work(std::shared_ptr<Window> window, Json create) {
   std::deque<Json> pending;
   { std::lock_guard<std::mutex> lock(window->mutex); pending.swap(window->commands); }
   for (const auto& request : pending) Error(request, "Window is destroyed");
+  { std::lock_guard<std::mutex> lock(window->mutex); window->resources.reset(); }
   window->worker_done = true;
 }
 void Input(Window* ptr, Json command) {
@@ -378,6 +387,13 @@ void Dispatch(const Json& request) {
     auto found = windows.find(id);
     if (found == windows.end()) throw std::runtime_error("Unknown or destroyed window");
     auto window = found->second;
+    if (method == "resource.reply") {
+      std::shared_ptr<weber::desktop::ResourceBroker> resources;
+      { std::lock_guard<std::mutex> lock(window->mutex); resources = window->resources; }
+      if (!resources) throw std::runtime_error("Resource channel is unavailable");
+      resources->Resolve(request.at("resourceId").get<uint32_t>(), request.at("response"));
+      Reply(request, nullptr); return;
+    }
     if (method == "page.command") { Queue(window, request); return; }
     if (method == "window.getMenuState") { Reply(request, window->menu->Describe()); return; }
     if (method == "window.close") Close(window);

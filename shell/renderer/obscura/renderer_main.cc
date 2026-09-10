@@ -18,7 +18,9 @@ int main(int argc, char** argv) {
   int type = 0; socklen_t length = sizeof(type);
   if (getsockopt(3, SOL_SOCKET, SO_TYPE, &type, &length) || type != SOCK_STREAM) return 2;
   try {
-    ObscuraEngine engine;
+    int resource_type = 0; socklen_t resource_length = sizeof(resource_type);
+    const bool has_resources = getsockopt(4, SOL_SOCKET, SO_TYPE, &resource_type, &resource_length) == 0 && resource_type == SOCK_STREAM;
+    ObscuraEngine engine(has_resources ? 4 : -1);
     wire::Send(3, {0, wire::kReady, {'1'}}, std::chrono::steady_clock::now() + std::chrono::seconds(5));
     uint32_t sequence = 0;
     for (;;) {

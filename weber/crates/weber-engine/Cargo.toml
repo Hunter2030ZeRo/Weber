@@ -9,6 +9,12 @@ crate-type = ["staticlib"]
 
 [dependencies]
 obscura-browser = { path = "../../vendor/obscura/crates/obscura-browser", features = ["render"] }
-tokio = { version = "1", features = ["rt", "time", "net", "sync"] }
+tokio = { version = "1", features = ["rt", "time", "net", "sync", "io-util", "macros"] }
 serde_json = "1"
 url = "2"
+
+
+obscura-net = { path = "../../vendor/obscura/crates/obscura-net" }
+async-trait = "0.1"
+base64 = "0.22"
+libc = "0.2"

@@ -10,7 +10,7 @@ namespace electron::obscura {
 // A dedicated process will own this adapter; BrowserWindow routing is pending.
 class ObscuraEngine final {
  public:
-  ObscuraEngine();
+  explicit ObscuraEngine(int resource_fd = -1);
   ~ObscuraEngine();
   ObscuraEngine(const ObscuraEngine&) = delete;
   ObscuraEngine& operator=(const ObscuraEngine&) = delete;

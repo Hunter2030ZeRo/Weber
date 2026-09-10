@@ -12,6 +12,7 @@ extern "C" {
 typedef void (*weber_engine_reply)(const uint8_t*, size_t, void*);
 uint32_t weber_engine_abi_version(void);
 uint64_t weber_engine_create(void);
+uint64_t weber_engine_create_with_resources(int32_t);
 int32_t weber_engine_command(uint64_t, const uint8_t*, size_t, weber_engine_reply, void*);
 int32_t weber_engine_destroy(uint64_t);
 #ifdef __cplusplus

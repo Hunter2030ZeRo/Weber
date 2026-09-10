@@ -60,7 +60,7 @@ async function main() {
     webContents: 'browser/api/web-contents', View: 'browser/api/view',
     WebContentsView: 'browser/api/web-contents-view', ipcMain: 'browser/api/ipc-main',
     Menu: 'browser/api/menu', MenuItem: 'browser/api/menu-item',
-    globalShortcut: 'browser/api/global-shortcut',
+    globalShortcut: 'browser/api/global-shortcut', protocol: 'browser/api/protocol',
   };
   api.app = runtime.app;
   for (const [name, id] of Object.entries(apiModules)) {
@@ -74,9 +74,7 @@ async function main() {
     } });
   }
   api.TouchBar = { _setOnWindow: () => runtime.unsupported('TouchBar') };
-  // WebContents initializes session before its own binding. A real session
-  // implementation is not present yet; accessing session operations fails.
-  api.session = new Proxy({}, { get: (_target, property) => runtime.unsupported(`session.${String(property)}`) });
+  api.session = runtime.session;
   api.webFrameMain = { fromId: (processId, routingId) => {
     const wc = api.webContents.getAllWebContents().find(value => value.id === routingId && value.getOSProcessId() === processId);
     return wc?.mainFrame;
@@ -119,7 +117,7 @@ async function main() {
   process.once('exit', () => host.close());
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => api.app.exit(signal === 'SIGINT' ? 130 : 143));
   // Set original prototypes and WebContents methods before any application code.
-  for (const name of ['BaseWindow', 'View', 'WebContentsView', 'webContents', 'BrowserWindow', 'ipcMain']) void api[name];
+  for (const name of ['BaseWindow', 'View', 'WebContentsView', 'webContents', 'BrowserWindow', 'ipcMain', 'protocol']) void api[name];
   try {
     if (entry.endsWith('.mjs') || (metadata.type === 'module' && !entry.endsWith('.cjs'))) {
       if (bunLoader || typeof Module.registerHooks !== 'function') runtime.unsupported('ESM application loading on this backend');

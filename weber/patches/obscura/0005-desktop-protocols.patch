@@ -1,0 +1,242 @@
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -680,7 +680,7 @@
+     }
+     if let Ok(mut url) = base.join(value) {
+         url.set_fragment(None);
+-        if matches!(url.scheme(), "http" | "https") {
++        if matches!(url.scheme(), "http" | "https") || (url.has_host() && url.scheme() == base.scheme()) {
+             urls.push(url.to_string());
+         }
+     }
+@@ -1115,6 +1115,13 @@
+ }
+ 
+ impl Page {
++    fn desktop_subresource_allowed(&self, source: Option<&Url>, resource: &str) -> bool {
++        if subresource_allowed(source, resource) { return true; }
++        let Ok(url) = Url::parse(resource) else { return false; };
++        self.context.http_client.desktop_protocol.read().unwrap().as_ref()
++            .is_some_and(|handler| handler.accepts(url.scheme()))
++    }
++
+     pub fn new(id: String, context: Arc<BrowserContext>) -> Self {
+         let http_client = context.http_client.clone();
+         // Chromium convention: the main frame's frameId == the targetId.
+@@ -1981,7 +1988,7 @@
+                 continue;
+             };
+             let (key, resolved) = canonical_stylesheet_url(resolved);
+-            if !subresource_allowed(Some(&document_url), resolved.as_str()) {
++            if !self.desktop_subresource_allowed(Some(&document_url), resolved.as_str()) {
+                 tracing::warn!(
+                     "blocking cross-scheme <link rel=stylesheet href>: page={} href={}",
+                     self.url_string(),
+@@ -2005,7 +2012,7 @@
+                 continue;
+             };
+             let (key, resolved) = canonical_stylesheet_url(resolved);
+-            if !subresource_allowed(Some(&document_url), resolved.as_str())
++            if !self.desktop_subresource_allowed(Some(&document_url), resolved.as_str())
+                 || self.should_block_url(resolved.as_str())
+             {
+                 tracing::info!("Blocked inline stylesheet import: {}", resolved);
+@@ -2134,7 +2141,7 @@
+                         );
+                         continue;
+                     }
+-                    if !subresource_allowed(Some(&document_url), import_url.as_str())
++                    if !self.desktop_subresource_allowed(Some(&document_url), import_url.as_str())
+                         || self.should_block_url(import_url.as_str())
+                     {
+                         tracing::info!("Blocked stylesheet import: {}", import_url);
+@@ -2399,7 +2406,7 @@
+                         .unwrap_or_else(|| src_url.clone())
+                 };
+ 
+-                if !subresource_allowed(self.url.as_ref(), &full_url) {
++                if !self.desktop_subresource_allowed(self.url.as_ref(), &full_url) {
+                     // Block file://, data:, javascript:, and other
+                     // off-origin schemes from being injected as a
+                     // <script src>. Without this an http page can
+@@ -3706,7 +3713,7 @@
+         }
+ 
+         candidates.retain(|(url, _), _| {
+-            subresource_allowed(Some(&document_url), url) && !self.should_block_url(url)
++            self.desktop_subresource_allowed(Some(&document_url), url) && !self.should_block_url(url)
+         });
+         if candidates.len() > 128 {
+             candidates = candidates.into_iter().take(128).collect();
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -2374,6 +2374,29 @@
+             gs.http_client.clone(),
+         )
+     };
++    let desktop = http_client.as_ref().and_then(|client| client.desktop_protocol.read().unwrap().clone());
++    if let (Some(handler), Ok(parsed)) = (desktop, url::Url::parse(&url)) {
++        if handler.accepts(parsed.scheme()) {
++            if !handler.fetch_enabled(parsed.scheme()) {
++                return Err(deno_error::JsErrorBox::generic("Fetch is not enabled for this desktop scheme"));
++            }
++            let request = RequestInfo { url: parsed.clone(), method: method.clone(),
++                headers: serde_json::from_str(&headers_json).unwrap_or_default(), resource_type: ResourceType::Fetch };
++            let response = handler.request(&request, &body, &origin).await
++                .map_err(|error| deno_error::JsErrorBox::generic(error.to_string()))?;
++            if response.body.len() > 64 * 1024 * 1024
++                || !obscura_net::desktop_protocol::cors_allowed(&origin, &parsed, handler.as_ref(),
++                    &response.headers, &mode, credentials == "include") {
++                return Err(deno_error::JsErrorBox::generic("Desktop protocol response rejected by bounds or CORS"));
++            }
++            use base64::Engine as _;
++            return Ok(serde_json::json!({"status": response.status, "url": url,
++                "body": String::from_utf8_lossy(&response.body),
++                "bodyBase64": base64::engine::general_purpose::STANDARD.encode(&response.body),
++                "opaque": mode == "no-cors" && origin != obscura_net::desktop_protocol::origin(&parsed, handler.as_ref()),
++                "headers": response.headers}).to_string());
++        }
++    }
+     // The private-network opt-in is a BrowserContext policy, not only a
+     // process-wide environment setting.  Navigation already honours the
+     // context's configured HTTP client; scripted fetch/XHR must use the same
+@@ -4503,21 +4526,25 @@
+ /// not a valid URL (the JS side turns that into a TypeError, per spec).
+ #[op2]
+ #[string]
+-fn op_url_parse(#[string] href: &str, #[string] base: &str) -> String {
+-    // The url crate can panic on a few pathological inputs (internal range
+-    // slicing); catch it so a bad URL never aborts the process.
+-    std::panic::catch_unwind(|| {
+-        let parsed = if base.is_empty() {
+-            url::Url::parse(href)
+-        } else {
+-            url::Url::parse(base).and_then(|b| b.join(href))
+-        };
+-        match parsed {
+-            Ok(u) => url_components(&u).to_string(),
+-            Err(_) => "{\"ok\":false}".to_string(),
+-        }
+-    })
+-    .unwrap_or_else(|_| "{\"ok\":false}".to_string())
++fn op_url_parse(state: &mut OpState, #[string] href: &str, #[string] base: &str) -> String {
++    let parsed = std::panic::catch_unwind(|| {
++        if base.is_empty() { url::Url::parse(href) }
++        else { url::Url::parse(base).and_then(|b| b.join(href)) }
++    });
++    match parsed {
++        Ok(Ok(url)) => desktop_url_components(state, url_components(&url)).to_string(),
++        _ => "{\"ok\":false}".to_string(),
++    }
++}
++fn desktop_url_components(state: &OpState, mut value: serde_json::Value) -> serde_json::Value {
++    let Some(shared) = state.try_borrow::<SharedState>() else { return value; };
++    let gs = shared.borrow();
++    if let (Some(client), Some(href)) = (&gs.http_client, value["href"].as_str()) {
++        if let (Some(handler), Ok(url)) = (client.desktop_protocol.read().unwrap().as_ref(), url::Url::parse(href)) {
++            value["origin"] = obscura_net::desktop_protocol::origin(&url, handler.as_ref()).into();
++        }
++    }
++    value
+ }
+ 
+ /// Apply a WHATWG URL setter (`part` = href/protocol/username/password/host/
+@@ -4567,14 +4594,14 @@
+ 
+ #[op2]
+ #[string]
+-fn op_url_set(#[string] href: &str, #[string] part: &str, #[string] value: &str) -> String {
++fn op_url_set(state: &mut OpState, #[string] href: &str, #[string] part: &str, #[string] value: &str) -> String {
+     // Some url-crate setters panic on pathological inputs (the url-setters WPT
+     // tests exercise these). Catch the unwind and treat it as a no-op setter,
+     // returning the URL unchanged, which matches WHATWG "do nothing on invalid".
+     match std::panic::catch_unwind(|| url_set_inner(href, part, value)) {
+-        Ok(Some(v)) => v.to_string(),
++        Ok(Some(v)) => desktop_url_components(state, v).to_string(),
+         _ => match url::Url::parse(href) {
+-            Ok(u) => url_components(&u).to_string(),
++            Ok(u) => desktop_url_components(state, url_components(&u)).to_string(),
+             Err(_) => "{\"ok\":false}".to_string(),
+         },
+     }
+--- a/crates/obscura-net/src/client.rs
++++ b/crates/obscura-net/src/client.rs
+@@ -906,6 +906,7 @@
+     pub accept_language: RwLock<String>,
+     pub extra_headers: RwLock<HashMap<String, String>>,
+     pub interceptor: RwLock<Option<Box<dyn RequestInterceptor + Send + Sync>>>,
++    pub desktop_protocol: std::sync::RwLock<Option<Arc<dyn crate::desktop_protocol::DesktopProtocolHandler>>>,
+     pub timeout: Duration,
+     pub in_flight: Arc<std::sync::atomic::AtomicU32>,
+     pub block_trackers: bool,
+@@ -1120,6 +1121,7 @@
+             accept_language: RwLock::new("en-US,en;q=0.9".to_string()),
+             extra_headers: RwLock::new(HashMap::new()),
+             interceptor: RwLock::new(None),
++            desktop_protocol: std::sync::RwLock::new(None),
+             in_flight: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+             timeout: Duration::from_secs(30),
+             block_trackers: false,
+@@ -1434,6 +1436,22 @@
+         callbacks: Option<&CallbackRegistry>,
+         request: ResourceRequest,
+     ) -> Result<Response, ObscuraNetError> {
++        let desktop = self.desktop_protocol.read().unwrap().clone();
++        if let Some(handler) = desktop.filter(|handler| handler.accepts(url.scheme())) {
++            let info = RequestInfo { url: url.clone(), method: initial_method.to_string(),
++                headers: self.extra_headers.read().await.clone(), resource_type: request.resource_type };
++            let source = request.initiator.as_ref().map(|u| crate::desktop_protocol::origin(u, handler.as_ref())).unwrap_or_default();
++            let response = handler.request(&info, initial_body.as_deref().unwrap_or_default(), &source).await?;
++            if response.body.len() > request.max_response_bytes || !(100..=599).contains(&response.status)
++                || !crate::desktop_protocol::cors_allowed(&source, url, handler.as_ref(), &response.headers,
++                    request.mode.header_value(), matches!(request.credentials, RequestCredentials::Include)) {
++                return Err(ObscuraNetError::Blocked("Desktop protocol response exceeds limits or origin policy".into()));
++            }
++            if let Some(callbacks) = callbacks {
++                callbacks.fire_request(&info).await; callbacks.fire_response(&info, &response).await;
++            }
++            return Ok(response);
++        }
+         validate_url(url, self.allow_private_network)?;
+         validate_request_mode(&request, url)?;
+ 
+--- /dev/null
++++ b/crates/obscura-net/src/desktop_protocol.rs
+@@ -0,0 +1,29 @@
++//! Optional embedder-owned protocols. Absent for ordinary headless contexts.
++use std::collections::HashMap;
++use url::Url;
++use crate::{RequestInfo, Response, ObscuraNetError};
++
++#[async_trait::async_trait]
++pub trait DesktopProtocolHandler: Send + Sync {
++    fn accepts(&self, scheme: &str) -> bool;
++    fn standard(&self, scheme: &str) -> bool;
++    fn fetch_enabled(&self, scheme: &str) -> bool;
++    async fn request(&self, request: &RequestInfo, body: &[u8], initiator: &str)
++        -> Result<Response, ObscuraNetError>;
++}
++pub fn origin(url: &Url, handler: &dyn DesktopProtocolHandler) -> String {
++    if handler.standard(url.scheme()) && url.has_host() {
++        let port = url.port().map(|p| format!(":{p}")).unwrap_or_default();
++        format!("{}://{}{port}", url.scheme(), url.host_str().unwrap_or_default())
++    } else { url.origin().ascii_serialization() }
++}
++pub fn cors_allowed(source: &str, target: &Url, handler: &dyn DesktopProtocolHandler,
++    headers: &HashMap<String, String>, mode: &str, credentials: bool) -> bool {
++    let target_origin = origin(target, handler);
++    if source.is_empty() || (source != "null" && source == target_origin) { return true; }
++    if mode == "same-origin" { return false; }
++    if mode == "no-cors" { return true; }
++    let allow = headers.get("access-control-allow-origin").map(String::as_str).unwrap_or("");
++    (allow == source || (allow == "*" && !credentials))
++        && (!credentials || headers.get("access-control-allow-credentials").is_some_and(|value| value == "true"))
++}
+--- a/crates/obscura-net/src/lib.rs
++++ b/crates/obscura-net/src/lib.rs
+@@ -1,4 +1,5 @@
+ pub mod client;
++pub mod desktop_protocol;
+ pub mod cookies;
+ pub mod encoding;
+ pub mod interceptor;

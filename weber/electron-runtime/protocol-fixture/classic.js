@@ -1,0 +1,1 @@
+globalThis.classicLoaded = 41;

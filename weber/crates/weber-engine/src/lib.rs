@@ -7,6 +7,8 @@ use serde_json::{json, Value};
 
 mod desktop;
 mod preload;
+mod protocol;
+use obscura_net::desktop_protocol::DesktopProtocolHandler;
 
 const MAX_REQUEST: usize = 1024 * 1024;
 const MAX_RESPONSE: usize = 64 * 1024 * 1024;
@@ -20,6 +22,7 @@ thread_local! { static ENGINE: RefCell<Option<(u64, Engine)>> = const { RefCell:
 struct Engine {
     // Page/V8 must be destroyed before the Tokio runtime.
     page: Page,
+    protocols: Option<Arc<protocol::Protocols>>,
     preload: preload::Preload,
     runtime: tokio::runtime::Runtime,
     loaded: bool,
@@ -38,9 +41,11 @@ struct Engine {
 type Reply = extern "C" fn(*const u8, usize, *mut c_void);
 
 impl Engine {
-    fn new() -> Result<Self, String> {
+    fn new() -> Result<Self, String> { Self::with_resources(-1) }
+    fn with_resources(resource_fd: i32) -> Result<Self, String> {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all()
             .build().map_err(|e| e.to_string())?;
+        let protocols = { let _guard = runtime.enter(); protocol::Protocols::from_fd(resource_fd)? };
         let mut page = {
             let _guard = runtime.enter();
             let mut page = Page::new("weber-renderer".into(), Arc::new(BrowserContext::new("weber-renderer".into())));
@@ -48,8 +53,9 @@ impl Engine {
             page.set_viewport((800., 600.));
             page
         };
+        if let Some(protocols) = &protocols { *page.context.http_client.desktop_protocol.write().unwrap() = Some(protocols.clone()); }
         let preload = preload::Preload::new(&mut page);
-        Ok(Self { page, preload, runtime, loaded: false, width: 800, height: 600, poisoned: false,
+        Ok(Self { page, protocols, preload, runtime, loaded: false, width: 800, height: 600, poisoned: false,
             events: VecDeque::new(), event_bytes: 0, dropped_events: 0,
             critical_events: VecDeque::new(), critical_bytes: 0, queued_ipc: 0,
             evaluation_tickets: HashMap::new() })
@@ -134,6 +140,7 @@ impl Engine {
         match url.scheme() {
             "http" | "https" | "file" | "data" => {},
             "about" if url.as_str() == "about:blank" => {},
+            scheme if self.protocols.as_ref().is_some_and(|p| p.accepts(scheme)) => {},
             _ => return Err("Unsupported navigation scheme".into()),
         }
         self.preload.before_navigation()?;
@@ -183,6 +190,11 @@ impl Engine {
         let runtime_handle = self.runtime.handle().clone();
         let _guard = runtime_handle.enter();
         match value.get("method").and_then(Value::as_str).ok_or("Missing method")? {
+            "configureProtocols" => {
+                if let Some(protocols) = &self.protocols { protocols.configure(&value["schemes"])?; }
+                else if value["schemes"].as_array().is_none_or(|v| !v.is_empty()) { return Err("Resource channel unavailable".into()); }
+                Ok(b"null".to_vec())
+            }
             "startEvaluation" => {
                 let id = value.get("id").and_then(Value::as_str)
                     .filter(|id| !id.is_empty() && id.len() <= 128).ok_or("Invalid evaluation ID")?;
@@ -326,11 +338,14 @@ pub extern "C" fn weber_engine_abi_version() -> u32 { 1 }
 
 /// One engine per owner thread. Zero means startup failed or an engine already exists.
 #[no_mangle]
-pub extern "C" fn weber_engine_create() -> u64 {
+pub extern "C" fn weber_engine_create() -> u64 { weber_engine_create_with_resources(-1) }
+
+#[no_mangle]
+pub extern "C" fn weber_engine_create_with_resources(resource_fd: i32) -> u64 {
     catch_unwind(AssertUnwindSafe(|| ENGINE.with(|slot| {
         let Ok(mut slot) = slot.try_borrow_mut() else { return 0; };
         if slot.is_some() { return 0; }
-        let Ok(engine) = Engine::new() else { return 0; };
+        let Ok(engine) = Engine::with_resources(resource_fd) else { return 0; };
         let id = NEXT.fetch_add(1, Ordering::Relaxed);
         if id == 0 { return 0; }
         *slot = Some((id, engine)); id

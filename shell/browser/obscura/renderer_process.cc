@@ -12,7 +12,7 @@
 #include <unistd.h>
 extern char** environ;
 namespace electron::obscura {
-RendererProcess::RendererProcess(const std::string& executable, std::chrono::milliseconds timeout)
+RendererProcess::RendererProcess(const std::string& executable, std::chrono::milliseconds timeout, int resource_fd)
     : timeout_(timeout), owner_(std::this_thread::get_id()) {
   if (timeout.count() <= 0 || executable.empty() || executable[0] != '/' || executable.find('\0') != std::string::npos)
     throw std::invalid_argument("Expected absolute renderer executable and positive deadline");
@@ -22,18 +22,22 @@ RendererProcess::RendererProcess(const std::string& executable, std::chrono::mil
   const int child_endpoint = fcntl(pair[1], F_DUPFD_CLOEXEC, 4);
   if (child_endpoint < 0) { close(pair[0]); close(pair[1]); throw std::runtime_error("Renderer descriptor duplication failed"); }
   close(pair[1]); pair[1] = child_endpoint;
+  const int resource_endpoint = resource_fd < 0 ? -1 : fcntl(resource_fd, F_DUPFD_CLOEXEC, 5);
+  if (resource_fd >= 0 && resource_endpoint < 0) { close(pair[0]); close(pair[1]); throw std::runtime_error("Resource descriptor duplication failed"); }
   posix_spawn_file_actions_t actions;
   int error = posix_spawn_file_actions_init(&actions);
-  if (error) { close(pair[0]); close(pair[1]); throw std::runtime_error("spawn actions failed"); }
+  if (error) { close(pair[0]); close(pair[1]); if (resource_endpoint >= 0) close(resource_endpoint); throw std::runtime_error("spawn actions failed"); }
   // Close parent endpoint BEFORE dup2: it can itself be fd 3.
   error = posix_spawn_file_actions_addclose(&actions, pair[0]);
   if (!error) error = posix_spawn_file_actions_adddup2(&actions, pair[1], 3);
-  if (!error) error = posix_spawn_file_actions_addclosefrom_np(&actions, 4);
+  if (!error && resource_endpoint >= 0) error = posix_spawn_file_actions_adddup2(&actions, resource_endpoint, 4);
+  if (!error) error = posix_spawn_file_actions_addclosefrom_np(&actions, resource_endpoint >= 0 ? 5 : 4);
   char channel[] = "--weber-channel=3";
   char* args[] = {const_cast<char*>(executable.c_str()), channel, nullptr};
   pid_t child = -1;
   if (!error) error = posix_spawn(&child, executable.c_str(), &actions, nullptr, args, environ);
   posix_spawn_file_actions_destroy(&actions);
+  if (resource_endpoint >= 0) close(resource_endpoint);
   close(pair[1]);
   if (error) { close(pair[0]); throw std::runtime_error(std::string("Renderer spawn failed: ") + std::strerror(error)); }
   fd_ = pair[0]; pid_ = child;

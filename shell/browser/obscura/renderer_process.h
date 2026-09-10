@@ -12,7 +12,7 @@ namespace electron::obscura {
 class RendererProcess final {
  public:
   explicit RendererProcess(const std::string& executable,
-                           std::chrono::milliseconds timeout = std::chrono::seconds(30));
+                           std::chrono::milliseconds timeout = std::chrono::seconds(30), int resource_fd = -1);
   ~RendererProcess();
   RendererProcess(const RendererProcess&) = delete;
   RendererProcess& operator=(const RendererProcess&) = delete;

@@ -13,9 +13,9 @@ void Collect(const uint8_t* data, size_t len, void* user) noexcept {
   catch (...) { reply->error = std::current_exception(); }
 }
 }
-ObscuraEngine::ObscuraEngine() : handle_(0), owner_(std::this_thread::get_id()) {
+ObscuraEngine::ObscuraEngine(int resource_fd) : handle_(0), owner_(std::this_thread::get_id()) {
   if (weber_engine_abi_version() != 1) throw std::runtime_error("Unsupported Obscura ABI");
-  handle_ = weber_engine_create();
+  handle_ = weber_engine_create_with_resources(resource_fd);
   if (!handle_) throw std::runtime_error("Obscura initialization failed or owner already has an engine");
 }
 ObscuraEngine::~ObscuraEngine() {
