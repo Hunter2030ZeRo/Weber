@@ -31,9 +31,14 @@ function createUtilityBinding({ app, unsupported, native = require('./dist/nativ
     const pipes = [];
     let child, wire;
     const ports = new Map();
-    let nextPort = 0, exited = false, exitEmitted = false;
+    let nextPort = 0, exited = false, exitEmitted = false, stopping = false;
     const handle = { emit() {}, pid: undefined,
-      stop(signal) { if (!exited && child) return child.kill(signal); return false; },
+      stop(signal) {
+        if (exited || !child) return false;
+        const sent = child.kill(signal);
+        if (sent) stopping = true;
+        return sent;
+      },
       kill() { return handle.stop('SIGTERM'); },
       postMessage(data, transfer = []) {
         if (exited) return;
@@ -62,7 +67,9 @@ function createUtilityBinding({ app, unsupported, native = require('./dist/nativ
       },
     };
     function failure(error) {
-      if (exited) return;
+      // A peer can close its socket before SIGCHLD is dispatched. EPIPE after
+      // an accepted kill request is termination, not an application IPC fault.
+      if (exited || stopping) return;
       handle.stop('SIGKILL');
       app.emit('weber-error', error);
     }

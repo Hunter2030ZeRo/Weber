@@ -29,7 +29,13 @@ async function waitFor(predicate) {
 }
 function fork(t, filename = entry, args = [], options = {}) {
   const child = utilityProcess.fork(filename, args, { stdio: 'pipe', ...options });
-  t.after(() => { child._unwrapHandle()?.stop('SIGKILL'); });
+  t.after(async () => {
+    const handle = child._unwrapHandle();
+    if (!handle) return;
+    const exited = once(child, 'exit');
+    handle.stop('SIGKILL');
+    await exited;
+  });
   return child;
 }
 test('original utility wrapper starts a real process with stdio, argv, cwd, environment and copied data', { timeout: 10000 }, async t => {
@@ -39,17 +45,21 @@ test('original utility wrapper starts a real process with stdio, argv, cwd, envi
   const identity = once(child, 'message');
   child.postMessage({ kind: 'identity' }); // Queues before child listener installation.
   await once(child, 'spawn');
+  t.diagnostic('utility spawned');
   assert.ok(child.pid > 0 && child.pid !== process.pid);
   assert.deepEqual((await identity)[0], { pid: child.pid, ppid: process.pid, type: 'utility',
     argv: ['argument with spaces'], cwd: __dirname, env: 'kept' });
+  t.diagnostic('utility identity received');
   const data = { value: 42n, bytes: new Uint8Array([0, 128, 255]), map: new Map([['key', 'value']]) }; data.self = data;
   const echo = once(child, 'message'); child.postMessage({ kind: 'echo', data }); data.bytes[0] = 9;
   const [received] = await echo;
+  t.diagnostic('structured echo received');
   assert.equal(received.self, received); assert.equal(received.value, 42n);
   assert.deepEqual(received.bytes, new Uint8Array([0, 128, 255])); assert.deepEqual(received.map, data.map);
   assert.match(stdout, /utility-stdout-ready/); assert.match(stderr, /utility-stderr-ready/);
   const exit = once(child, 'exit'); child.postMessage({ kind: 'exit', code: 23 });
   assert.equal((await exit)[0], 23); assert.equal(child.pid, undefined); assert.equal(child.kill(), false);
+  t.diagnostic('utility exit received');
 });
 test('main port ownership moves to utility and queued structured messages cross both processes', { timeout: 10000 }, async t => {
   const child = fork(t), channel = new MessageChannelMain();

@@ -10,7 +10,27 @@ concurrency:
   group: weber-runtime-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  utility-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - name: Compile original utility API and native transport
+        run: |
+          npm ci --prefix weber/electron-runtime
+          node weber/electron-runtime/build.cjs
+      - name: Test original utility processes on Node and Bun
+        run: |
+          node --test weber/electron-runtime/test-utility.cjs
+          bun test ./weber/electron-runtime/test-utility.cjs
   linux-runtime:
+    needs: utility-compatibility
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -24,6 +44,8 @@ jobs:
         with:
           node-version: '24'
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
       - uses: dtolnay/rust-toolchain@stable
       - run: git submodule update --init --depth 1 weber/vendor/obscura
       - name: Apply retained raw-frame API extension
@@ -131,12 +153,6 @@ jobs:
           bun weber/electron-runtime/platform-sync/tests/test-foreign-wrapper.cjs
           xvfb-run -a python3 weber/electron-runtime/test-shortcut-live.py node
           xvfb-run -a python3 weber/electron-runtime/test-shortcut-live.py bun
-      - name: Test original utility processes and transferred ports
-        id: utilities
-        continue-on-error: true
-        run: |
-          node --test weber/electron-runtime/test-utility.cjs
-          bun test ./weber/electron-runtime/test-utility.cjs
       - name: Test native desktop notification protocol on Node and Bun
         id: notifications
         continue-on-error: true
@@ -206,7 +222,7 @@ jobs:
       - name: Require every runtime check to pass
         if: always()
         env:
-          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.clipboard.outcome }} ${{ steps.bundle.outcome }} ${{ steps.protocols.outcome }} ${{ steps.notifications.outcome }} ${{ steps.utilities.outcome }}
+          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.clipboard.outcome }} ${{ steps.bundle.outcome }} ${{ steps.protocols.outcome }} ${{ steps.notifications.outcome }} ${{ needs.utility-compatibility.result }}
         run: |
           python3 - <<'PY_GATE'
           import os
