@@ -108,6 +108,17 @@ function createUtilityBinding({ app, unsupported, native = require('./dist/nativ
       child = spawn(process.execPath, [...(options.execArgv || []), path.join(__dirname, 'utility-bootstrap.cjs'), entry, ...args],
         { cwd, env: environment, stdio: descriptors, shell: false });
       handle.pid = child.pid;
+      // Subscribe before any Node-API calls: Bun may drain nextTick callbacks
+      // when returning from native code. Deliver publicly only after _fork has
+      // returned and the original Electron wrapper has installed handle.emit.
+      child.once('spawn', () => setImmediate(() => {
+        if (exitEmitted) return;
+        for (const pipe of pipes) if (pipe.name) {
+          const fd = native.takeParent(pipe.channel);
+          try { handle.emit(pipe.name, fd); } catch (error) { fs.closeSync(fd); throw error; }
+        }
+        handle.emit('spawn');
+      }));
       for (const pipe of pipes) native.releaseChild(pipe.channel);
       wire = new UtilityWire(new Socket({ fd: native.takeParent(transport), readable: true, writable: true }));
       wire.on('failure', failure);
@@ -121,13 +132,6 @@ function createUtilityBinding({ app, unsupported, native = require('./dist/nativ
         } else if (message.kind === 'port-close') {
           const port = ports.get(message.id); ports.delete(message.id); port?.close();
         } else if (message.kind !== 'ready') throw new Error('Unknown utility message kind');
-      });
-      child.once('spawn', () => {
-        for (const pipe of pipes) if (pipe.name) {
-          const fd = native.takeParent(pipe.channel);
-          try { handle.emit(pipe.name, fd); } catch (error) { fs.closeSync(fd); throw error; }
-        }
-        handle.emit('spawn');
       });
       child.once('error', error => { finish(1, null); app.emit('weber-error', error); });
       child.once('exit', (code, signal) => {
