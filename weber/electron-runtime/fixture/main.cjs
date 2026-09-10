@@ -1,6 +1,6 @@
 'use strict';
 // Ordinary Electron application imports. No alternate framework API is loaded.
-const { app, BrowserWindow, ipcMain, utilityProcess, MessageChannelMain, crashReporter, contentTracing, shell, safeStorage, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, utilityProcess, MessageChannelMain, crashReporter, contentTracing, shell, safeStorage, powerSaveBlocker, net } = require('electron');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const fs = require('node:fs');
@@ -53,6 +53,7 @@ app.whenReady().then(async () => {
     assert.equal(electronEsm.shell, shell);
     assert.equal(electronEsm.safeStorage, safeStorage);
     assert.equal(electronEsm.powerSaveBlocker, powerSaveBlocker);
+    assert.equal(electronEsm.net, net);
     const esm = await import('original-fs');
     const nodeEsm = await import('node:original-fs');
     assert.equal(esm.default, fs);

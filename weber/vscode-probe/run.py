@@ -97,26 +97,27 @@ def provenance(repo: Path, runtime: Path, node: str, temporary: Path) -> dict:
     existing = runtime / "dist"
     manifest = json.loads((existing / "source-manifest.json").read_text())
     if not manifest.get("sources"):
-        raise RuntimeError("Weber has no compiled original Electron source manifest")
+        raise RuntimeError("Weber has no compiled Electron source manifest")
     rebuilt = temporary / "recompiled-electron"
     result = subprocess.run([node, str(runtime / "build.cjs"), str(repo), str(rebuilt)],
                             capture_output=True, text=True, timeout=60, check=False)
     if result.returncode:
-        raise RuntimeError("Original Electron source recompilation failed: " + result.stderr[-4000:])
+        raise RuntimeError("Electron source recompilation failed: " + result.stderr[-4000:])
     if json.loads((rebuilt / "source-manifest.json").read_text()) != manifest:
         raise RuntimeError("Installed Electron source manifest differs from a fresh compilation")
     verified = []
     for item in manifest["sources"]:
         source = (repo / item["path"]).resolve()
         if not source.is_relative_to(repo / "lib") or sha256(source) != item["sha256"]:
-            raise RuntimeError(f"Original Electron source hash mismatch: {item['path']}")
+            raise RuntimeError(f"Electron source hash mismatch: {item['path']}")
         compiled_path = Path(item["path"]).relative_to("lib").with_suffix(".js")
         compiled = sha256(existing / compiled_path)
         if compiled != sha256(rebuilt / compiled_path):
             raise RuntimeError(f"Compiled Electron module differs from current source: {compiled_path}")
         verified.append({**item, "compiled_sha256": compiled})
     versions = subprocess.check_output([node, "-p", "JSON.stringify(process.versions)"], text=True, timeout=10)
-    return {"compiled_original_sources_verified": True, "source_count": len(verified),
+    return {"compiled_fork_sources_verified": True, "source_count": len(verified),
+            "adapted_sources": [item["path"] for item in verified if item.get("adaptation")],
             "sources": verified, "bootstrap_sha256": sha256(runtime / "bootstrap.cjs"),
             "bindings_sha256": sha256(runtime / "bindings.cjs"),
             "node_versions": json.loads(versions), "weber_commit": os.environ.get("GITHUB_SHA"),

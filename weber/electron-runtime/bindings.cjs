@@ -74,6 +74,13 @@ function createBindings(host, appPath, loadInternal) {
   attachPlatformApp(app, { getName: () => name });
   require('./startup-options.cjs').attachStartupOptions(app, { unsupported });
   const protocolRuntime = createProtocolBinding({ app, host, windows, unsupported });
+  const network = require('./net-binding.cjs').createNetBinding({ app, unsupported, loadInternal, session: protocolRuntime.session });
+  bindings.set('electron_common_net', network.binding);
+  bindings.set('electron_browser_session', { Session: protocolRuntime.Session });
+  protocolRuntime.Session.prototype.fetch = function (input, init) {
+    return network.fetchWithSession(input, init, this, loadInternal('browser/api/net').request);
+  };
+  protocolRuntime.Session.prototype.resolveHost = network.resolveHost;
   const menuBinding = createMenuBinding({ host, windows, app, unsupported });
   Object.defineProperty(app, 'applicationMenu', {
     get: () => loadInternal('browser/api/menu').getApplicationMenu(),

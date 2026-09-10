@@ -8,12 +8,14 @@ Chromium `content`, Blink, Viz, and Chromium renderer binaries are not used by
 this runtime target. The upstream Electron C++ target remains in the source tree
 for reference; building that upstream target still produces Chromium Electron.
 
-`build.cjs` reads the original files directly. It records the path and SHA-256 of
-every compiled module in `dist/source-manifest.json`. It does not rewrite or copy
+`build.cjs` reads the source files directly. It records the path and SHA-256 of
+every compiled module in `dist/source-manifest.json`, including the reason for
+scoped changes to `net-client-request.ts` and `net-fetch.ts`. These fix empty
+streaming uploads, response cancellation and Bun fetch option preservation. It does not rewrite or copy
 the public implementations of `loadFile`, `loadURL`, the load-event Promise, or
 BrowserWindow's forwarding methods into a second framework implementation.
 
-The replacement code is intentionally at the native binding boundary:
+Most replacement code lives at the native binding boundary:
 
 * `bootstrap.cjs` installs Electron module/binding resolution and starts the app.
 * `bindings.cjs` supplies the native objects expected by the original modules.
@@ -27,6 +29,9 @@ The replacement code is intentionally at the native binding boundary:
   XScreenSaver idle queries and UPower/logind events, without periodic polling.
 * `utility-binding.cjs` starts actual independent Node/Bun utility processes;
   `utility-bootstrap.cjs` installs the original ParentPort module in the child.
+* `net-binding.cjs` and `net-url-loader.cjs` connect original main/utility net
+  streams to real backend HTTP and WebSocket transport; shared browser session
+  networking remains separate. See [NETWORK.md](NETWORK.md).
 * `commonjs-loader.cjs` executes CommonJS modules on Bun, whose `Module._load`
   interception differs from Node. Builtins and native addons remain Bun's.
 
@@ -133,9 +138,12 @@ OS sandbox. Utility windows or a Chromium subprocess are never created.
 
 Limits are 32 utilities, 64 transferred ports per utility, and 4 MiB/256 queued
 messages per channel or paused inbox. There are no periodic delivery polls.
-Authentication integration and platform-specific unsigned-library options fail
-explicitly. Browser structured-clone types and automatic Electron-module support
-inside utilities are not implemented. A Node application starts Node children;
+Opt-in utility Basic authentication challenges reach the main `app.login`
+event over the private channel. Session/partition auth and platform-specific
+unsigned-library options fail explicitly. Browser structured-clone types remain
+incomplete; utilities expose scoped `net` through `electron`/`electron/utility`
+in CJS on both backends and ESM on Node. Bun bare Electron ESM imports remain
+unresolved; ordinary Bun ESM with supported builtins still executes. A Node application starts Node children;
 a Bun application starts Bun children. Cross-engine serialized channels are not
 claimed. Bun 1.4.2 needs explicit FD adoption in `utility-socket.cjs`; that
 adapter is scoped to Weber's transport and the upstream utility wrapper's stdio

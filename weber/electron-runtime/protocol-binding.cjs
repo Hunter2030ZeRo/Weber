@@ -117,6 +117,6 @@ function createProtocolBinding({ app, host, windows, unsupported }) {
       host.request('resource.reply',{windowId:message.windowId,resourceId:message.resourceId,response})
     ).catch(error=>{if(win&&!win.isDestroyed())app.emit('weber-error',error);});
   });
-  return {session, binding:{Protocol,registerSchemesAsPrivileged,getStandardSchemes:()=>[...privileges].filter(([,v])=>v.standard).map(([name])=>name)}};
+  return {session, Session, binding:{Protocol,registerSchemesAsPrivileged,getStandardSchemes:()=>[...privileges].filter(([,v])=>v.standard).map(([name])=>name)}};
 }
 module.exports={createProtocolBinding};

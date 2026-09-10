@@ -20,12 +20,18 @@ const entries = [
   'browser/api/power-monitor', 'browser/api/power-save-blocker',
   'browser/api/crash-reporter', 'browser/api/content-tracing',
   'common/api/shell', 'browser/api/safe-storage',
+  'browser/api/net', 'browser/api/net-fetch', 'utility/api/net',
   'browser/api/utility-process', 'utility/parent-port',
   'browser/api/screen', 'browser/api/system-preferences', 'browser/api/message-channel', 'browser/api/clipboard', 'browser/api/global-shortcut', 'browser/api/protocol',
 ];
 const seen = new Set();
 const sources = [];
 const bindings = new Set();
+// Record scoped fork fixes rather than labelling adapted source as unmodified.
+const adaptations = {
+  'lib/common/api/net-client-request.ts': 'Start empty chunked uploads and propagate response destruction to the owned URLLoader',
+  'lib/browser/api/net-fetch.ts': 'Preserve explicit Bun fetch policies and abort failed streaming uploads',
+};
 
 function compile(id) {
   if (seen.has(id)) return;
@@ -59,7 +65,8 @@ function compile(id) {
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   fs.writeFileSync(destination, compiled.outputText);
   fs.writeFileSync(`${destination}.map`, compiled.sourceMapText);
-  sources.push({ path: relative, sha256: crypto.createHash('sha256').update(source).digest('hex') });
+  sources.push({ path: relative, sha256: crypto.createHash('sha256').update(source).digest('hex'),
+    ...(adaptations[relative] ? { adaptation: adaptations[relative] } : {}) });
   // Examine emitted imports, so imports used only as TypeScript types are not
   // accidentally turned into runtime dependencies.
   for (const match of compiled.outputText.matchAll(/require\(['"]([^'"]+)['"]\)/g)) {
@@ -79,9 +86,9 @@ fs.mkdirSync(output, { recursive: true });
 for (const entry of entries) compile(entry);
 fs.writeFileSync(path.join(output, 'package.json'), '{"type":"commonjs"}\n');
 fs.writeFileSync(path.join(output, 'source-manifest.json'), JSON.stringify({
-  description: 'Unmodified Electron sources compiled for replacement native bindings',
+  description: 'Electron fork sources compiled for replacement native bindings; scoped Weber adaptations are identified per source',
   entries, sources: sources.sort((a, b) => a.path.localeCompare(b.path)),
   linkedBindings: [...bindings].sort(),
 }, null, 2) + '\n');
-console.log(`Compiled ${sources.length} original Electron modules to ${output}`);
+console.log(`Compiled ${sources.length} Electron source modules to ${output}`);
 require('./platform-sync/build.cjs').build(output);

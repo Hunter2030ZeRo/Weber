@@ -144,6 +144,7 @@ class ChunkedBodyStream extends Writable {
   _pendingChunk: Buffer | undefined;
   _downstream?: NodeJS.DataPipe;
   _pendingCallback?: (error?: Error) => void;
+  _pendingFinalCallback?: () => void;
   _clientRequest: ClientRequest;
 
   constructor(clientRequest: ClientRequest) {
@@ -166,8 +167,14 @@ class ChunkedBodyStream extends Writable {
   }
 
   _final(callback: () => void) {
-    this._downstream!.done();
-    callback();
+    if (this._downstream) {
+      this._downstream.done();
+      callback();
+    } else {
+      // An empty chunked upload has no first write to create the data pipe.
+      this._pendingFinalCallback = callback;
+      this._clientRequest._startRequest();
+    }
   }
 
   startReading(pipe: NodeJS.DataPipe) {
@@ -186,6 +193,11 @@ class ChunkedBodyStream extends Writable {
         cb(maybeError || undefined);
       };
       this._downstream.write(this._pendingChunk).then(doneWriting, doneWriting);
+    } else if (this._pendingFinalCallback) {
+      const callback = this._pendingFinalCallback;
+      delete this._pendingFinalCallback;
+      this._downstream.done();
+      callback();
     }
   }
 }
@@ -452,6 +464,11 @@ export class ClientRequest extends Writable implements Electron.ClientRequest {
     this._urlLoader = createURLLoader(opts);
     this._urlLoader.on('response-started', (event, finalUrl, responseHead) => {
       const response = (this._response = new IncomingMessage(responseHead));
+      response.once('close', () => {
+        // Destroying an IncomingMessage, including Readable.toWeb cancellation,
+        // must also release its paused network transport and admission slot.
+        if (!response.readableEnded) this._die();
+      });
       this.emit('response', response);
     });
     this._urlLoader.on('data', (event, data, resume) => {

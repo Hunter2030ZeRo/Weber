@@ -97,6 +97,7 @@ test('parent port listener removal permits natural exit without losing its final
 test('startup validation and child termination keep port lifetime and failures explicit', { timeout: 10000 }, async t => {
   ready = false; assert.throws(() => utilityProcess.fork(entry), /after app is ready/); ready = true;
   assert.throws(() => utilityProcess.fork(entry, [], { execArgv: [42] }), /execArgv/);
+  assert.throws(() => utilityProcess.fork(entry, [], { respondToAuthRequestsFromMainProcess: 'yes' }), TypeError);
   const child = fork(t), channel = new MessageChannelMain(); t.after(() => channel.port1.close());
   const response = once(child, 'message'); child.postMessage({ kind: 'port' }, [channel.port2]); await response;
   const close = once(channel.port1, 'close'), exit = once(child, 'exit');

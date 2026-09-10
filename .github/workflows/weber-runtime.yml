@@ -39,6 +39,18 @@ jobs:
           bun test ./weber/electron-runtime/test-safe-storage.cjs
           node --test weber/electron-runtime/test-power-save.cjs
           bun test ./weber/electron-runtime/test-power-save.cjs
+      - name: Test original network APIs with real HTTP and utility processes
+        run: |
+          node --test weber/electron-runtime/test-net.cjs
+          bun test ./weber/electron-runtime/test-net.cjs
+          node --test weber/electron-runtime/test-net-fetch-compat.cjs
+          bun test ./weber/electron-runtime/test-net-fetch-compat.cjs
+          node --test weber/electron-runtime/test-net-websocket.cjs
+          bun test ./weber/electron-runtime/test-net-websocket.cjs
+          node --test weber/electron-runtime/test-utility-net.cjs
+          bun test ./weber/electron-runtime/test-utility-net.cjs
+          node --test weber/electron-runtime/test-utility-auth.cjs
+          bun test ./weber/electron-runtime/test-utility-auth.cjs
       - name: Test VS Code diagnostic extraction
         run: python3 -m unittest discover -s weber/vscode-probe -p 'test_*.py'
       - name: Compile native inhibition without the engine

@@ -23,6 +23,7 @@ RUNTIME_HELPERS = (
     "bootstrap.cjs", "bindings.cjs", "commonjs-loader.cjs", "electron-api.cjs",
     "host-client.cjs", "ipc-reply-queue.cjs", "menu-binding.cjs", "protocol-binding.cjs", "clipboard-binding.cjs", "display-binding.cjs", "notification-binding.cjs", "message-port-binding.cjs", "global-shortcut-binding.cjs", "platform-app.cjs",
     "power-binding.cjs", "power-save-binding.cjs",
+    "net-binding.cjs", "net-url-loader.cjs", "utility-api.cjs",
     "utility-binding.cjs", "utility-bootstrap.cjs", "utility-wire.cjs", "utility-inbox.cjs", "utility-socket.cjs",
     "diagnostics-binding.cjs", "startup-options.cjs",
     "shell-binding.cjs", "safe-storage-binding.cjs",

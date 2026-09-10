@@ -27,7 +27,32 @@ export function fetchWithSession(
 ) {
   const p = createDeferredPromise<Response>();
   let req: Request;
+  let explicitCredentials: RequestCredentials | undefined;
+  let explicitReferrerPolicy: ReferrerPolicy | undefined;
   try {
+    // Bun 1.4.2's Request drops these RequestInit fields and exposes constant
+    // getters. Preserve explicit policies before the original request adapter
+    // checks them; otherwise `omit` becomes `include` and referrer restrictions
+    // silently disappear. Policies already discarded by a caller-created Bun
+    // Request cannot be recovered, so callers must pass an explicit init value.
+    if (process.versions.bun && init) {
+      const credentials = init.credentials;
+      if (credentials !== undefined) {
+        explicitCredentials = `${credentials}` as RequestCredentials;
+        if (!['omit', 'same-origin', 'include'].includes(explicitCredentials)) {
+          throw new TypeError('Invalid Request credentials');
+        }
+      }
+      const referrerPolicy = init.referrerPolicy;
+      if (referrerPolicy !== undefined) {
+        explicitReferrerPolicy = `${referrerPolicy}` as ReferrerPolicy;
+        if (!['', 'no-referrer', 'no-referrer-when-downgrade', 'origin',
+          'origin-when-cross-origin', 'same-origin', 'strict-origin',
+          'strict-origin-when-cross-origin', 'unsafe-url'].includes(explicitReferrerPolicy)) {
+          throw new TypeError('Invalid Request referrerPolicy');
+        }
+      }
+    }
     req = new Request(input, init);
   } catch (e: any) {
     p.reject(e);
@@ -82,7 +107,8 @@ export function fetchWithSession(
 
   const origin = req.headers.get('origin') ?? undefined;
   // We can't set credentials to same-origin unless there's an origin set.
-  const credentials = req.credentials === 'same-origin' && !origin ? 'include' : req.credentials;
+  const requestCredentials = explicitCredentials ?? req.credentials;
+  const credentials = requestCredentials === 'same-origin' && !origin ? 'include' : requestCredentials;
 
   const r = request(
     allowAnyProtocol({
@@ -92,7 +118,7 @@ export function fetchWithSession(
       origin,
       credentials,
       cache: req.cache,
-      referrerPolicy: req.referrerPolicy,
+      referrerPolicy: explicitReferrerPolicy ?? req.referrerPolicy,
       redirect: req.redirect
     })
   );
@@ -138,7 +164,14 @@ export function fetchWithSession(
   // pipeTo expects a WritableStream<Uint8Array>. Node.js' Writable.toWeb returns WritableStream<any>,
   // which causes a TS structural mismatch.
   const writable = Writable.toWeb(r as unknown as Writable) as unknown as WritableStream<Uint8Array>;
-  if (!req.body?.pipeTo(writable).then(() => r.end())) {
+  if (req.body) {
+    req.body.pipeTo(writable).then(() => r.end(), (error) => {
+      // A failed source stream must settle fetch and release its request,
+      // including failures before the buffered body reaches the transport.
+      p.reject(error);
+      r.abort();
+    });
+  } else {
     r.end();
   }
 

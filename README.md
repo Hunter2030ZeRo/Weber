@@ -12,11 +12,12 @@ Electron's MIT license remains at the repository root; its README is
 
 ## Executable implementation
 
-The runtime compiles and executes 36 original, unmodified Electron TypeScript
-modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem,
+The runtime compiles 41 Electron TypeScript source modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem,
 Notification, powerMonitor, powerSaveBlocker, utilityProcess, ParentPort, globalShortcut, protocol,
 clipboard, screen, systemPreferences, shell, safeStorage, crashReporter, contentTracing and
-IPC helpers. Their implemented scopes differ; crash collection is still absent. A
+IPC helpers, main/utility networking and WebSocket. Two network source modules
+carry scoped Weber fixes, recorded in the compiled source manifest. Their
+implemented scopes differ; crash collection is still absent. A
 replacement `process._linkedBinding` layer routes their native operations to a
 separate GTK host. Each window has its own Obscura process. The build uses no
 Chromium checkout, Content, Blink, Viz or Chromium renderer binary. Obscura and
@@ -109,8 +110,10 @@ the TOML selector automatically.
 
 The [binding scope](weber/electron-runtime/README.md) and
 [VS Code compatibility matrix](weber/vscode-probe/COMPATIBILITY.md) distinguish
-verified operations from missing behavior. The unmodified VS Code 1.136.2 entry
-currently stops at the missing `net` export. Workbench startup, editing,
+verified operations from missing behavior. The last full diagnostic (95e9c87) stopped at the missing `net` export.
+The current source adds HTTP/HTTPS, streaming fetch, WebSocket and utility
+authentication forwarding; a new whole-app diagnostic is required to identify
+the next startup blocker. Workbench startup, editing,
 terminal, extension hosting and full-app migration have not passed acceptance.
 No compatibility percentage is claimed.
 

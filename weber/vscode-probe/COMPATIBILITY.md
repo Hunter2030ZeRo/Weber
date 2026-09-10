@@ -2,8 +2,10 @@
 
 Target: the unmodified Linux x64 VS Code 1.136.2 application at the revision in
 `pin.json`, running through the original Electron source modules on Obscura.
-The latest probe still exits before workbench startup because `net` is
-missing. A diagnostic exit code of zero means evidence collection succeeded;
+The latest full native probe (95e9c87) exits before workbench startup because
+`net` is missing. The current source supplies main/utility HTTP, HTTPS, streaming
+fetch, WebSocket and opt-in Basic authentication forwarding. Its next whole-app
+startup result is not yet recorded; isolated network tests do not establish it. A diagnostic exit code of zero means evidence collection succeeded;
 the report itself has `ready: false`. No whole-app compatibility percentage is
 inferred from exported names or module counts.
 
@@ -48,7 +50,7 @@ appearing in this table does not mean every method works.
 | desktopCapturer | Missing | Authorized desktop/window capture and source selection |
 | dialog | Error logging only; no verified native dialog contract | Native file/message dialogs and cancellation |
 | globalShortcut | Original module, real X11 registration/conflicts/callbacks | Wayland portals, suspension and keyboard-map changes |
-| net | Missing | Main-process network requests and session integration |
+| net | HTTP/HTTPS streams, redirects, compression, cancellation, explicit-omit fetch, DNS and WebSocket; main and utility paths | Shared browser cookies, proxy/PAC, session interception/cache and complete network semantics |
 | powerMonitor | Original module; native X11 idle queries, UPower/logind power/suspend/resume/lock transport on Node/Bun | Shutdown inhibition, unsupported thermal/platform data, full desktop acceptance |
 | powerSaveBlocker | Original module; aggregated IDs and priority; native GNOME/freedesktop acquisition/release, failed-transition rollback and ownership cleanup | Real desktop physical sleep/display acceptance, raw XScreenSaver fallback, Wayland portals and other platforms |
 | protocol | Original module, custom/file interception, handle/Response, document/CSS/JS/module/fetch loading | Full redirects, HTTP handlers and browser privilege semantics |
@@ -57,10 +59,11 @@ appearing in this table does not mean every method works.
 | session | Partition-owned protocol handlers | Persistent cookies/storage, webRequest, permissions, proxy/cache/certificate behavior |
 | shell | Original module; real GIO URI/file launch and reversible trash on Node/Bun; folder fallback tested | Real file-manager item-selection acceptance, beep and platform-specific operations |
 | systemPreferences | Original Linux module, GTK accent and animation settings | Other operating systems and wider preference integration |
-| utilityProcess | Original wrapper and ParentPort; real same-backend child, stdio/argv/cwd/env, CJS/ESM entry, main-to-child port transfer, two-way data and termination | Actual VS Code extension host, renderer ports, nested transfers, auth integration and full process-tree cleanup |
+| utilityProcess | Original wrapper and ParentPort; real same-backend child, stdio/argv/cwd/env, CJS/ESM entry (Electron ESM imports only on Node), main-to-child port transfer, two-way data and termination | Actual VS Code extension host, renderer ports, nested transfers, session/proxy auth integration and full process-tree cleanup |
 
-The unmodified Electron TypeScript modules remain in the upstream source tree.
-The replacement runtime compiles 36 of them and records exact source hashes.
+The Electron TypeScript modules remain in the fork source tree.
+The replacement runtime compiles 41 of them and records exact source hashes.
+Two network modules carry explicit, manifest-recorded Weber adaptations.
 Additional behavior lives at their native binding boundary, with explicit
 unsupported errors where implemented entry points cannot perform an operation.
 

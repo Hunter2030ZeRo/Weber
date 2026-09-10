@@ -23,6 +23,12 @@ function createUtilityBinding({ app, unsupported, native = require('./dist/nativ
     if (options.env !== undefined && (!options.env || typeof options.env !== 'object' || Array.isArray(options.env))) throw new TypeError('Invalid utility environment');
     for (const name of ['allowLoadingUnsignedLibraries', 'respondToAuthRequests'])
       if (options[name]) unsupported('utilityProcess option ' + name);
+    if (options.respondToAuthRequestsFromMainProcess !== undefined && typeof options.respondToAuthRequestsFromMainProcess !== 'boolean')
+      throw new TypeError('respondToAuthRequestsFromMainProcess must be a boolean');
+    // A selected Session also implies its cookies, proxy and certificate policy.
+    // Do not silently launch a different network context for those applications.
+    for (const name of ['session', 'partition'])
+      if (options[name] !== undefined) unsupported('utilityProcess option ' + name);
     const entry = path.resolve(modulePath);
     const cwd = options.cwd === undefined ? process.cwd() : path.resolve(options.cwd);
     const stdio = options.stdio || ['ignore', 'inherit', 'inherit'];
@@ -31,12 +37,14 @@ function createUtilityBinding({ app, unsupported, native = require('./dist/nativ
     const pipes = [];
     let child, wire;
     const ports = new Map();
+    const authRequests = new Set();
+    let highestAuth = 0;
     let nextPort = 0, exited = false, exitEmitted = false, stopping = false;
     const handle = { emit() {}, pid: undefined,
       stop(signal) {
         if (exited || !child) return false;
         const sent = child.kill(signal);
-        if (sent) stopping = true;
+        if (sent) { stopping = true; authRequests.clear(); }
         return sent;
       },
       kill() { return handle.stop('SIGTERM'); },
@@ -77,6 +85,7 @@ function createUtilityBinding({ app, unsupported, native = require('./dist/nativ
       if (exitEmitted) return;
       exitEmitted = true; exited = true;
       active.delete(handle);
+      authRequests.clear();
       wire?.close();
       for (const port of ports.values()) port.close();
       ports.clear();
@@ -103,6 +112,9 @@ function createUtilityBinding({ app, unsupported, native = require('./dist/nativ
       }
       descriptors.push(native.childFd(transport));
       const environment = { ...(options.env || process.env), WEBER_UTILITY_PARENT_PID: String(process.pid) };
+      // Always overwrite the private selector, including when false, so a
+      // caller's environment cannot opt an unrelated child into auth routing.
+      environment.WEBER_UTILITY_MAIN_AUTH = options.respondToAuthRequestsFromMainProcess ? '1' : '0';
       // Do not inherit the main app selector into the utility entry.
       delete environment.WEBER_ENTRY;
       child = spawn(process.execPath, [...(options.execArgv || []), path.join(__dirname, 'utility-bootstrap.cjs'), entry, ...args],
@@ -122,9 +134,35 @@ function createUtilityBinding({ app, unsupported, native = require('./dist/nativ
       for (const pipe of pipes) native.releaseChild(pipe.channel);
       wire = new UtilityWire(new Socket({ fd: native.takeParent(transport), readable: true, writable: true }));
       wire.on('failure', failure);
+      wire.on('closed', () => authRequests.clear());
       wire.on('message', message => {
         if (!message || typeof message !== 'object') throw new Error('Invalid utility message');
-        if (message.kind === 'message') handle.emit('message', message.data);
+        if (message.kind === 'auth-request') {
+          if (!options.respondToAuthRequestsFromMainProcess || !Number.isSafeInteger(message.id) ||
+              message.id <= highestAuth || authRequests.size >= 128 || !message.details || !message.authInfo)
+            throw new Error('Invalid utility authentication request');
+          highestAuth = message.id;
+          if (exited || stopping) return;
+          const id = message.id;
+          authRequests.add(id);
+          const callback = (username, password) => {
+            if (!authRequests.delete(id) || exited || stopping || wire.closed) return;
+            const credentials = typeof username === 'string' && typeof password === 'string' ? { username, password } : {};
+            try { wire.send({ kind: 'auth-response', id, ...credentials }); }
+            catch (error) { failure(error); }
+          };
+          const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+          // pid comes from the owned process, never from the child payload.
+          const details = { ...message.details, pid: child.pid };
+          app.emit('login', event, null, details, message.authInfo, callback);
+          // Same rule as Electron LoginHandler: an inline callback can answer,
+          // but retaining it asynchronously requires event.preventDefault().
+          if (!event.defaultPrevented) callback();
+        } else if (message.kind === 'auth-cancel') {
+          if (!Number.isSafeInteger(message.id) || message.id < 1 || message.id > highestAuth)
+            throw new Error('Unknown utility authentication request');
+          authRequests.delete(message.id);
+        } else if (message.kind === 'message') handle.emit('message', message.data);
         else if (message.kind === 'port-message') {
           const port = ports.get(message.id);
           if (port) port.postMessage(message.data);
@@ -136,6 +174,7 @@ function createUtilityBinding({ app, unsupported, native = require('./dist/nativ
       child.once('error', error => { finish(1, null); app.emit('weber-error', error); });
       child.once('exit', (code, signal) => {
         exited = true;
+        authRequests.clear();
         if (wire.closed) return finish(code, signal);
         // SIGCHLD may be observed before the private socket's last readable
         // event. Drain to EOF before reporting exit; inherited descriptors must
