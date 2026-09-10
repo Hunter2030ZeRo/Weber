@@ -10,8 +10,8 @@ const electron = process.argv[2];
 const runtimes = { ...(electron ? { electron } : {}), node: process.execPath, bun: 'bun' };
 let counter = 0;
 const texts = ['', 'public fixture text', '한글 😀\0 newline\n', 'test'.repeat(2048)];
-const unlock = () => {
-  const result = spawnSync('/usr/bin/gnome-keyring-daemon', ['--unlock', '--components=secrets'], {
+const unlock = (replace = false) => {
+  const result = spawnSync('/usr/bin/gnome-keyring-daemon', [...(replace ? ['--replace'] : []), '--unlock', '--components=secrets'], {
     input: 'weber-owned-test-keyring-password\n', encoding: 'utf8', timeout: 10000,
   });
   if (result.error || result.status) throw Error('Could not unlock owned test keyring');
@@ -82,7 +82,10 @@ function dbus(method, args = []) {
     assert.equal(run(runtime, options, { DBUS_SESSION_BUS_ADDRESS: 'unix:path=' + root + '/missing-bus' }).available, false);
     assert.equal(run(runtime, { ...options, backend: 'basic', basicOptIn: false }).available, false);
   }
-  unlock();
+  // --unlock initializes a daemon; it does not send an unlock request to an
+  // already running one. Restart only this private session's daemon and reload
+  // the persisted login keyring with the same test password.
+  unlock(true);
   for (const runtime of ['node', 'bun']) {
     const restored = run(runtime, { ...options, ciphertexts: results[0].ciphertexts });
     assert.equal(restored.available, true, 'owned keyring was unlocked');
