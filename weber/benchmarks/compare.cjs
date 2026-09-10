@@ -143,6 +143,7 @@ async function trial(framework, index, config, clockTicks) {
         reason: 'The observed process tree changed during extended idle sampling' });
     }
     child.stdin.write('{"command":"finish"}\n');
+    const rendererIpc = await phase('renderer-ipc');
     await phase('complete');
     const status = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Application sent complete but did not exit within 5 seconds')), 5000);
@@ -154,6 +155,8 @@ async function trial(framework, index, config, clockTicks) {
       requestedWindowBounds: ready.requestedWindowBounds, reportedWindowBounds: ready.reportedWindowBounds,
       javascriptRoundTripMs: workload.javascriptRoundTripMs,
       ipcRoundTripMs: workload.ipcRoundTripMs,
+      rendererIpc: { warmupCalls: 200, calls: rendererIpc.calls, elapsedMs: rendererIpc.elapsedMs,
+        meanRoundTripMs: rendererIpc.elapsedMs / rendererIpc.calls, checksum: rendererIpc.checksum },
       domUpdateAndCaptureMs: workload.domUpdateAndCaptureMs,
       extended: { ipcBurstMs: extendedWorkload.ipcBurstMs,
         componentUpdateAndCaptureMs: extendedWorkload.componentUpdateAndCaptureMs,
@@ -200,6 +203,7 @@ function summarize(trials) {
       startupToLoadAndCaptureMs: median(samples.map(sample => sample.startupToLoadAndCaptureMs)),
       javascriptRoundTripMs: median(samples.flatMap(sample => sample.javascriptRoundTripMs)),
       ipcRoundTripMs: median(samples.flatMap(sample => sample.ipcRoundTripMs)),
+      rendererOriginatedWarmIpcMs: median(samples.map(sample => sample.rendererIpc.meanRoundTripMs)),
       domUpdateAndCaptureMs: median(samples.flatMap(sample => sample.domUpdateAndCaptureMs)),
       idlePssBytes: median(samples.map(sample => sample.idle.pssBytesMedian)),
       idleRssBytes: median(samples.map(sample => sample.idle.rssBytesMedian)),

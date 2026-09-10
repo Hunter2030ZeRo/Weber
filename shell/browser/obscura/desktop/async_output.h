@@ -17,8 +17,9 @@ struct OutputLimits {
   std::chrono::milliseconds shutdown_timeout{2000};
 };
 
-// Takes ownership of fd, including on construction failure. Exactly one thread
-// writes FIFO messages; producers never wait for the receiver to drain a pipe.
+// Takes ownership of fd, including on construction failure. A small socket
+// message may be sent inline only when no earlier message is in flight. One
+// writer drains the bounded FIFO; producers never wait for the receiver.
 // Overflow, broken pipes and deadlines permanently fail the stream and invoke
 // on_failure once. The owner must close the host, rejecting outstanding RPCs.
 class AsyncOutput {

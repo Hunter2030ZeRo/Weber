@@ -1,6 +1,7 @@
 // Copyright (c) Weber contributors. SPDX-License-Identifier: MIT
 #include "async_output.h"
 #include <sys/eventfd.h>
+#include <sys/socket.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <pthread.h>
@@ -47,6 +48,7 @@ struct AsyncOutput::State {
   size_t pending_messages = 0;
   bool accepting = true;
   bool failed = false;
+  bool stream_socket = false;
   Clock::time_point drain_deadline = Clock::time_point::max();
   std::thread writer;
 
@@ -60,6 +62,8 @@ struct AsyncOutput::State {
     if (flags < 0 || fcntl(fd.value, F_SETFL, flags | O_NONBLOCK) < 0 ||
         fcntl(fd.value, F_SETFD, FD_CLOEXEC) < 0)
       throw std::runtime_error("Cannot configure desktop output descriptor");
+    int socket_type = 0; socklen_t socket_length = sizeof(socket_type);
+    stream_socket = getsockopt(fd.value, SOL_SOCKET, SO_TYPE, &socket_type, &socket_length) == 0 && socket_type == SOCK_STREAM;
     writer = std::thread([this] { Run(); });
   }
   ~State() { Finish(); }
@@ -90,6 +94,17 @@ struct AsyncOutput::State {
       if (!accepting || failed) return false;
       if (!bytes.empty() && bytes.size() <= limits.bytes - pending_bytes &&
           pending_messages < limits.messages) {
+        // libuv child stdio is a Unix stream socket on Linux. When no writer
+        // owns earlier bytes, send a small reply without another thread hop.
+        // MSG_DONTWAIT never waits for the receiver; MSG_NOSIGNAL protects
+        // every producer thread without changing the process signal policy.
+        if (stream_socket && !pending_messages && bytes.size() <= 16 * 1024) {
+          const auto written = send(fd.value, bytes.data(), bytes.size(), MSG_DONTWAIT | MSG_NOSIGNAL);
+          if (written == static_cast<ssize_t>(bytes.size())) return true;
+          if (written > 0) bytes.erase(0, static_cast<size_t>(written));
+          // A partial/full-buffer send joins the same bounded FIFO. A broken
+          // stream is handled by the writer's existing permanent-failure path.
+        }
         const size_t size = bytes.size();
         queue.push_back({std::move(bytes), Clock::now() + limits.delivery_timeout});
         pending_bytes += size; ++pending_messages;

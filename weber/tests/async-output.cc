@@ -1,6 +1,7 @@
 // Copyright (c) Weber contributors. SPDX-License-Identifier: MIT
 #include "../../shell/browser/obscura/desktop/async_output.h"
 #include <fcntl.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #include <atomic>
 #include <chrono>
@@ -118,6 +119,30 @@ void ClosedReceiverAndDescriptorOwnership() {
   Check(fcntl(descriptor, F_GETFD) >= 0, "Destructor closed a reused descriptor twice");
   close(descriptor);
 }
+void SocketInlineAndQueuedOutputStayOrdered() {
+  int pair[2]; Check(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, pair) == 0, "Cannot create output socket");
+  int capacity = 4096;
+  Check(setsockopt(pair[1], SOL_SOCKET, SO_SNDBUF, &capacity, sizeof(capacity)) == 0, "Cannot bound output socket");
+  std::atomic<unsigned> failures{0};
+  AsyncOutput output(pair[1], [&] { ++failures; });
+  const std::string small = "{\"id\":1,\"result\":true}\n";
+  const std::string large(128 * 1024, 'x');
+  Check(output.Enqueue(small), "Cannot send inline socket reply");
+  Check(output.Enqueue(large), "Cannot queue large socket output");
+  Check(output.Enqueue(small), "Cannot queue a reply behind an active write");
+  std::string received;
+  std::thread reader([&] {
+    char bytes[8192]; ssize_t size;
+    while ((size = read(pair[0], bytes, sizeof(bytes))) > 0) received.append(bytes, size);
+  });
+  const auto finished = output.Finish(); reader.join(); close(pair[0]);
+  Check(finished && failures == 0 && received == small + large + small, "Socket output bypassed earlier bytes");
+  Check(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, pair) == 0, "Cannot create broken output socket");
+  close(pair[0]);
+  AsyncOutput broken(pair[1], [&] { ++failures; });
+  broken.Enqueue(small);
+  Check(!broken.Finish() && failures == 1, "Inline socket failure must remain bounded and SIGPIPE-safe");
+}
 }  // namespace
 int main() {
   try {
@@ -126,6 +151,7 @@ int main() {
     DeadlinesAreBounded(false);
     DeadlinesAreBounded(true);
     ClosedReceiverAndDescriptorOwnership();
+    SocketInlineAndQueuedOutputStayOrdered();
     std::cout << "Async desktop output: full-pipe progress, FIFO replies, bounds, deadlines, EOF and descriptor ownership passed\n";
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

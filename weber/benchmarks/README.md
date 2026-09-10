@@ -64,7 +64,14 @@ Metrics:
   runtimes use the same sequence. It includes application/preload initialization.
 * JavaScript: 30 serial Promise evaluations through `executeJavaScript`.
 * IPC: 15 serial renderer-to-preload-to-main invocation round trips, observed
-  through `executeJavaScript`.
+  through `executeJavaScript`. This includes the main-to-renderer evaluation
+  request and its completion transport around each invocation.
+* Warm renderer IPC: after both original idle phases, one renderer script warms
+  up 200 invocations and times 500 sequential invocations from inside the page.
+  `rendererOriginatedWarmIpcMs` is the median of three per-trial mean latencies.
+  The same contextBridge/preload API and result checksum are used on both
+  runtimes. No per-call `executeJavaScript` transport is included. This extra
+  measurement does not replace the original cold/early invocation result.
 * DOM/capture: ten changes to visible text and geometry, each followed by two
   animation-frame callbacks and then capture. The timing includes those frame
   callbacks. The unchanged PNG-hash assertion still requires visible pixel
@@ -101,7 +108,8 @@ changes. Five further process-tree samples measure PSS and idle CPU after a
 500 ms settling period. The larger documents remain loaded while sampling.
 
 `extendedConditions`, each trial's `extended` object, and `extendedSummary`
-record this separately. The original `summary` still describes the original
-100-row fixture measured before the added workload. The extended phase is a
+record this separately. The original fields in `summary` still describe the
+100-row fixture measured before the added workload; the explicitly named warm
+renderer IPC field comes from the final phase described above. The extended phase is a
 synthetic test of concurrent traffic and component updates; it does not load
 Monaco, a terminal or extensions and cannot predict whole VS Code memory use.

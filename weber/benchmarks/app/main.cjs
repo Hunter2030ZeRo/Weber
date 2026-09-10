@@ -146,6 +146,22 @@ app.whenReady().then(async () => {
   await delay(500);
   send({ phase: 'extended-ready', ipcBurstMs, componentUpdateAndCaptureMs });
   assert.equal((await receive()).command, 'finish');
+  // A renderer-originated invoke has no executeJavaScript transport around
+  // each call. Measure it separately, after all existing workload/idle phases.
+  // Both runtimes receive the same warm-up and sequential workload.
+  const rendererIpc = await first.webContents.executeJavaScript(`
+    (async () => {
+      for (let n = 0; n < 200; n++) await benchmark.add(n, 1);
+      const start = performance.now();
+      let checksum = 0;
+      for (let n = 0; n < 500; n++) checksum += await benchmark.add(n, 1);
+      return { calls: 500, elapsedMs: performance.now() - start, checksum };
+    })()
+  `);
+  assert.equal(rendererIpc.checksum, 125250);
+  assert.equal(rendererIpc.calls, 500);
+  assert.ok(rendererIpc.elapsedMs > 0);
+  send({ phase: 'renderer-ipc', ...rendererIpc });
   clearTimeout(deadline);
   send({ phase: 'complete' });
   app.exit(0);
