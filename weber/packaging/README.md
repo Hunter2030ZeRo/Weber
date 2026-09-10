@@ -104,13 +104,19 @@ without notice files are explicitly listed; some native components bundled by a
 crate may require additional notices or source distribution. This collection is
 evidence for a later distribution review, not a complete third-party license audit.
 
-The utility-process compatibility bundle is
-[afa40b1](results/afa40b1.json), from
-[CI run 34445917097](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34445917097).
-It contains 31 compiled original Electron modules, including utilityProcess and
-ParentPort, plus native protocol/clipboard/display/notification/power bindings,
-batched renderer IPC and shared immutable capture/presentation frames. Seven
-real-process tests pass on each of Node 24.20.0 and Bun 1.4.2. All three backend
-examples pass after extraction; Node and Bun also execute an independent utility
-and a transferred-port round trip there. The Native example remains a Rust main.
-See its record for the archive link, checksum and remaining acceptance gaps.
+The startup and desktop-service bundle is
+[d969e2e](results/d969e2e.json), from
+[CI run 34452572080](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34452572080).
+It contains 34 compiled original Electron modules. New coverage includes inactive
+crash metadata, bounded Node main-process timing traces and real GIO shell
+operations. Native crash collection and Bun trace recording remain unavailable.
+Seven utility-process tests still pass per backend; startup-service tests pass
+four on Node and three on Bun with one explicit Node-only skip. GIO launch,
+folder fallback and reversible trash tests pass on both runtimes.
+
+All three backend examples pass after extraction; Node also verifies ESM named
+imports of the new original API modules. Node/Bun examples execute an independent
+utility and transferred-port round trip; the Native example remains a Rust main.
+GIO operations require the system `libglib2.0-bin` package; neither launcher nor
+the default desktop applications are bundled. See the record for the archive,
+checksum and remaining VS Code acceptance gaps, including safeStorage.

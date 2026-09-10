@@ -41,11 +41,13 @@ probe cleans its entire subprocess group. Download and extraction also have
 size limits. Distribution files and the temporary profile are deleted after
 the report is written; only hashes and bounded error/stack excerpts are kept.
 
-The latest verified probe has advanced past `protocol`, `clipboard`,
-`systemPreferences`, `Notification` and `powerMonitor` imports and now stops at
-missing `crashReporter`. Those APIs
-were implemented with native behavior and separate execution checks; no empty
-exports were added to suppress the startup error. The report also inventories
+The latest verified probe has advanced past `crashReporter`, `contentTracing`
+and `shell` imports and now stops at missing `safeStorage`. The original modules
+are connected to scoped runtime behavior: inactive crash metadata with explicit
+collection errors, actual bounded Node main-process timing traces, and real
+GIO file/URI launch and trash. Native crash capture is not implemented and Bun
+tracing remains explicitly unavailable. None of these import-stage advances is
+a running-workbench acceptance pass. The report also inventories
 named Electron imports from the pinned application. See
 [COMPATIBILITY.md](COMPATIBILITY.md) for their current scope and the remaining
 workbench, editing, terminal, extension and multiwindow acceptance work.

@@ -1,0 +1,88 @@
+{
+  "kind": "validated-linux-development-bundle",
+  "commit": "d969e2ebb6c5cfe570f7162c36275c5ad7cd163e",
+  "workflowRun": 34452572080,
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34452572080/artifacts/10142342416",
+  "filename": "weber-x86_64-unknown-linux-gnu-development-d969e2ebb6c5.tar.gz",
+  "bytes": 56807527,
+  "sha256": "6acb7a2ad049a3419baa9ecce3ca9e3753ea7027169eb91fb6ab92a8aef8e5a2",
+  "allRuntimeGatesPassed": true,
+  "runtimeGates": 14,
+  "originalElectronSourceModules": 34,
+  "extractedBackendSmokes": [
+    "node",
+    "bun",
+    "native"
+  ],
+  "startupServices": {
+    "node": {
+      "passed": 4,
+      "failed": 0
+    },
+    "bun": {
+      "passed": 3,
+      "skipped": 1,
+      "failed": 0
+    },
+    "traceScope": "Actual Node main-process marks and measures; no renderer or Bun tracing; bounded output and re-entrant start guard",
+    "crashScope": "Inactive parameter metadata only; native collection and upload explicitly unsupported"
+  },
+  "shell": [
+    {
+      "kind": "native-shell-acceptance",
+      "backend": "node",
+      "passed": true,
+      "originalShellModule": true,
+      "externalURI": true,
+      "openPath": true,
+      "revealFallback": true,
+      "trashPreservesData": true,
+      "fileManagerSelectionTested": false
+    },
+    {
+      "kind": "native-shell-acceptance",
+      "backend": "bun",
+      "passed": true,
+      "originalShellModule": true,
+      "externalURI": true,
+      "openPath": true,
+      "revealFallback": true,
+      "trashPreservesData": true,
+      "fileManagerSelectionTested": false
+    }
+  ],
+  "utilityTests": {
+    "nodePassed": 7,
+    "bunPassed": 7
+  },
+  "osSandbox": false,
+  "nodeAndBunExecutablesIncluded": false,
+  "chromiumBrowserRuntimeIncluded": false,
+  "vscode": {
+    "version": "1.136.2",
+    "ready": false,
+    "blocker": "SyntaxError: Named export 'safeStorage' not found. The requested module 'electron' is a CommonJS module, which may not support all module.exports as named exports."
+  },
+  "monaco": {
+    "version": "0.52.2",
+    "ready": false,
+    "coreEditingReady": true,
+    "passedChecks": 7,
+    "blocker": "Dedicated module Worker remains unavailable; Unexpected token 'export'."
+  },
+  "startupImportProgression": [
+    {
+      "commit": "afa40b1d7b2435a2e5d8d8fc04d6c2dd59e4b162",
+      "missing": "crashReporter"
+    },
+    {
+      "commit": "2e60c76ef1edc3e0ba7163648115f5963b931ed7",
+      "missing": "shell"
+    },
+    {
+      "commit": "d969e2ebb6c5cfe570f7162c36275c5ad7cd163e",
+      "missing": "safeStorage"
+    }
+  ],
+  "performance": "Same-app comparison completed; no whole-VS-Code performance or resource-usage claim."
+}

@@ -2,15 +2,19 @@
 
 Target: the unmodified Linux x64 VS Code 1.136.2 application at the revision in
 `pin.json`, running through the original Electron source modules on Obscura.
-The latest probe still exits before workbench startup because `crashReporter` is
+The latest probe still exits before workbench startup because `safeStorage` is
 missing. A diagnostic exit code of zero means evidence collection succeeded;
 the report itself has `ready: false`. No whole-app compatibility percentage is
 inferred from exported names or module counts.
 
-Latest validated runtime: [afa40b1](../packaging/results/afa40b1.json), with 14
+Latest validated runtime: [d969e2e](../packaging/results/d969e2e.json), with 14
 execution gates and extracted Node/Bun/native examples passing. The utility
-process suite passes seven tests per JavaScript backend. The same run confirms
-the missing crashReporter export and Monaco module-worker blocker below.
+process suite passes seven tests per JavaScript backend. New startup-service
+checks pass four tests on Node and three on Bun, with one Node-only trace test
+explicitly skipped on Bun. Real GIO shell tests pass on both. Successive original
+VS Code runs moved from missing crashReporter to shell and then safeStorage;
+this is import-stage progress, not proof of a running workbench. Monaco's
+module-worker blocker remains unchanged.
 
 The probe records these 24 named imports from the pinned application. An API
 appearing in this table does not mean every method works.
@@ -24,10 +28,10 @@ appearing in this table does not mean every method works.
 | MessageChannelMain | Original wrapper, bounded structured messages; main-process and main-to-utility ownership transfer | Renderer transfer, nested utility transfer and full browser clone types |
 | Notification | Original module; native D-Bus delivery/update/default click/close and absent-service failure on Node/Bun | Full actions, image-object icons, daemon restart and platform-specific behavior |
 | WebContentsView | Original module resolves | Actual view construction and embedding |
-| app | Lifecycle and selected Linux paths/platform operations | Switch handling, singleton/CLI relaunch, other app services |
+| app | Lifecycle, selected Linux paths/locales, bounded startup option state with explicit warnings for inactive Chromium hints | Actual engine-option equivalents, singleton/CLI relaunch, other app services |
 | clipboard | Native CLIPBOARD/PRIMARY, modern ClipboardItem and legacy text/HTML/RTF/binary | Full NativeImage, bookmarks and additional platform formats |
-| contentTracing | Missing | Trace collection and lifecycle across runtime processes |
-| crashReporter | Missing | Native crash collection, process integration and configuration |
+| contentTracing | Original module; actual bounded Node main-process marks/measures, trace-event JSON, start/stop/restart | Renderer traces, sampling, memory dumps, Chromium categories, Bun recording |
+| crashReporter | Original module; inactive metadata and no-upload queries; enabling capture/upload fails explicitly | Native crash collection, process integration and uploading |
 | desktopCapturer | Missing | Authorized desktop/window capture and source selection |
 | dialog | Error logging only; no verified native dialog contract | Native file/message dialogs and cancellation |
 | globalShortcut | Original module, real X11 registration/conflicts/callbacks | Wayland portals, suspension and keyboard-map changes |
@@ -38,12 +42,12 @@ appearing in this table does not mean every method works.
 | safeStorage | Missing | OS credential-store-backed encryption and availability behavior |
 | screen | Original module, native monitors/cursor/work area/scale and change events | Rotation, color profiles, DIP conversion and complete display metadata |
 | session | Partition-owned protocol handlers | Persistent cookies/storage, webRequest, permissions, proxy/cache/certificate behavior |
-| shell | Missing | Native external URL/file opening, reveal and trash operations |
+| shell | Original module; real GIO URI/file launch and reversible trash on Node/Bun; folder fallback tested | Real file-manager item-selection acceptance, beep and platform-specific operations |
 | systemPreferences | Original Linux module, GTK accent and animation settings | Other operating systems and wider preference integration |
 | utilityProcess | Original wrapper and ParentPort; real same-backend child, stdio/argv/cwd/env, CJS/ESM entry, main-to-child port transfer, two-way data and termination | Actual VS Code extension host, renderer ports, nested transfers, auth integration and full process-tree cleanup |
 
 The unmodified Electron TypeScript modules remain in the upstream source tree.
-The replacement runtime compiles 31 of them and records exact source hashes.
+The replacement runtime compiles 34 of them and records exact source hashes.
 Additional behavior lives at their native binding boundary, with explicit
 unsupported errors where implemented entry points cannot perform an operation.
 

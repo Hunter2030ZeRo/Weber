@@ -142,6 +142,42 @@ imports. Application net imports remain Bun's own implementation. Native
 callback checkpoints must not deliver public spawn before the wrapper exists.
 See `test-utility.cjs` and the real window/bundle fixture.
 
+Original crashReporter and contentTracing modules can be imported by applications
+that disable those optional services during startup. The inactive crash reporter
+stores bounded string parameters and reports no uploads. Native dump collection
+and uploading are not implemented: starting the reporter or enabling uploads
+throws explicitly. This is not crash-collection compatibility.
+
+Node contentTracing records actual PerformanceObserver marks and measures in
+the `weber.main.user_timing` category and writes trace-event JSON. Capture is
+bounded to 4,096 events/4 MiB and stops admitting events when full. The output
+records dropped events and explicitly excludes renderers. Sampling, Chromium
+categories, memory dumps and Bun recording are unsupported. There is no periodic
+poll when tracing is inactive. See `test-startup-services.cjs` for real trace-file
+and lifecycle checks; the Bun-specific path checks explicit unavailability.
+
+Startup command-line values support append/read/remove before app ready, subject
+to an explicit option allowlist. Locale selection is reflected in app locale
+queries; it does not reconfigure Obscura's Intl implementation. VS Code's Chromium
+tuning hints are retained for readback and reported with WEBER_ENGINE_OPTION
+warnings because they have no Obscura effect. Proxy, certificate, arbitrary
+JavaScript-engine and security changes are not silently accepted. Neither
+`no-sandbox` nor its GPU variant bypasses the existing explicit development opt-in;
+`app.enableSandbox()` continues to fail until OS isolation exists.
+
+The original shell module delegates Linux external URI/file opening and trash
+operations to `/usr/bin/gio` from `libglib2.0-bin`. Arguments are passed directly
+without shell evaluation. `showItemInFolder` requests FileManager1.ShowItems
+through `/usr/bin/gdbus`, falling back to opening the containing directory.
+Desktop operations have a five-second deadline, bounded output and at most 32
+active helpers. Application exit cleans up launcher helpers; successfully
+launched external applications remain independent, as intended.
+`test-shell-live.cjs` uses real GIO with private desktop registrations and files,
+including special characters and retained trash contents. It exercises the
+folder fallback; selection inside a real file manager is not yet an acceptance
+pass. Beep, Windows shortcut-file operations and unsupported launch options
+remain explicit errors.
+
 Renderer IPC supports invoke/rejection plus send/on/once/listener removal,
 webContents.send and event.reply through isolated preload contexts. Simultaneous
 replies are batched up to 32 messages or 256 KiB (an individual reply is limited
