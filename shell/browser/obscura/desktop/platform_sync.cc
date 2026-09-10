@@ -4,6 +4,7 @@
 #include "display.h"
 #include "notification.h"
 #include "power.h"
+#include "power_save_blocker.h"
 #include "platform_wire.h"
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
@@ -57,6 +58,7 @@ struct PlatformSync::State {
   std::string accent_color;
   std::unique_ptr<NotificationCenter> notifications;
   std::unique_ptr<PowerMonitor> power;
+  std::unique_ptr<PowerSaveBlocker> blocker;
   void PublishDisplays() {
     const auto current = DisplayCommand({{"method", "screen.displays"}});
     for (const auto& item : current) {
@@ -84,6 +86,7 @@ struct PlatformSync::State {
   State(int socket, Emit callback) : fd(socket), emit(std::move(callback)) {
     notifications = std::make_unique<NotificationCenter>(emit);
     power = std::make_unique<PowerMonitor>(emit);
+    blocker = std::make_unique<PowerSaveBlocker>(emit);
     wire::Nonblocking(fd);
     gdk = gdk_display_get_default();
     display_snapshot = DisplayCommand({{"method", "screen.displays"}});
@@ -231,6 +234,7 @@ struct PlatformSync::State {
   Json Dispatch(const Json& request) {
     const auto method = request.at("method").get<std::string>();
     if (method.rfind("notification.", 0) == 0) return notifications->Command(request);
+    if (method.rfind("powerSaveBlocker.", 0) == 0) return blocker->Command(request);
     if (method.rfind("powerMonitor.", 0) == 0) return power->Command(request);
     if (method.rfind("screen.", 0) == 0 || method.rfind("systemPreferences.", 0) == 0) return weber::desktop::DisplayCommand(request);
     if (method.rfind("clipboard.", 0) == 0) return Clipboard(request);
@@ -327,6 +331,7 @@ struct PlatformSync::State {
         self->UnregisterAll();
         self->notifications.reset();
         self->power.reset();
+        self->blocker.reset();
         if (!self->closing_error.empty())
           self->emit({{"event", "platform-sync-error"}, {"error", self->closing_error}});
         return G_SOURCE_REMOVE;

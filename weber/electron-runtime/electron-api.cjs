@@ -22,6 +22,7 @@ exports.screen = api.screen;
 exports.systemPreferences = api.systemPreferences;
 exports.Notification = api.Notification;
 exports.powerMonitor = api.powerMonitor;
+exports.powerSaveBlocker = api.powerSaveBlocker;
 exports.utilityProcess = api.utilityProcess;
 exports.crashReporter = api.crashReporter;
 exports.contentTracing = api.contentTracing;

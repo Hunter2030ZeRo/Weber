@@ -452,6 +452,7 @@ function createBindings(host, appPath, loadInternal) {
   bindings.set('electron_browser_screen', display.screen);
   bindings.set('electron_browser_system_preferences', display.preferences);
   bindings.set('electron_browser_notification', require('./notification-binding.cjs').createNotificationBinding({ host, app, unsupported }));
+  bindings.set('electron_browser_power_save_blocker', { powerSaveBlocker: require('./power-save-binding.cjs').createPowerSaveBinding({ host, app }) });
   bindings.set('electron_browser_power_monitor', require('./power-binding.cjs').createPowerBinding({ host, app, unsupported }));
   bindings.set('electron_browser_utility_process', require('./utility-binding.cjs').createUtilityBinding({ app, unsupported }));
   const safeStorageBinding = require('./safe-storage-binding.cjs').createSafeStorageBinding({ app, unsupported });
