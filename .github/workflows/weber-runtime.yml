@@ -173,6 +173,14 @@ jobs:
           test -x "$RUNNER_TEMP/electron-baseline/node_modules/electron/dist/electron"
           node --test weber/benchmarks/proc-tree.test.cjs weber/benchmarks/process-cleanup.test.cjs
           xvfb-run -a -s '-screen 0 1600x900x24' node weber/benchmarks/compare.cjs --electron "$RUNNER_TEMP/electron-baseline/node_modules/electron/dist/electron" --node "$(command -v node)" --bootstrap "$PWD/weber/electron-runtime/bootstrap.cjs" --output "$PWD/out/benchmark.json"
+      - name: Diagnose Monaco core editing on both runtimes
+        id: monaco
+        continue-on-error: true
+        run: |
+          npm install --prefix weber/monaco-probe --ignore-scripts
+          node weber/monaco-probe/build.cjs
+          WEBER_MONACO_RESULT=out/monaco-electron.json WEBER_MONACO_ELECTRON="$RUNNER_TEMP/electron-baseline/node_modules/electron/dist/electron" xvfb-run -a node weber/monaco-probe/run.cjs
+          WEBER_MONACO_RESULT=out/monaco-weber.json xvfb-run -a node weber/monaco-probe/run.cjs
       - name: Diagnose unmodified VS Code startup
         id: vscode
         continue-on-error: true
@@ -192,12 +200,14 @@ jobs:
         env:
           BENCHMARK: ${{ steps.benchmark.outcome }}
           VSCODE_DIAGNOSTIC: ${{ steps.vscode.outcome }}
+          MONACO_DIAGNOSTIC: ${{ steps.monaco.outcome }}
         run: |
           python3 - <<'PY_EVIDENCE'
           import os
           # These assert evidence collection, never a performance win or VS Code readiness.
           assert os.environ['BENCHMARK'] == 'success', os.environ['BENCHMARK']
           assert os.environ['VSCODE_DIAGNOSTIC'] == 'success', os.environ['VSCODE_DIAGNOSTIC']
+          assert os.environ['MONACO_DIAGNOSTIC'] == 'success', os.environ['MONACO_DIAGNOSTIC']
           PY_EVIDENCE
       - uses: actions/upload-artifact@v4
         if: always()
@@ -210,6 +220,10 @@ jobs:
             out/bun-live.json
             out/benchmark.json
             out/vscode-startup.json
+            out/monaco-*.json
+            out/monaco-*.png
+            weber/monaco-probe/package-lock.json
+            weber/monaco-probe/dist/manifest.json
             out/bundle-*.json
             out/runtime/Testing/Temporary/LastTest.log
       - uses: actions/upload-artifact@v4

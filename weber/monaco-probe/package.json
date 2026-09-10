@@ -1,0 +1,7 @@
+{
+  "name": "weber-monaco-probe",
+  "private": true,
+  "version": "0.1.0",
+  "main": "main.cjs",
+  "devDependencies": { "monaco-editor": "0.52.2", "esbuild": "0.25.5" }
+}

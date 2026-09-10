@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Weber Monaco Probe</title>
+<style>html,body,#editor{margin:0;width:100%;height:100%;overflow:hidden}</style>
+<link rel="stylesheet" href="/editor.css">
+<script>
+globalThis.monacoProbe = { stage: 'document', errors: [] };
+addEventListener('error', event => monacoProbe.errors.push(String(event.error && event.error.stack || event.message)));
+addEventListener('unhandledrejection', event => monacoProbe.errors.push(String(event.reason && event.reason.stack || event.reason)));
+globalThis.MonacoEnvironment = { getWorker: () => new Worker('/editor.worker.js', { type: 'module' }) };
+</script></head><body><div id="editor"></div><script type="module" src="/editor.js"></script></body></html>

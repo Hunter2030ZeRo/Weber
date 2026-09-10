@@ -6,6 +6,7 @@
 #include "platform_sync.h"
 #include "async_output.h"
 #include "resource_broker.h"
+#include "frame.h"
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 #include <nlohmann/json.hpp>
@@ -28,6 +29,7 @@
 using Json = nlohmann::json;
 using namespace std::chrono_literals;
 using electron::obscura::RendererProcess;
+using weber::desktop::Frame;
 namespace {
 std::mutex output_mutex;
 std::atomic<bool> quitting{false};
@@ -86,10 +88,9 @@ struct Window {
   std::thread worker;
   std::shared_ptr<weber::desktop::ResourceBroker> resources;
   std::atomic<bool> worker_done{false};
-  std::vector<uint8_t> pixels; // Cairo native-endian premultiplied ARGB32, UI-owned.
-  unsigned frame_width = 0, frame_height = 0;
+  std::shared_ptr<const Frame> frame; // UI-owned reference to immutable bytes.
   bool frame_pending = false; // protected with pending_frame by mutex
-  std::vector<uint8_t> pending_frame;
+  std::shared_ptr<const Frame> pending_frame;
   int width = 800, height = 600;
   unsigned click_count = 1;
   bool frame_ready = false;
@@ -119,22 +120,7 @@ void Close(std::shared_ptr<Window> window) {
   retired.push_back(window);
   Emit({{"event", "closed"}, {"windowId", window->id}});
 }
-uint32_t ReadLE(const uint8_t* data) {
-  return uint32_t(data[0]) | uint32_t(data[1]) << 8 | uint32_t(data[2]) << 16 | uint32_t(data[3]) << 24;
-}
-void Present(const std::shared_ptr<Window>& window, std::vector<uint8_t> frame) {
-  if (frame.size() < 12 || std::string(frame.begin(), frame.begin() + 4) != "OBF1")
-    throw std::runtime_error("Invalid raw Obscura frame header");
-  const uint32_t width = ReadLE(frame.data() + 4), height = ReadLE(frame.data() + 8);
-  if (!width || !height || width > 8192 || height > 8192 || uint64_t(width) * height > 16000000 ||
-      frame.size() != 12 + uint64_t(width) * height * 4)
-    throw std::runtime_error("Invalid raw Obscura frame dimensions");
-  // tiny-skia exports premultiplied RGBA; Cairo consumes a native-endian ARGB word.
-  for (size_t i = 12; i < frame.size(); i += 4) {
-    const uint32_t argb = uint32_t(frame[i+3]) << 24 | uint32_t(frame[i]) << 16 |
-        uint32_t(frame[i+1]) << 8 | uint32_t(frame[i+2]);
-    std::memcpy(frame.data() + i, &argb, 4);
-  }
+void Present(const std::shared_ptr<Window>& window, std::shared_ptr<const Frame> frame) {
   {
     std::lock_guard<std::mutex> lock(window->mutex);
     window->pending_frame = std::move(frame);
@@ -147,14 +133,12 @@ void Present(const std::shared_ptr<Window>& window, std::vector<uint8_t> frame) 
     {
       std::lock_guard<std::mutex> lock(window->mutex);
       window->frame_pending = false;
-      if (window->closed) { window->pending_frame.clear(); return; }
-      window->pixels = std::move(window->pending_frame);
+      if (window->closed) { window->pending_frame.reset(); return; }
+      window->frame = std::move(window->pending_frame);
     }
-    window->frame_width = ReadLE(window->pixels.data() + 4);
-    window->frame_height = ReadLE(window->pixels.data() + 8);
     if (!window->frame_ready) {
       window->frame_ready = true;
-      Emit({{"event", "frame-ready"}, {"windowId", window->id}, {"width", window->frame_width}, {"height", window->frame_height}});
+      Emit({{"event", "frame-ready"}, {"windowId", window->id}, {"width", window->frame->width()}, {"height", window->frame->height()}});
     }
     gtk_widget_queue_draw(window->area);
   });
@@ -170,6 +154,7 @@ void Work(std::shared_ptr<Window> window, Json create) {
     });
     { std::lock_guard<std::mutex> lock(window->mutex); window->resources = resources; }
     bool frame_requested = false;
+    std::shared_ptr<const Frame> last_frame;
     RendererProcess renderer(renderer_path, 30000ms, resources->child_fd(), [&](uint32_t kind, std::vector<uint8_t> bytes) {
       if (kind == electron::obscura::wire::kFrameReady) { frame_requested = true; return; }
       const auto batch = Decode(bytes);
@@ -204,18 +189,33 @@ void Work(std::shared_ptr<Window> window, Json create) {
         try {
           const Json& command = request.at("command");
           const auto method = command.value("method", "");
-          auto response = renderer.Command(command.dump());
+          if (method == "loadURL" || method == "loadFile") last_frame.reset();
           if (method == "capturePng") {
+            // Check current document damage before reusing pixels. Captures
+            // never return an old presentation merely because it was visible.
+            frame_requested = false;
+            auto bytes = renderer.Command(R"({"method":"captureFrameIfChanged"})");
+            if (bytes.empty() && !last_frame) bytes = renderer.Command(R"({"method":"captureFrame"})");
+            if (!bytes.empty()) {
+              last_frame = Frame::FromRgba(std::move(bytes));
+              Present(window, last_frame);
+            }
+            if (!last_frame) throw std::runtime_error("No frame available for capture");
+            auto response = last_frame->Png();
             gchar* encoded = g_base64_encode(response.data(), response.size());
             Reply(request, {{"encoding", "base64"}, {"data", encoded}}); g_free(encoded);
-          } else Reply(request, Decode(response));
+          } else Reply(request, Decode(renderer.Command(command.dump())));
+
         } catch (const std::exception& error) { Error(request, error.what()); }
       }
       if (frame_requested && !window->closed) {
         frame_requested = false;
         try {
           auto frame = renderer.Command(R"({"method":"captureFrameIfChanged"})");
-          if (!frame.empty()) Present(window, std::move(frame));
+          if (!frame.empty()) {
+            last_frame = Frame::FromRgba(std::move(frame));
+            Present(window, last_frame);
+          }
         } catch (const std::exception& error) {
           Emit({{"event", "frame-error"}, {"windowId", window->id}, {"error", error.what()}});
           throw; // Do not conceal a failed presentation or leave a stuck subscription.
@@ -331,11 +331,15 @@ void Create(const Json& request) {
   })), window.get());
   g_signal_connect(window->area, "draw", G_CALLBACK((+[](GtkWidget*, cairo_t* context, gpointer data) -> gboolean {
     auto* w = static_cast<Window*>(data);
-    if (w->pixels.empty()) return FALSE;
-    auto* surface = cairo_image_surface_create_for_data(w->pixels.data() + 12, CAIRO_FORMAT_ARGB32,
-        static_cast<int>(w->frame_width), static_cast<int>(w->frame_height), static_cast<int>(w->frame_width * 4));
+    if (!w->frame) return FALSE;
+    cairo_surface_t* surface = nullptr;
+    try { surface = w->frame->Surface(); }
+    catch (const std::exception& error) {
+      Emit({{"event", "frame-error"}, {"windowId", w->id}, {"error", error.what()}});
+      return FALSE;
+    }
     cairo_set_source_surface(context, surface, 0, 0); cairo_paint(context); cairo_surface_destroy(surface);
-    if (!w->presented) { w->presented = true; Emit({{"event", "frame-presented"}, {"windowId", w->id}, {"width", w->frame_width}, {"height", w->frame_height}}); }
+    if (!w->presented) { w->presented = true; Emit({{"event", "frame-presented"}, {"windowId", w->id}, {"width", w->frame->width()}, {"height", w->frame->height()}}); }
     return TRUE;
   })), window.get());
   g_signal_connect(window->area, "size-allocate", G_CALLBACK((+[](GtkWidget*, GtkAllocation* size, gpointer data) {

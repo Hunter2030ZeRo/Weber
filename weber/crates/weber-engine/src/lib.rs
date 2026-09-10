@@ -348,6 +348,9 @@ impl Engine {
             }
             _ => {
                 if let Some(result) = self.preload.command(&mut self.page, &value) { return result; }
+                if matches!(method, "captureFrameIfChanged" | "captureFrame") && !self.loaded {
+                    return Err("No document loaded".into());
+                }
                 let result = desktop::dispatch(&mut self.page, &value)
                     .unwrap_or_else(|| Err("Unsupported engine method".into()));
                 if matches!(method, "captureFrameIfChanged" | "captureFrame") {
