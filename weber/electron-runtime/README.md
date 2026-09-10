@@ -34,11 +34,12 @@ The replacement code is intentionally at the native binding boundary:
 
 From the fork root, install the build-only TypeScript compiler and Node-API
 headers, then compile the original Electron modules and the platform addon
-(requires a C++17 compiler):
+(requires a C++17 compiler, pkg-config and libsecret-1 development headers):
 
 ```sh
 npm ci --prefix weber/electron-runtime
 node weber/electron-runtime/build.cjs
+node weber/electron-runtime/safe-storage/build.cjs
 ```
 
 After building the native runtime targets, use the backend selector's
@@ -211,3 +212,17 @@ WebContentsView embedding, production installers and VS Code acceptance remain
 unimplemented. Unsupported binding operations fail explicitly. Many upstream
 public methods are present because original Electron source is reused; presence
 alone must not be counted as working compatibility.
+
+## System credential encryption
+
+The original `safeStorage` module uses a small libsecret helper for Linux sync
+encryption. It preserves Electron's application key identity and legacy v10/v11
+ciphertext, including JSON-serialized Buffer reads used by VS Code. Key lookup
+happens once per process, with a bounded timeout; subsequent crypto calls use a
+cached derived key and create no helper processes or periodic timers.
+
+An unavailable or locked Secret Service fails closed. Explicit basic-text mode
+retains Electron's insecure hardcoded-key obfuscation and is never an automatic
+fallback from a failed secure backend. KWallet, other operating systems and the
+newer async migration API remain unsupported. See the [source contracts, limits
+and isolated real-keyring tests](safe-storage/README.md).

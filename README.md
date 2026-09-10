@@ -12,10 +12,10 @@ Electron's MIT license remains at the repository root; its README is
 
 ## Executable implementation
 
-The runtime compiles and executes 34 original, unmodified Electron TypeScript
+The runtime compiles and executes 35 original, unmodified Electron TypeScript
 modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem,
 Notification, powerMonitor, utilityProcess, ParentPort, globalShortcut, protocol,
-clipboard, screen, systemPreferences, shell, crashReporter, contentTracing and
+clipboard, screen, systemPreferences, shell, safeStorage, crashReporter, contentTracing and
 IPC helpers. Their implemented scopes differ; crash collection is still absent. A
 replacement `process._linkedBinding` layer routes their native operations to a
 separate GTK host. Each window has its own Obscura process. The build uses no
@@ -26,8 +26,8 @@ The original Chromium-dependent GN build and native Electron implementation rema
 as migration reference in this source fork. Build Weber using the CMake/Cargo path
 below; running the upstream GN build does not produce the replacement runtime.
 
-[The startup and desktop-service build](weber/packaging/results/d969e2e.json) passed
-14 execution gates, extracted Node/Bun/native bundle checks, and the identical-app
+[The Linux credential-storage build](weber/packaging/results/5a852b6.json) passed
+15 execution gates, extracted Node/Bun/native bundle checks, and the identical-app
 Electron comparison. The build also runs an unmodified VS Code startup diagnostic;
 that diagnostic is not a VS Code acceptance pass.
 
@@ -46,14 +46,20 @@ logind and XScreenSaver; it does not add a periodic idle polling loop. Node and
 Bun checks exercise the actual native transport with controlled D-Bus test peers.
 Full desktop-daemon and operating-system acceptance remains separate.
 
-Download the [Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34452572080/artifacts/10142342416) and follow the
+Linux safeStorage now uses the real libsecret keyring, preserves Electron's sync
+ciphertext and caches the derived key without recurring helper IPC or idle timers.
+Electron 42.0.0, Node and Bun pass 18 cross-process read combinations using an
+owned test keyring. Locked/unavailable storage fails closed. Async key migration,
+KWallet and other operating systems remain unsupported.
+
+Download the [Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34461274589/artifacts/10145852742) and follow the
 [packaging instructions](weber/packaging/README.md). Node/Bun executables are
 external. The bundle record identifies the exact runtime commit and checksum.
 
 ## Build and run on Linux
 
 Install Rust, Node.js 24, CMake, a C++17 compiler, pkg-config, GTK3, libpng,
-XScreenSaver and fontconfig development headers, and nlohmann-json.
+XScreenSaver, libsecret-1 and fontconfig development headers, and nlohmann-json.
 The CI workflow lists Ubuntu packages.
 
 ```sh
@@ -66,6 +72,7 @@ cmake -S weber -B out/runtime -DCMAKE_BUILD_TYPE=Release -DWEBER_ENGINE_LIBRARY=
 cmake --build out/runtime --parallel 2
 npm ci --prefix weber/electron-runtime
 node weber/electron-runtime/build.cjs
+node weber/electron-runtime/safe-storage/build.cjs
 cargo build --release --manifest-path weber/runtime-config/Cargo.toml
 ```
 
@@ -97,7 +104,7 @@ the TOML selector automatically.
 The [binding scope](weber/electron-runtime/README.md) and
 [VS Code compatibility matrix](weber/vscode-probe/COMPATIBILITY.md) distinguish
 verified operations from missing behavior. The unmodified VS Code 1.136.2 entry
-currently stops at the missing `safeStorage` export. Workbench startup, editing,
+currently stops at the missing `powerSaveBlocker` export. Workbench startup, editing,
 terminal, extension hosting and full-app migration have not passed acceptance.
 No compatibility percentage is claimed.
 

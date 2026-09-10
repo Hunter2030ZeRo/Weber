@@ -1,0 +1,116 @@
+{
+  "kind": "validated-linux-development-bundle",
+  "commit": "5a852b6c6e03b6d193977d86795cff4618b9ccf2",
+  "workflowRun": 34461274589,
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34461274589/artifacts/10145852742",
+  "filename": "weber-x86_64-unknown-linux-gnu-development-5a852b6c6e03.tar.gz",
+  "bytes": 56815869,
+  "sha256": "c97daf679e19301844f69d6aad6ea6ec8b2113e2e22ad96f2af85f6d4c370b28",
+  "allRuntimeGatesPassed": true,
+  "runtimeGates": 15,
+  "originalElectronSourceModules": 35,
+  "extractedBackendSmokes": [
+    "node",
+    "bun",
+    "native"
+  ],
+  "startupServices": {
+    "node": {
+      "passed": 4,
+      "failed": 0
+    },
+    "bun": {
+      "passed": 3,
+      "skipped": 1,
+      "failed": 0
+    },
+    "traceScope": "Actual Node main-process marks and measures; no renderer or Bun tracing; bounded output and re-entrant start guard",
+    "crashScope": "Inactive parameter metadata only; native collection and upload explicitly unsupported"
+  },
+  "shell": [
+    {
+      "backend": "node",
+      "externalURI": true,
+      "fileManagerSelectionTested": false,
+      "kind": "native-shell-acceptance",
+      "openPath": true,
+      "originalShellModule": true,
+      "passed": true,
+      "revealFallback": true,
+      "trashPreservesData": true
+    },
+    {
+      "backend": "bun",
+      "externalURI": true,
+      "fileManagerSelectionTested": false,
+      "kind": "native-shell-acceptance",
+      "openPath": true,
+      "originalShellModule": true,
+      "passed": true,
+      "revealFallback": true,
+      "trashPreservesData": true
+    }
+  ],
+  "utilityTests": {
+    "nodePassed": 7,
+    "bunPassed": 7
+  },
+  "osSandbox": false,
+  "nodeAndBunExecutablesIncluded": false,
+  "chromiumBrowserRuntimeIncluded": false,
+  "vscode": {
+    "version": "1.136.2",
+    "ready": false,
+    "blocker": "SyntaxError: Named export 'powerSaveBlocker' not found. The requested module 'electron' is a CommonJS module, which may not support all module.exports as named exports."
+  },
+  "monaco": {
+    "version": "0.52.2",
+    "ready": false,
+    "coreEditingReady": true,
+    "passedChecks": 7,
+    "blocker": "Dedicated module Worker remains unavailable; Unexpected token 'export'."
+  },
+  "startupImportProgression": [
+    {
+      "commit": "afa40b1d7b2435a2e5d8d8fc04d6c2dd59e4b162",
+      "missing": "crashReporter"
+    },
+    {
+      "commit": "2e60c76ef1edc3e0ba7163648115f5963b931ed7",
+      "missing": "shell"
+    },
+    {
+      "commit": "d969e2ebb6c5cfe570f7162c36275c5ad7cd163e",
+      "missing": "safeStorage"
+    },
+    {
+      "commit": "5a852b6c6e03b6d193977d86795cff4618b9ccf2",
+      "missing": "powerSaveBlocker"
+    }
+  ],
+  "performance": "Same-app comparison completed; no whole-VS-Code performance or resource-usage claim.",
+  "safeStorage": {
+    "concurrentFirstUse": 6,
+    "crossProcessReadCases": 18,
+    "existingKeyPreservedAfterUnlock": true,
+    "lockedAndUnavailableFailClosed": true,
+    "runtimes": [
+      "electron",
+      "node",
+      "bun"
+    ],
+    "safeStorage": true,
+    "electronReference": "42.0.0",
+    "nodeUnitPassed": 4,
+    "bunUnitPassed": 4,
+    "scope": "Linux synchronous v10/v11 API, actual libsecret application key identity, derived-key caching; no idle polling",
+    "recovery": "Reload persisted test keyring after daemon restart and unlock",
+    "unsupported": [
+      "Async key migration",
+      "KWallet",
+      "macOS Keychain",
+      "Windows DPAPI"
+    ],
+    "wholeVscodeSecretServiceVerified": false
+  }
+}

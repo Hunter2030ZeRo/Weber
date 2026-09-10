@@ -7,7 +7,7 @@ It is not a production installer or a claim of complete Electron compatibility.
 
 The archive contains the native TOML launcher, GTK desktop host, Obscura renderer,
 the original Electron modules compiled for Weber's replacement bindings, runtime
-JavaScript helpers, and the required stable Node-API addon. It excludes Chromium's
+JavaScript helpers, the required stable Node-API addon and the small libsecret helper. It excludes Chromium's
 browser runtime, Node/Bun executables, compiler dependencies and `node_modules`.
 Obscura's standalone JavaScript engine still uses V8.
 
@@ -15,7 +15,8 @@ Obscura's standalone JavaScript engine still uses V8.
 
 Use a Linux distribution compatible with the build machine. Install GTK 3,
 fontconfig, fonts, libpng, X11/XScreenSaver libraries and libstdc++; run inside
-an X11 desktop session.
+an X11 desktop session. Linux safeStorage additionally needs libsecret-1 and an
+unlocked Secret Service; the keyring daemon is supplied by the operating system.
 `bundle-manifest.json` records the build target, glibc version, required ELF symbol
 versions, direct shared libraries, source commits and hashes of every other file.
 Those symbol versions are a lower bound for the binaries themselves; system
@@ -80,6 +81,7 @@ already-built engine, host, renderer, native example and Electron source bundle:
 
 ```sh
 cargo build --release --manifest-path weber/runtime-config/Cargo.toml
+node weber/electron-runtime/safe-storage/build.cjs
 python3 weber/packaging/package.py --output out/development-bundle
 mkdir -p out/extracted-bundle
 tar -xzf out/development-bundle/weber-*-development-*.tar.gz -C out/extracted-bundle
@@ -104,19 +106,21 @@ without notice files are explicitly listed; some native components bundled by a
 crate may require additional notices or source distribution. This collection is
 evidence for a later distribution review, not a complete third-party license audit.
 
-The startup and desktop-service bundle is
-[d969e2e](results/d969e2e.json), from
-[CI run 34452572080](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34452572080).
-It contains 34 compiled original Electron modules. New coverage includes inactive
-crash metadata, bounded Node main-process timing traces and real GIO shell
-operations. Native crash collection and Bun trace recording remain unavailable.
-Seven utility-process tests still pass per backend; startup-service tests pass
-four on Node and three on Bun with one explicit Node-only skip. GIO launch,
-folder fallback and reversible trash tests pass on both runtimes.
+The credential-storage bundle is
+[5a852b6](results/5a852b6.json), from
+[CI run 34461274589](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34461274589).
+It contains 35 compiled original Electron modules and the libsecret helper.
+All 15 runtime groups pass. Real Electron 42.0.0, Node and Bun cross-read sync
+ciphertext in 18 process combinations, with first-use concurrency, locked-service
+failure and persisted-key recovery verified in an owned test keyring. The keyring
+daemon is not bundled. Async safeStorage, KWallet and other platforms are missing.
 
-All three backend examples pass after extraction; Node also verifies ESM named
-imports of the new original API modules. Node/Bun examples execute an independent
-utility and transferred-port round trip; the Native example remains a Rust main.
-GIO operations require the system `libglib2.0-bin` package; neither launcher nor
-the default desktop applications are bundled. See the record for the archive,
-checksum and remaining VS Code acceptance gaps, including safeStorage.
+All three backend examples pass after extraction; Node also verifies the new
+safeStorage ESM named export. Node/Bun examples execute an independent utility
+and transferred-port round trip; the Native example remains a Rust main.
+Existing desktop, shell and startup-service checks still pass. GIO operations
+require the system `libglib2.0-bin` package; native crash collection remains absent.
+
+The unmodified VS Code diagnostic now stops at missing powerSaveBlocker; its
+workbench has not started. See the record for the archive checksum and remaining
+acceptance gaps. Monaco's dedicated module-worker gap is unchanged.
