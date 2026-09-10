@@ -1,7 +1,7 @@
 // Copyright Weber contributors. SPDX-License-Identifier: MIT
 'use strict';
 const path = require('node:path');
-const { Socket } = require('node:net');
+const { Socket } = require('./utility-socket.cjs');
 const Module = require('node:module');
 const { pathToFileURL } = require('node:url');
 const { UtilityWire } = require('./utility-wire.cjs');

@@ -16,7 +16,7 @@ appearing in this table does not mean every method works.
 | webContents | Original wrapper, DOM/Promise evaluation, capture, load lifecycle, renderer IPC | Full frames, navigation, structured clone, DevTools, input/console contracts |
 | Menu | Original template policy and actual GTK menus/accelerators | Popup menus, icons, several built-in roles |
 | MenuItem | Original ordering, checkbox/radio and click handling | Remaining native menu attributes and roles |
-| MessageChannelMain | Original wrapper, bounded main-process channels and ownership transfer | Renderer/utility-process transfers and full clone types |
+| MessageChannelMain | Original wrapper, bounded structured messages; main-process and main-to-utility ownership transfer | Renderer transfer, nested utility transfer and full browser clone types |
 | Notification | Original module; native D-Bus delivery/update/default click/close and absent-service failure on Node/Bun | Full actions, image-object icons, daemon restart and platform-specific behavior |
 | WebContentsView | Original module resolves | Actual view construction and embedding |
 | app | Lifecycle and selected Linux paths/platform operations | Switch handling, singleton/CLI relaunch, other app services |
@@ -35,10 +35,10 @@ appearing in this table does not mean every method works.
 | session | Partition-owned protocol handlers | Persistent cookies/storage, webRequest, permissions, proxy/cache/certificate behavior |
 | shell | Missing | Native external URL/file opening, reveal and trash operations |
 | systemPreferences | Original Linux module, GTK accent and animation settings | Other operating systems and wider preference integration |
-| utilityProcess | Missing | Utility/extension hosts, parentPort, stdio, termination and transferred ports |
+| utilityProcess | Original wrapper and ParentPort; real same-backend child, stdio/argv/cwd/env, CJS/ESM entry, main-to-child port transfer, two-way data and termination | Actual VS Code extension host, renderer ports, nested transfers, auth integration and full process-tree cleanup |
 
 The unmodified Electron TypeScript modules remain in the upstream source tree.
-The replacement runtime compiles 29 of them and records exact source hashes.
+The replacement runtime compiles 31 of them and records exact source hashes.
 Additional behavior lives at their native binding boundary, with explicit
 unsupported errors where implemented entry points cannot perform an operation.
 
@@ -55,11 +55,17 @@ The pinned Obscura Worker implementation evaluates fetched scripts through a
 page-realm JavaScript shim and ignores module options. It lacks actual dedicated
 worker execution and module-worker semantics. Fixing this boundary is required
 for Monaco background services; accepting an editor constructor is insufficient.
-Renderer/utility MessagePorts and extension processes are separate unfinished
-contracts. Native Notification/powerMonitor checks use actual runtime transport
+Renderer MessagePorts and the actual extension host remain unfinished contracts.
+Independent utility-process execution and main-to-utility MessagePort transfer
+have dedicated tests; they do not establish complete extension-host compatibility.
+Native Notification/powerMonitor checks use actual runtime transport
 with controlled D-Bus peers, not a full desktop acceptance suite.
 
 ## Acceptance work still required
+
+[ACCEPTANCE.md](ACCEPTANCE.md) records the project success criterion: the same
+VS Code application must provide equivalent visible behavior with lower resource
+use. These steps are required even if individual API tests already pass.
 
 1. Start the unmodified workbench through its real custom-scheme module graph,
    preload, configuration and IPC services. A screenshot or a loaded title alone

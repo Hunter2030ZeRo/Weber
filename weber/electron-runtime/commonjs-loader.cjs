@@ -22,6 +22,11 @@ function createCommonJSLoader(resolveSpecial) {
     cache[filename] = current;
     if (isMain) { main = current; current.id = '.'; process.mainModule = current; }
     const localRequire = request => {
+      // Keep Electron's upstream utility wrapper unchanged while adapting its
+      // stdout/stderr FD constructors. Application net imports stay native.
+      if (process.versions.bun && (request === 'net' || request === 'node:net') &&
+          filename === path.join(__dirname, 'dist/browser/api/utility-process.js'))
+        return require('./utility-socket.cjs').net;
       const special = resolveSpecial(request);
       if (special) return special.value;
       if (Module.isBuiltin(request)) return nativeRequire(request);

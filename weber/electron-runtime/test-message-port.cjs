@@ -13,6 +13,20 @@ const MessageChannelMain = require('./dist/browser/api/message-channel.js').defa
 Module._load = originalLoad; process._linkedBinding = nativeBinding;
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('serialization getters cannot invalidate an admitted ownership transfer', { timeout: 2000 }, async () => {
+  const transport = new MessageChannelMain(), moved = new MessageChannelMain();
+  assert.throws(() => transport.port1.postMessage({ get value() { moved.port2.close(); return 1; } }, [moved.port2]), /closed/);
+  const takeover = new MessageChannelMain();
+  assert.throws(() => transport.port1.postMessage({ get value() {
+    takeover.port1.postMessage('move sender', [transport.port1]); return 1;
+  } }), /transferred/);
+  const delivery = once(takeover.port2, 'message'); takeover.port2.start();
+  const [{ ports }] = await delivery;
+  const received = once(transport.port2, 'message'); transport.port2.start(); ports[0].postMessage('new sender');
+  assert.equal((await received)[0].data, 'new sender');
+  ports[0].close(); takeover.port1.close();
+});
+
 test('original MessagePortMain queues until start and preserves structured values', { timeout: 2000 }, async () => {
   const { port1, port2 } = new MessageChannelMain();
   const data = { bytes: new Uint8Array([0, 128, 255]), value: 3n, map: new Map([['a', 1]]) }; data.self = data;

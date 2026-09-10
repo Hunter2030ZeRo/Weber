@@ -20,14 +20,18 @@ function wrap(endpoint) {
     if (!state) throw cloneError('MessagePort has been transferred');
     if (state.closed || !state.peer || state.peer.closed) return;
     if (!Array.isArray(transfer) || transfer.length > 64) throw cloneError('Invalid MessagePort transfer list');
-    if (state.peer.remote && transfer.length) throw cloneError('Nested transfers to a utility process are not implemented');
-    const moved = transfer.map(port => endpoints.get(port));
-    if (new Set(moved).size !== moved.length || moved.some(endpoint => !endpoint || endpoint.closed || endpoint === state))
-      throw cloneError('Duplicate, closed, detached or self-transferred MessagePort');
     // Native structuredClone rejects functions and preserves cycles, typed
     // arrays, Maps, Sets and BigInts. The serialized queue stores one payload
     // until delivery, rather than a second persistent object graph.
     const payload = serialize(structuredClone(data));
+    // Getters invoked by structuredClone may close or transfer endpoints, or
+    // send another message. Read ownership and capacity after that re-entrancy.
+    if (endpoints.get(this) !== state) throw cloneError('MessagePort has been transferred');
+    if (state.closed || !state.peer || state.peer.closed) return;
+    if (state.peer.remote && transfer.length) throw cloneError('Nested transfers to a utility process are not implemented');
+    const moved = transfer.map(port => endpoints.get(port));
+    if (new Set(moved).size !== moved.length || moved.some(endpoint => !endpoint || endpoint.closed || endpoint === state))
+      throw cloneError('Duplicate, closed, detached or self-transferred MessagePort');
     const peer = state.peer;
     if (payload.length > MAX_BYTES || peer.bytes + payload.length > MAX_BYTES || peer.queue.length >= MAX_MESSAGES)
       throw new RangeError('MessagePort delivery queue exceeds 4 MiB or 256 messages');

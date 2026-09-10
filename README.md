@@ -12,9 +12,9 @@ Electron's MIT license remains at the repository root; its README is
 
 ## Executable implementation
 
-The runtime compiles and executes 29 original, unmodified Electron TypeScript
+The runtime compiles and executes 31 original, unmodified Electron TypeScript
 modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem,
-Notification, powerMonitor, globalShortcut, protocol, clipboard, screen,
+Notification, powerMonitor, utilityProcess, ParentPort, globalShortcut, protocol, clipboard, screen,
 systemPreferences and IPC helpers. A
 replacement `process._linkedBinding` layer routes their native operations to a
 separate GTK host. Each window has its own Obscura process. The build uses no
@@ -36,7 +36,9 @@ and renderer event listeners; native X11 clipboard/PRIMARY ownership; real monit
 geometry/cursor/system settings; and custom protocols used by document, CSS,
 classic script, ES module and fetch requests. Main-process MessageChannelMain
 supports queued structured data and ownership transfer between main-process ports.
-Renderer/utility-process port transfer is still missing.
+Main-process ports can now move into a separate utility process and exchange
+structured messages in both directions. Renderer transfers and nested utility
+port transfers are still missing.
 
 Linux notifications use the desktop D-Bus service. Power observation uses UPower,
 logind and XScreenSaver; it does not add a periodic idle polling loop. Node and
@@ -98,6 +100,11 @@ currently stops at the missing `crashReporter` export. Workbench startup, editin
 terminal, extension hosting and full-app migration have not passed acceptance.
 No compatibility percentage is claimed.
 
+The [VS Code acceptance criteria](weber/vscode-probe/ACCEPTANCE.md) define success
+in terms of the original application's editing, terminals, extensions, desktop
+behavior and measured resource use. Utility-process execution is supporting
+infrastructure; it is not yet a passing VS Code extension host.
+
 The separate [Monaco diagnostic](weber/monaco-probe/README.md) runs upstream
 Monaco 0.52.2 and passes construction, edits, undo, actual X11 keyboard input,
 line rendering/capture and 1,000-line scrolling. Its worker-driven diff still
@@ -125,7 +132,7 @@ small application cannot be multiplied by VS Code's memory use: browser engine,
 window surfaces, application DOM/JS, terminal and extension hosts have different
 costs and scaling behavior.
 
-Remaining work includes renderer/utility-process MessagePorts, persistent
+Remaining work includes renderer MessagePorts and nested utility transfers, persistent
 session storage and complete network semantics, full preload/structured-clone
 behavior, general WebContentsView embedding, IME/contenteditable editing,
 complete worker execution, tray, drag and drop, production installers and Windows/macOS.

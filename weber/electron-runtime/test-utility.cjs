@@ -20,7 +20,13 @@ const utilityProcess = loader.load(path.join(__dirname, 'dist/browser/api/utilit
 const MessageChannelMain = loader.load(path.join(__dirname, 'dist/browser/api/message-channel.js')).default;
 process._linkedBinding = originalBinding;
 const entry = path.join(__dirname, 'utility-fixture/child.cjs');
-const tick = () => new Promise(resolve => setImmediate(resolve));
+async function waitFor(predicate) {
+  const deadline = Date.now() + 5000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error('Utility delivery deadline expired');
+    await new Promise(resolve => setTimeout(resolve, 1));
+  }
+}
 function fork(t, filename = entry, args = [], options = {}) {
   const child = utilityProcess.fork(filename, args, { stdio: 'pipe', ...options });
   t.after(() => { child._unwrapHandle()?.stop('SIGKILL'); });
@@ -53,7 +59,7 @@ test('main port ownership moves to utility and queued structured messages cross 
   const received = once(child, 'message'); child.postMessage({ kind: 'port' }, [channel.port2]);
   assert.throws(() => channel.port2.postMessage('detached'), /transferred/);
   assert.equal((await received)[0], 'port-received');
-  while (!values.length) await tick();
+  await waitFor(() => values.length > 0);
   assert.equal(values[0], 'queued before transfer');
   const response = once(channel.port1, 'message'); channel.port1.postMessage(new Map([['binary', new Uint8Array([1,2,3])]]));
   assert.deepEqual((await response)[0].data, new Map([['binary', new Uint8Array([1,2,3])]]));
@@ -96,7 +102,7 @@ test('serialization re-entrancy cannot transfer a closed port or reuse remote ID
     child.postMessage({ kind: 'port' }, [second.port2]);
     return 'outer';
   } });
-  while (replies.length < 2) await tick();
+  await waitFor(() => replies.length >= 2);
   assert.deepEqual(replies, ['port-received', 'outer']);
   const echo = once(second.port1, 'message'); second.port1.start(); second.port1.postMessage('after re-entrancy');
   assert.equal((await echo)[0].data, 'after re-entrancy');

@@ -25,6 +25,8 @@ The replacement code is intentionally at the native binding boundary:
   the desktop D-Bus notification service, with bounded asynchronous delivery.
 * `power-binding.cjs` connects the original lazy powerMonitor wrapper to native
   XScreenSaver idle queries and UPower/logind events, without periodic polling.
+* `utility-binding.cjs` starts actual independent Node/Bun utility processes;
+  `utility-bootstrap.cjs` installs the original ParentPort module in the child.
 * `commonjs-loader.cjs` executes CommonJS modules on Bun, whose `Module._load`
   interception differs from Node. Builtins and native addons remain Bun's.
 
@@ -111,9 +113,30 @@ rotation/color profiles/touch detection and platform-specific macOS/Windows
 methods are outside this implementation.
 
 The original MessageChannelMain/MessagePortMain wrappers use bounded queues,
-structured data copying, ownership transfer, start and close semantics for ports
-inside the main process. They are tested on Node and Bun. This is not yet the
-cross-process port contract required by VS Code's utility and renderer services.
+structured data copying, ownership transfer, start and close semantics. Ports
+can be transferred from main into an actual utility process. Queued messages
+survive that transfer, old owners detach, and the child uses the original
+MessagePortMain wrapper for bidirectional data. Serialization re-entrancy is
+checked before ownership moves. Renderer and nested utility transfers remain
+unsupported; rejected transfers retain ownership.
+
+Utility children execute with the selected JavaScript backend, using a private
+Unix socket and serialized structured values (cycles, typed arrays, Maps, Sets,
+BigInts). Original utilityProcess and ParentPort sources supply public API
+behavior. Stdio descriptors are moved into the original wrapper's Socket path;
+cwd, environment, args, CJS/ESM entry, spawn/message/exit and kill are exercised.
+Removing all parentPort message listeners permits normal child exit. The Linux
+parent-death signal stops an owned utility even if its JavaScript cannot process
+EOF. This covers that immediate child, not an arbitrary descendant tree or an
+OS sandbox. Utility windows or a Chromium subprocess are never created.
+
+Limits are 32 utilities, 64 transferred ports per utility, and 4 MiB/256 queued
+messages per channel or paused inbox. There are no periodic delivery polls.
+Authentication integration and platform-specific unsigned-library options fail
+explicitly. Browser structured-clone types and automatic Electron-module support
+inside utilities are not implemented. A Node application starts Node children;
+a Bun application starts Bun children. Cross-engine serialized channels are not
+claimed. See `test-utility.cjs` and the real window/bundle fixture.
 
 Renderer IPC supports invoke/rejection plus send/on/once/listener removal,
 webContents.send and event.reply through isolated preload contexts. Simultaneous
@@ -142,8 +165,8 @@ tests use real X11 idle queries and a D-Bus peer for power/suspend/resume/sessio
 lock events. Shutdown inhibition is explicitly unsupported; Linux thermal state
 can be unknown. These tests do not claim complete desktop-daemon coverage.
 
-Tray, drag and drop, persistent sessions, transferred renderer or
-utility-process message ports, an OS sandbox, full navigation history, general
+Tray, drag and drop, persistent sessions, transferred renderer and nested utility
+message ports, an OS sandbox, full navigation history, general
 WebContentsView embedding, production installers and VS Code acceptance remain
 unimplemented. Unsupported binding operations fail explicitly. Many upstream
 public methods are present because original Electron source is reused; presence

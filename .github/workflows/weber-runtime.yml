@@ -125,14 +125,18 @@ jobs:
           node --test weber/electron-runtime/test-preload-boundary.cjs
           bun test ./weber/electron-runtime/test-message-port.cjs
           bun test ./weber/electron-runtime/test-ipc-reply-queue.cjs
-          node --test weber/electron-runtime/test-utility.cjs
-          bun test ./weber/electron-runtime/test-utility.cjs
           node weber/electron-runtime/platform-sync/test.cjs
           bun weber/electron-runtime/platform-sync/test.cjs
           node weber/electron-runtime/platform-sync/tests/test-foreign-wrapper.cjs
           bun weber/electron-runtime/platform-sync/tests/test-foreign-wrapper.cjs
           xvfb-run -a python3 weber/electron-runtime/test-shortcut-live.py node
           xvfb-run -a python3 weber/electron-runtime/test-shortcut-live.py bun
+      - name: Test original utility processes and transferred ports
+        id: utilities
+        continue-on-error: true
+        run: |
+          node --test weber/electron-runtime/test-utility.cjs
+          bun test ./weber/electron-runtime/test-utility.cjs
       - name: Test native desktop notification protocol on Node and Bun
         id: notifications
         continue-on-error: true
@@ -202,12 +206,12 @@ jobs:
       - name: Require every runtime check to pass
         if: always()
         env:
-          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.clipboard.outcome }} ${{ steps.bundle.outcome }} ${{ steps.protocols.outcome }} ${{ steps.notifications.outcome }}
+          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.clipboard.outcome }} ${{ steps.bundle.outcome }} ${{ steps.protocols.outcome }} ${{ steps.notifications.outcome }} ${{ steps.utilities.outcome }}
         run: |
           python3 - <<'PY_GATE'
           import os
           outcomes = os.environ['RESULTS'].split()
-          assert len(outcomes) == 13 and all(result == 'success' for result in outcomes), outcomes
+          assert len(outcomes) == 14 and all(result == 'success' for result in outcomes), outcomes
           PY_GATE
       - name: Require measurements and startup diagnostic to complete
         if: always()

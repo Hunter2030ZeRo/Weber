@@ -2,7 +2,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-const { Socket } = require('node:net');
+const { Socket } = require('./utility-socket.cjs');
 const { spawn } = require('node:child_process');
 const { constants } = require('node:os');
 const { UtilityWire } = require('./utility-wire.cjs');
