@@ -450,6 +450,7 @@ function createBindings(host, appPath, loadInternal) {
   const display = require('./display-binding.cjs').createDisplayBinding({ host, app });
   bindings.set('electron_browser_screen', display.screen);
   bindings.set('electron_browser_system_preferences', display.preferences);
+  bindings.set('electron_browser_notification', require('./notification-binding.cjs').createNotificationBinding({ host, app, unsupported }));
   const clipboard = createClipboardBinding({ host, app });
   bindings.set('electron_browser_message_port', require('./message-port-binding.cjs'));
   bindings.set('electron_browser_clipboard', clipboard.clipboard);

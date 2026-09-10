@@ -20,3 +20,4 @@ exports.ClipboardItem = api.ClipboardItem;
 exports.MessageChannelMain = api.MessageChannelMain;
 exports.screen = api.screen;
 exports.systemPreferences = api.systemPreferences;
+exports.Notification = api.Notification;

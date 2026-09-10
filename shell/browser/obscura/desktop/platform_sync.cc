@@ -2,6 +2,7 @@
 #include "platform_sync.h"
 #include "clipboard.h"
 #include "display.h"
+#include "notification.h"
 #include "platform_wire.h"
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
@@ -53,6 +54,7 @@ struct PlatformSync::State {
   uint64_t last_request = 0;
   Json display_snapshot = Json::array();
   std::string accent_color;
+  std::unique_ptr<NotificationCenter> notifications;
   void PublishDisplays() {
     const auto current = DisplayCommand({{"method", "screen.displays"}});
     for (const auto& item : current) {
@@ -78,6 +80,7 @@ struct PlatformSync::State {
   }
 
   State(int socket, Emit callback) : fd(socket), emit(std::move(callback)) {
+    notifications = std::make_unique<NotificationCenter>(emit);
     wire::Nonblocking(fd);
     gdk = gdk_display_get_default();
     display_snapshot = DisplayCommand({{"method", "screen.displays"}});
@@ -224,6 +227,7 @@ struct PlatformSync::State {
   }
   Json Dispatch(const Json& request) {
     const auto method = request.at("method").get<std::string>();
+    if (method.rfind("notification.", 0) == 0) return notifications->Command(request);
     if (method.rfind("screen.", 0) == 0 || method.rfind("systemPreferences.", 0) == 0) return weber::desktop::DisplayCommand(request);
     if (method.rfind("clipboard.", 0) == 0) return Clipboard(request);
     if (!xdisplay) throw std::runtime_error("Global shortcuts currently require X11; Wayland portal support is not implemented");
@@ -317,6 +321,7 @@ struct PlatformSync::State {
         { std::lock_guard<std::mutex> lock(self->source_mutex); self->cleanup_source = 0; }
         // Drop OS ownership even if the ordinary stdin transport remains open.
         self->UnregisterAll();
+        self->notifications.reset();
         if (!self->closing_error.empty())
           self->emit({{"event", "platform-sync-error"}, {"error", self->closing_error}});
         return G_SOURCE_REMOVE;

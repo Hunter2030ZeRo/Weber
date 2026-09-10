@@ -1,9 +1,8 @@
 'use strict';
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, protocol } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const http = require('node:http');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const execute = promisify(execFile);
@@ -13,7 +12,8 @@ const report = { kind: 'standalone-monaco-diagnostic', version: '0.52.2', ready:
   vscodeReady: false, osSandbox: false, checks: [], error: null };
 const assets = path.join(__dirname, 'dist');
 let finished = false;
-let server;
+protocol.registerSchemesAsPrivileged([{ scheme: 'monaco', privileges: {
+  standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 function finish(error) {
   if (finished) return;
   finished = true;
@@ -23,7 +23,6 @@ function finish(error) {
   fs.mkdirSync(path.dirname(output), { recursive: true });
   fs.writeFileSync(output, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
-  server?.close();
   // This is diagnostic collection. ready/checks report actual acceptance.
   app.exit(0);
 }
@@ -31,18 +30,16 @@ const deadline = setTimeout(() => finish(new Error('Monaco diagnostic exceeded 9
 app.on('window-all-closed', () => {});
 app.whenReady().then(async () => {
   report.assets = JSON.parse(fs.readFileSync(path.join(assets, 'manifest.json')));
-  server = http.createServer((request, response) => {
-    const name = request.url === '/' ? 'index.html' : request.url.slice(1);
-    if (!/^[a-zA-Z0-9_.-]+$/.test(name)) { response.writeHead(404).end(); return; }
+  protocol.registerFileProtocol('monaco', (request, callback) => {
+    const url = new URL(request.url);
+    const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
+    if (url.hostname !== 'app' || !/^[a-zA-Z0-9_.-]+$/.test(name)) { callback({ error: -6 }); return; }
     const filename = path.join(assets, name);
-    if (!fs.existsSync(filename) || !fs.statSync(filename).isFile()) { response.writeHead(404).end(); return; }
-    const types = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.ttf': 'font/ttf' };
-    response.writeHead(200, { 'Content-Type': types[path.extname(name)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
-    fs.createReadStream(filename).pipe(response);
+    if (!fs.existsSync(filename) || !fs.statSync(filename).isFile()) { callback({ error: -6 }); return; }
+    callback({ path: filename });
   });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const window = new BrowserWindow({ width: 800, height: 600, title: 'Weber Monaco Probe' });
-  await window.loadURL(`http://127.0.0.1:${server.address().port}/`);
+  await window.loadURL('monaco://app/');
   report.checks.push('document-load');
   for (let attempt = 0; attempt < 100; attempt++) {
     const state = await window.webContents.executeJavaScript('globalThis.monacoProbe || null');
