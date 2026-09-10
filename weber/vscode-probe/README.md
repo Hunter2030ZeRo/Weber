@@ -42,9 +42,9 @@ size limits. Distribution files and the temporary profile are deleted after
 the report is written; only hashes and bounded error/stack excerpts are kept.
 
 The latest verified probe has advanced past `crashReporter`, `contentTracing`
-and `shell`, `safeStorage` and `powerSaveBlocker` imports and stops at missing
-`net` in the last full native run (95e9c87). The current source adds scoped
-network APIs; its next native startup result must be recorded separately. The original modules
+and `shell`, `safeStorage`, `powerSaveBlocker` and `net` imports and stops at
+missing `desktopCapturer` in the full native run 1219c94. All 16 runtime gates
+and extracted Node/Bun/native examples passed in that run. The original modules
 are connected to scoped runtime behavior: inactive crash metadata with explicit
 collection errors, actual bounded Node main-process timing traces, and real
 GIO file/URI launch and trash. Native crash capture is not implemented and Bun

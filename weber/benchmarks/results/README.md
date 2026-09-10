@@ -169,3 +169,9 @@ input test; benchmark completion is not misrepresented as a fully passing build.
 The observed idle regression motivates removing empty preload dispatcher work
 and repeated retained-style scans. Subsequent results must identify their exact
 commit and retain the original measurements above.
+
+The network/authentication continuation is recorded in
+[1219c94-summary.json](1219c94-summary.json). Its small-fixture median IPC remains
+slower on Weber (1.207 ms versus Electron 0.542 ms), while DOM update and capture
+are close (50.17 ms versus 48.90 ms). These are three-trial fixture measurements,
+not VS Code measurements or evidence of whole-app equivalence.

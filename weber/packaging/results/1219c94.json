@@ -1,0 +1,67 @@
+{
+  "kind": "validated-linux-development-bundle",
+  "commit": "1219c9477333e57620204d8cb29bce561c574f79",
+  "workflowRun": 34470208877,
+  "allRuntimeGatesPassed": true,
+  "runtimeGates": 16,
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34470208877/artifacts/10149427807",
+  "artifactZipBytes": 56864113,
+  "artifactZipSha256": "6aabd7069d3a37eee5ddfd0b8e51dc8eb61a3dd56ffa4e9aa1c19a820ab47a67",
+  "sourceEvidenceArtifact": 10149426451,
+  "sourceEvidenceZipSha256": "5542dda939a68fbc900459e6e608b1fb7e05b516a81764c2fdceea2476acefcb",
+  "electronSourceModules": 41,
+  "adaptedSources": [
+    "lib/browser/api/net-fetch.ts",
+    "lib/common/api/net-client-request.ts"
+  ],
+  "compiledForkSourcesVerified": true,
+  "extractedBackendSmokes": {
+    "node": true,
+    "bun": true,
+    "native": true
+  },
+  "chromiumBrowserRuntimeIncluded": false,
+  "nodeAndBunExecutablesIncluded": false,
+  "osSandbox": false,
+  "networkLocalFocusedTests": {
+    "node": {
+      "passed": 54,
+      "failed": 0,
+      "skipped": 0
+    },
+    "bun": {
+      "passed": 53,
+      "failed": 0,
+      "skipped": 1
+    },
+    "qualification": "Bun includes a passing failure diagnostic for unresolved bare Electron ESM imports; it is not ESM network support."
+  },
+  "vscode": {
+    "version": "1.136.2",
+    "ready": false,
+    "diagnostic_completed": true,
+    "error": "SyntaxError: Named export 'desktopCapturer' not found. The requested module 'electron' is a CommonJS module, which may not support all module.exports as named exports.",
+    "exit_code": 1,
+    "timed_out": false
+  },
+  "monaco": {
+    "version": "0.52.2",
+    "ready": false,
+    "coreEditingReady": true,
+    "checks": [
+      "document-load",
+      "editor-construction",
+      "model-edit",
+      "undo",
+      "native-keyboard-input",
+      "visible-line-dom-and-capture",
+      "thousand-line-scroll-and-visible-range"
+    ],
+    "error": "Error: Editor worker: Unexpected token 'export'\n    at /home/runner/work/Weber/Weber/weber/monaco-probe/main.cjs:92:42\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+  },
+  "performance": {
+    "comparisonComplete": true,
+    "wholeVscodeVerified": false,
+    "summary": "Same-app three-trial fixture; Weber IPC remains slower than Electron. No whole-VS-Code memory or latency claim."
+  }
+}

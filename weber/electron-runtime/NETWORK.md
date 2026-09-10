@@ -119,3 +119,12 @@ checks passed three cases. These local tests do not build the native GUI,
 measure application performance or establish a running VS Code workbench.
 The full GitHub workflow separately builds Obscura/GTK, exercises extracted
 Node/Bun/native bundles and records the unmodified VS Code startup result.
+
+Full workflow [34470208877](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34470208877)
+then passed all 16 runtime gates at `1219c94`, including real Obscura/GTK and
+extracted Node/Bun/native bundles. The unmodified VS Code probe now stops at
+missing `desktopCapturer`. Monaco passes its seven core checks and still fails
+the dedicated module-worker check. The same-app comparison completed; median
+IPC was 1.207 ms on Weber versus 0.542 ms on Electron in the three-trial small
+fixture. This does not meet an Electron-or-faster IPC target and does not measure
+whole VS Code behavior. Exact evidence is in the packaging/benchmark records.

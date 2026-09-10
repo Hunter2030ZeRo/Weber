@@ -2,14 +2,14 @@
 
 Target: the unmodified Linux x64 VS Code 1.136.2 application at the revision in
 `pin.json`, running through the original Electron source modules on Obscura.
-The latest full native probe (95e9c87) exits before workbench startup because
-`net` is missing. The current source supplies main/utility HTTP, HTTPS, streaming
-fetch, WebSocket and opt-in Basic authentication forwarding. Its next whole-app
-startup result is not yet recorded; isolated network tests do not establish it. A diagnostic exit code of zero means evidence collection succeeded;
+The latest full native probe (1219c94) advances past `net` and exits before
+workbench startup because `desktopCapturer` is missing. Main/utility HTTP, HTTPS,
+streaming fetch, WebSocket and opt-in Basic authentication forwarding have
+scoped tests. Bun bare Electron ESM imports remain unresolved. A diagnostic exit code of zero means evidence collection succeeded;
 the report itself has `ready: false`. No whole-app compatibility percentage is
 inferred from exported names or module counts.
 
-Latest validated runtime: [95e9c87](../packaging/results/95e9c87.json), with 16
+Latest validated runtime: [1219c94](../packaging/results/1219c94.json), with 16
 execution gates and extracted Node/Bun/native examples passing. Utility tests
 pass seven per JavaScript backend, startup services pass four on Node and three
 on Bun (one Node-only skip), and safeStorage unit checks pass four per backend.
@@ -28,7 +28,7 @@ The startup diagnostic also has three regression tests to distinguish actual
 exceptions from error-like text embedded in minified source lines.
 
 Successive unmodified VS Code runs moved from missing crashReporter to shell,
-safeStorage, powerSaveBlocker and now net. This remains import-stage progress, not
+safeStorage, powerSaveBlocker, net and now desktopCapturer. This remains import-stage progress, not
 proof of a running workbench. Monaco's module-worker blocker is unchanged.
 
 The probe records these 24 named imports from the pinned application. An API
