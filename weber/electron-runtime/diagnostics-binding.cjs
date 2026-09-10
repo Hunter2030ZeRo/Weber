@@ -45,6 +45,9 @@ function createDiagnosticsBinding({ unsupported }) {
       if (config.included_categories?.some(value => value !== category && value !== '*') || config.excluded_categories?.length)
         return unsupported('contentTracing categories outside the main user-timing stream');
       if (config.recording_mode && config.recording_mode !== 'record-until-full') return unsupported('contentTracing recording mode');
+      // Configuration accessors can re-enter startRecording synchronously.
+      // Recheck after all application-owned property reads, before ownership.
+      if (active) throw new Error('Tracing is already active');
       const state = { events: [], bytes: 0, dropped: 0, observer: null, stopping: false };
       const receive = entries => {
         for (const entry of entries) {

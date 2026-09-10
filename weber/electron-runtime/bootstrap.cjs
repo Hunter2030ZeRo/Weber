@@ -64,6 +64,7 @@ async function main() {
     Notification: 'browser/api/notification',
     powerMonitor: 'browser/api/power-monitor',
     crashReporter: 'browser/api/crash-reporter', contentTracing: 'browser/api/content-tracing',
+    shell: 'common/api/shell',
     utilityProcess: 'browser/api/utility-process',
     MessageChannelMain: 'browser/api/message-channel', clipboard: 'browser/api/clipboard', ClipboardItem: 'browser/api/clipboard-item',
     globalShortcut: 'browser/api/global-shortcut', protocol: 'browser/api/protocol',

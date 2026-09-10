@@ -74,6 +74,13 @@ test('main trace is bounded, drains pending entries and can restart after an out
   await trace.startRecording({});
   const restarted = await trace.stopRecording();
   await fs.rm(path.dirname(restarted), { recursive: true, force: true });
+  let nested;
+  await assert.rejects(trace.startRecording({ get included_categories() {
+    nested ??= trace.startRecording({}); return [];
+  } }), /already active/);
+  await nested;
+  const reentrant = await trace.stopRecording();
+  await fs.rm(path.dirname(reentrant), { recursive: true, force: true });
 });
 
 test('startup switches retain values while engine hints and security boundaries stay explicit', () => {

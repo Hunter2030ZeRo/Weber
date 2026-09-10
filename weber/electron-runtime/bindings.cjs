@@ -457,6 +457,7 @@ function createBindings(host, appPath, loadInternal) {
   const diagnostics = require('./diagnostics-binding.cjs').createDiagnosticsBinding({ unsupported });
   bindings.set('electron_browser_crash_reporter', diagnostics.crashReporter);
   bindings.set('electron_browser_content_tracing', diagnostics.tracing);
+  bindings.set('electron_common_shell', require('./shell-binding.cjs').createShellBinding({ app, unsupported }));
   const clipboard = createClipboardBinding({ host, app });
   bindings.set('electron_browser_message_port', require('./message-port-binding.cjs'));
   bindings.set('electron_browser_clipboard', clipboard.clipboard);

@@ -66,7 +66,7 @@ jobs:
             weber -> target
             weber/runtime-config -> target
           cache-on-failure: true
-      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libgtk-3-dev libxss-dev nlohmann-json3-dev cmake xvfb xauth xdotool xclip python3-gi dbus-x11
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libgtk-3-dev libglib2.0-bin libxss-dev nlohmann-json3-dev cmake xvfb xauth xdotool xclip python3-gi dbus-x11
       - name: Test real engine APIs
         id: engine
         continue-on-error: true
@@ -157,7 +157,7 @@ jobs:
           bun weber/electron-runtime/platform-sync/tests/test-foreign-wrapper.cjs
           xvfb-run -a python3 weber/electron-runtime/test-shortcut-live.py node
           xvfb-run -a python3 weber/electron-runtime/test-shortcut-live.py bun
-      - name: Test native desktop notification protocol on Node and Bun
+      - name: Test native desktop services on Node and Bun
         id: notifications
         continue-on-error: true
         env:
@@ -168,6 +168,8 @@ jobs:
           WEBER_NOTIFICATION_NO_SERVICE=1 dbus-run-session -- xvfb-run -a node weber/electron-runtime/bootstrap.cjs weber/electron-runtime/notification-fixture
           dbus-run-session -- xvfb-run -a /usr/bin/python3 weber/tests/power-service.py node
           dbus-run-session -- xvfb-run -a /usr/bin/python3 weber/tests/power-service.py bun
+          node weber/electron-runtime/test-shell-live.cjs
+          bun weber/electron-runtime/test-shell-live.cjs
       - name: Test original protocol APIs and custom resource origins
         id: protocols
         continue-on-error: true

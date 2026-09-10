@@ -25,3 +25,4 @@ exports.powerMonitor = api.powerMonitor;
 exports.utilityProcess = api.utilityProcess;
 exports.crashReporter = api.crashReporter;
 exports.contentTracing = api.contentTracing;
+exports.shell = api.shell;
