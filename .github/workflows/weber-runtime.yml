@@ -33,6 +33,7 @@ jobs:
           git -C weber/vendor/obscura apply "$PWD/weber/patches/obscura/0003-frame-invalidation.patch"
           git -C weber/vendor/obscura apply "$PWD/weber/patches/obscura/0004-browser-navigation.patch"
           git -C weber/vendor/obscura apply "$PWD/weber/patches/obscura/0005-desktop-protocols.patch"
+          git -C weber/vendor/obscura apply "$PWD/weber/patches/obscura/0006-desktop-wake.patch"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
