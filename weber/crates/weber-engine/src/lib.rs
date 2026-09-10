@@ -27,6 +27,7 @@ struct Engine {
     preload: preload::Preload,
     scheduler: scheduler::Scheduler,
     runtime: tokio::runtime::Runtime,
+    discard_network_observations: bool,
     loaded: bool,
     width: u32,
     height: u32,
@@ -57,7 +58,8 @@ impl Engine {
         };
         if let Some(protocols) = &protocols { *page.context.http_client.desktop_protocol.write().unwrap() = Some(protocols.clone()); }
         let preload = preload::Preload::new(&mut page);
-        Ok(Self { page, protocols, preload, runtime, scheduler: scheduler::Scheduler::default(), loaded: false, width: 800, height: 600, poisoned: false,
+        Ok(Self { page, protocols, preload, runtime, scheduler: scheduler::Scheduler::default(),
+            discard_network_observations: std::env::var("OBSCURA_NETWORK_BODY_BUFFER_ENTRIES").is_ok_and(|v| v == "0"), loaded: false, width: 800, height: 600, poisoned: false,
             events: VecDeque::new(), event_bytes: 0, dropped_events: 0,
             critical_events: VecDeque::new(), critical_bytes: 0, queued_ipc: 0,
             evaluation_tickets: HashMap::new() })
@@ -129,6 +131,10 @@ impl Engine {
     }
 
     fn collect_navigation_request(&mut self) {
+        if self.discard_network_observations {
+            self.page.network_events.clear();
+            if let Some(js) = self.page.js.as_ref() { js.take_js_network_events(); }
+        }
         if let Some((url, method, body)) = self.page.take_pending_navigation() {
             // Renderer observations are not navigation authorization. The browser
             // owner must apply its origin/permission policy before calling loadURL.
@@ -635,13 +641,10 @@ pub extern "C" fn weber_engine_wait(id: u64, fd: i32, watch_frames: bool) -> i32
         let Some((engine_id, engine)) = slot.as_mut() else { return -1; };
         if *engine_id != id || engine.poisoned { return -1; }
         match engine.scheduler.wait(&engine.runtime, &mut engine.page, engine.loaded, fd, watch_frames) {
-            Ok(kind) => {
-                if kind == 1 {
-                    engine.collect_navigation_request();
-                    if engine.pump_preload().is_err() { return -1; }
-                }
-                kind
-            }
+            // The C++ owner immediately drains pollEvents after a task. That
+            // drain performs the isolated bridge pump once, with its normal
+            // queue admission and watchdog checks.
+            Ok(kind) => kind,
             Err(_) => { engine.poisoned = true; -1 }
         }
     }))).unwrap_or(-1)

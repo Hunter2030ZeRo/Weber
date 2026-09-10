@@ -17,3 +17,4 @@ exports.globalShortcut = api.globalShortcut;
 exports.protocol = api.protocol;
 exports.clipboard = api.clipboard;
 exports.ClipboardItem = api.ClipboardItem;
+exports.MessageChannelMain = api.MessageChannelMain;

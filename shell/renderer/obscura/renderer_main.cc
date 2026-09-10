@@ -2,6 +2,7 @@
 #include "obscura_engine.h"
 #include "../../common/obscura/wire.h"
 #include <cstring>
+#include <cstdlib>
 #include <cerrno>
 #include <poll.h>
 #include <csignal>
@@ -22,6 +23,11 @@ int main(int argc, char** argv) {
   try {
     int resource_type = 0; socklen_t resource_length = sizeof(resource_type);
     const bool has_resources = getsockopt(4, SOL_SOCKET, SO_TYPE, &resource_type, &resource_length) == 0 && resource_type == SOCK_STREAM;
+    // Network.getResponseBody copies are diagnostic retention, separate from
+    // the browser resource cache. No desktop debugger consumes them by default.
+    // An explicit embedder setting can opt back in for engine diagnostics.
+    if (!std::getenv("OBSCURA_NETWORK_BODY_BUFFER_ENTRIES"))
+      setenv("OBSCURA_NETWORK_BODY_BUFFER_ENTRIES", "0", 0);
     ObscuraEngine engine(has_resources ? 4 : -1);
     wire::Send(3, {0, wire::kReady, {'1'}}, std::chrono::steady_clock::now() + std::chrono::seconds(5));
     uint32_t sequence = 0;

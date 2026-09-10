@@ -60,7 +60,7 @@ async function main() {
     webContents: 'browser/api/web-contents', View: 'browser/api/view',
     WebContentsView: 'browser/api/web-contents-view', ipcMain: 'browser/api/ipc-main',
     Menu: 'browser/api/menu', MenuItem: 'browser/api/menu-item',
-    clipboard: 'browser/api/clipboard', ClipboardItem: 'browser/api/clipboard-item',
+    MessageChannelMain: 'browser/api/message-channel', clipboard: 'browser/api/clipboard', ClipboardItem: 'browser/api/clipboard-item',
     globalShortcut: 'browser/api/global-shortcut', protocol: 'browser/api/protocol',
   };
   api.app = runtime.app;

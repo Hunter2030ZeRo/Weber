@@ -425,6 +425,7 @@ function createBindings(host, appPath, loadInternal) {
   bindings.set('electron_browser_web_contents_view', { WebContentsView });
   bindings.set('electron_browser_printing', { getPrinterListAsync: () => unsupported('printing') });
   const clipboard = createClipboardBinding({ host, app });
+  bindings.set('electron_browser_message_port', require('./message-port-binding.cjs'));
   bindings.set('electron_browser_clipboard', clipboard.clipboard);
   bindings.set('electron_browser_clipboard_item', clipboard.NativeClipboardItem);
   bindings.set('electron_browser_protocol', protocolRuntime.binding);
