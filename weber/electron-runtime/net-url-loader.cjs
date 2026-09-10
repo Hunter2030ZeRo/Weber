@@ -8,6 +8,7 @@ const { EventEmitter } = require('node:events');
 const http = require('node:http');
 const https = require('node:https');
 const zlib = require('node:zlib');
+const { requestDetails } = require('./web-request.cjs');
 
 const agents = {
   'http:': new http.Agent({ keepAlive: true, maxSockets: 32, maxTotalSockets: 64, maxFreeSockets: 4 }),
@@ -86,6 +87,8 @@ function createURLLoader(options, context = {}) {
   let downloaded = 0;
   let pendingAuthDispose;
   const pendingWrites = new Set();
+  const policyAbort = new AbortController();
+  const policyDetails = requestDetails({ url: currentURL.href, method, resourceType: 'xhr' });
 
   function clearAuth() {
     const dispose = pendingAuthDispose;
@@ -99,6 +102,7 @@ function createURLLoader(options, context = {}) {
     if (done) return false;
     done = true;
     sequence++;
+    policyAbort.abort();
     clearAuth();
     settleWrites(error || new Error('Network request has ended'));
     // A completed response may already have returned its socket to the agent.
@@ -118,11 +122,30 @@ function createURLLoader(options, context = {}) {
   loader.cancel = () => { cleanup(Object.assign(new Error('Network request was aborted'), { code: 'ABORT_ERR' })); };
   context.track?.(loader);
 
-  function deliver(incoming, serial) {
+  async function deliver(incoming, serial) {
     if (done || serial !== sequence) { incoming.destroy(); return; }
     response = incoming;
     incoming.on('aborted', () => { if (serial === sequence) fail(new Error('Response was aborted before completion')); });
     incoming.on('error', (error) => { if (serial === sequence) fail(error); });
+    try {
+      const decision = await context.webRequest?._dispatch('onHeadersReceived', {
+        ...policyDetails, url: currentURL.href, method, statusCode: incoming.statusCode,
+        statusLine: `HTTP/${incoming.httpVersion} ${incoming.statusCode} ${incoming.statusMessage || ''}`,
+        responseHeaders: responseHead(incoming).headers, fromCache: false,
+      }, policyAbort.signal);
+      if (done || serial !== sequence) { incoming.destroy(); return; }
+      if (decision?.cancel) return fail(new Error('net::ERR_BLOCKED_BY_CLIENT'));
+      if (decision?.responseHeaders) {
+        incoming.rawHeaders = Object.entries(decision.responseHeaders).flatMap(([name, values]) => values.flatMap(value => [name, value]));
+        incoming.headers = Object.fromEntries(Object.entries(decision.responseHeaders).map(([name, values]) => [name, name === 'set-cookie' ? values : values.join(', ')]));
+      }
+      if (decision?.statusLine) {
+        const match = /^HTTP\/(\d)\.(\d) (\d{3})(?: (.*))?$/.exec(decision.statusLine);
+        incoming.httpVersionMajor = Number(match[1]); incoming.httpVersionMinor = Number(match[2]);
+        incoming.httpVersion = `${match[1]}.${match[2]}`;
+        incoming.statusCode = Number(match[3]); incoming.statusMessage = match[4] || '';
+      }
+    } catch (error) { fail(error); return; }
     const status = incoming.statusCode;
     const location = incoming.headers.location;
     if (REDIRECTS.has(status) && location) {
@@ -231,10 +254,27 @@ function createURLLoader(options, context = {}) {
     stream.resume();
   }
 
-  function start() {
+  async function start() {
     if (done) return;
     const serial = ++sequence;
     try {
+      const decision = await context.webRequest?._dispatch('onBeforeRequest', {
+        ...policyDetails, url: currentURL.href, method,
+        ...(body && typeof body !== 'function' ? { uploadData: [{ bytes: Buffer.from(body) }] } : {}),
+      }, policyAbort.signal);
+      if (done || serial !== sequence) return;
+      if (decision?.cancel) return fail(new Error('net::ERR_BLOCKED_BY_CLIENT'));
+      if (decision?.redirectURL && decision.redirectURL !== currentURL.href) {
+        if (redirects++ >= 20) return fail(new Error('net::ERR_TOO_MANY_REDIRECTS'));
+        const target = new URL(decision.redirectURL);
+        if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password) return fail(new Error('net::ERR_UNSAFE_REDIRECT'));
+        if (target.origin !== currentURL.origin) {
+          delete headers.authorization; delete headers.cookie; delete headers['proxy-authorization']; delete headers.host;
+        }
+        if (currentURL.protocol === 'https:' && target.protocol === 'http:') delete headers.referer;
+        currentURL = target;
+        return start();
+      }
       const transport = currentURL.protocol === 'https:' ? https : http;
       request = transport.request(currentURL, {
         method, headers, agent: context.agentFor?.(currentURL.protocol) || agents[currentURL.protocol],

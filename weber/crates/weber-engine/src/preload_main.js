@@ -21,6 +21,7 @@
   const parse = JSON.parse;
   const stringify = JSON.stringify;
   const NativeError = Error;
+  const NativeDOMException = globalThis.DOMException;
   const NativePromise = Promise;
   const promiseThen = Promise.prototype.then;
   const stringSlice = String.prototype.slice;
@@ -200,6 +201,8 @@
   let pendingCount = 0;
   let activeEvaluations = 0;
   const bridgePending = create(null);
+  const browserPending = create(null);
+  let nextBrowserId = 1;
   const evaluations = create(null);
   let queue = array();
   let queueBytes = 0;
@@ -231,6 +234,82 @@
         pendingCount++;
       } catch (error) { reject(new NativeError(errorText(error))); }
     });
+  }
+  function browserOperation(action, args) {
+    return promise((resolve, reject) => {
+      try {
+        if (pendingCount >= MAX_PENDING) fail('Too many pending browser operations');
+        const id = validId(nextBrowserId++);
+        enqueue(record({ type: 'browser-operation', id, action, args: clone(args) }));
+        put(browserPending, id, record({ resolve, reject }));
+        pendingCount++;
+      } catch (error) { reject(new NativeError(errorText(error))); }
+    });
+  }
+  function browserError(message, name) {
+    if (typeof NativeDOMException === 'function') return new NativeDOMException(message, name);
+    const error = new NativeError(message);
+    define(error, 'name', { __proto__: null, value: name });
+    return error;
+  }
+  function installBrowserApis() {
+    // Node realm contract tests do not create a browser navigator. The real
+    // Obscura main realm always has one before this trusted bootstrap runs.
+    const navigator = mainGlobal.navigator;
+    if (!navigator) return;
+    const expose = (target, name, value) => define(target, name,
+      { __proto__: null, value, configurable: true, enumerable: true });
+    expose(navigator, 'clipboard', freeze(record({
+      readText: freeze(() => browserOperation('clipboard-read', [])),
+      writeText: freeze(text => {
+        if (typeof text !== 'string') return promise((_, reject) => reject(browserError('Clipboard text must be a string', 'TypeError')));
+        return browserOperation('clipboard-write', [text]);
+      }),
+    })));
+    expose(navigator, 'permissions', freeze(record({ query: freeze(descriptor =>
+      browserOperation('permission-query', [descriptor])) })));
+    const locationWatches = create(null);
+    let nextLocationWatch = 1;
+    function locate(success, failure, id) {
+      if (typeof success !== 'function') fail('A geolocation success callback is required');
+      follow(browserOperation('geolocation', []), () => {}, error => {
+        if (id !== undefined && !has(locationWatches, id)) return;
+        if (id !== undefined) delete locationWatches[id];
+        if (typeof failure === 'function') failure(freeze(publicValue(record({
+          code: error.name === 'NotAllowedError' ? 1 : 2, message: errorText(error),
+          PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3,
+        }))));
+      });
+    }
+    expose(navigator, 'geolocation', freeze(record({
+      getCurrentPosition: freeze((success, failure) => locate(success, failure)),
+      watchPosition: freeze((success, failure) => {
+        const id = validId(nextLocationWatch++);
+        put(locationWatches, id, true);
+        try { locate(success, failure, id); } catch (error) { delete locationWatches[id]; throw error; }
+        return id;
+      }),
+      clearWatch: freeze(id => { delete locationWatches[id]; }),
+    })));
+    const media = record({
+      enumerateDevices: freeze(() => promise(resolve => resolve([]))),
+      getUserMedia: freeze((constraints = {}) => browserOperation('media',
+        [{ audio: !!constraints.audio, video: !!constraints.video }])),
+      getDisplayMedia: freeze((constraints = {}) => browserOperation('display-media',
+        [{ audio: !!constraints.audio, video: constraints.video !== false }])),
+    });
+    expose(navigator, 'mediaDevices', freeze(media));
+    const Notification = function Notification() {
+      throw browserError('Weber has not implemented renderer Notification delivery', 'NotSupportedError');
+    };
+    define(Notification, 'permission', { __proto__: null, value: 'denied', enumerable: true });
+    define(Notification, 'requestPermission', { __proto__: null, value: freeze(callback => {
+      const result = browserOperation('notification-permission', []);
+      return promise(resolve => follow(result, () => {
+        resolve('denied'); if (typeof callback === 'function') callback('denied');
+      }, () => { resolve('denied'); if (typeof callback === 'function') callback('denied'); }));
+    }) });
+    expose(mainGlobal, 'Notification', freeze(Notification));
   }
   function materialize(metadata, depth) {
     if (depth > MAX_DEPTH || !metadata || typeof metadata !== 'object') fail('Invalid export metadata');
@@ -294,7 +373,21 @@
           const name = names[i];
           define(mainGlobal, name, { __proto__: null, value: prepared[name], enumerable: true });
         }
+        installBrowserApis();
         installed = true;
+        return null;
+      }
+      case 'resolveBrowserOperation': {
+        const id = validId(payload.id);
+        if (!has(browserPending, id)) fail('Unknown browser operation ticket');
+        if (typeof payload.ok !== 'boolean') fail('Browser settlement requires a boolean status');
+        const entry = browserPending[id];
+        delete browserPending[id];
+        pendingCount--;
+        if (payload.ok) entry.resolve(publicValue(payload.value));
+        else entry.reject(browserError(errorText(payload.error),
+          payload.errorName === 'NotSupportedError' || payload.errorName === 'QuotaExceededError' || payload.errorName === 'TypeError' ?
+            payload.errorName : 'NotAllowedError'));
         return null;
       }
       case 'startEvaluation': {

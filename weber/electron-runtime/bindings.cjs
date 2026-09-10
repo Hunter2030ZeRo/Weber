@@ -245,8 +245,7 @@ function createBindings(host, appPath, loadInternal) {
         // A pending Promise that invokes ipcMain must yield the renderer's
         // command loop so its reply can be delivered. Synchronous evaluate
         // cannot provide that bidirectional progress.
-        promise = this._preloadSource === undefined ?
-          this._command({ method: 'evaluate', source: args[0] }) : this._evaluateTicket(args[0]);
+        promise = this._evaluateTicket(args[0]);
       } else {
         promise = Promise.reject(new Error(`Weber has not implemented webFrame.${method}`));
       }
@@ -285,7 +284,7 @@ function createBindings(host, appPath, loadInternal) {
     }
     _engineEvent(message) {
       if (this._destroyed || !message || typeof message !== 'object') return;
-      if (this._loading && ['ipc-invoke', 'ipc-send', 'evaluation-result'].includes(message.type)) {
+      if (this._loading && ['ipc-invoke', 'ipc-send', 'evaluation-result', 'browser-operation'].includes(message.type)) {
         if (this._deferredEvents.length >= 256) {
           this._rejectEvaluations('Renderer event queue overflow during navigation');
           app.emit('weber-error', new Error('Too many renderer events during navigation'));
@@ -299,6 +298,8 @@ function createBindings(host, appPath, loadInternal) {
         this._evaluations.delete(message.id);
         if (message.ok) pending.resolve(message.value);
         else pending.reject(new Error(String(message.error || 'JavaScript evaluation failed')));
+      } else if (message.type === 'browser-operation') {
+        void permissionRuntime.dispatch(this, message);
       } else if (message.type === 'ipc-send') {
         if (message.generation !== this._generation || typeof message.channel !== 'string' || !Array.isArray(message.args)) return;
         const ipcEvent = { type: 'frame', sender: this, senderFrame: this.mainFrame,
@@ -460,6 +461,7 @@ function createBindings(host, appPath, loadInternal) {
   const display = require('./display-binding.cjs').createDisplayBinding({ host, app });
   bindings.set('electron_browser_screen', display.screen);
   bindings.set('electron_browser_system_preferences', display.preferences);
+  bindings.set('electron_browser_native_theme', require('./native-theme-binding.cjs').createNativeThemeBinding({ host, unsupported }));
   bindings.set('electron_browser_notification', require('./notification-binding.cjs').createNotificationBinding({ host, app, unsupported }));
   bindings.set('electron_browser_power_save_blocker', { powerSaveBlocker: require('./power-save-binding.cjs').createPowerSaveBinding({ host, app }) });
   bindings.set('electron_browser_power_monitor', require('./power-binding.cjs').createPowerBinding({ host, app, unsupported }));
@@ -471,6 +473,7 @@ function createBindings(host, appPath, loadInternal) {
   bindings.set('electron_browser_content_tracing', diagnostics.tracing);
   bindings.set('electron_common_shell', require('./shell-binding.cjs').createShellBinding({ app, unsupported }));
   const clipboard = createClipboardBinding({ host, app });
+  const permissionRuntime = require('./session-permissions.cjs').createSessionPermissionRuntime({ app, clipboard: clipboard.clipboard });
   bindings.set('electron_browser_message_port', require('./message-port-binding.cjs'));
   bindings.set('electron_browser_clipboard', clipboard.clipboard);
   bindings.set('electron_browser_clipboard_item', clipboard.NativeClipboardItem);

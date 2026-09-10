@@ -3,6 +3,7 @@
 const { EventEmitter } = require('node:events');
 const path = require('node:path');
 const { Readable } = require('node:stream');
+const { WebRequest, requestDetails } = require('./web-request.cjs');
 const mime = new Map(Object.entries({ '.html':'text/html', '.js':'text/javascript', '.mjs':'text/javascript', '.css':'text/css', '.json':'application/json', '.svg':'image/svg+xml', '.png':'image/png', '.jpg':'image/jpeg', '.woff':'font/woff', '.woff2':'font/woff2', '.ttf':'font/ttf', '.wasm':'application/wasm' }));
 const MAX_BUFFER = 512 * 1024;
 function createProtocolBinding({ app, host, windows, unsupported }) {
@@ -57,7 +58,7 @@ function createProtocolBinding({ app, host, windows, unsupported }) {
     privileges.clear();for(const [name,value] of next)privileges.set(name,value);
   }
   class Session extends EventEmitter {
-    constructor(partition) { super(); this.partition=partition; this.protocol=new Protocol(); }
+    constructor(partition) { super(); this.partition=partition; this.protocol=new Protocol(); this.webRequest=new WebRequest(); require('./session-permissions.cjs').attachSessionPermissions(this); }
   }
   const session={fromPartition(partition='') {
     if(typeof partition!=='string'||Buffer.byteLength(partition)>256)throw new TypeError('Invalid session partition');
@@ -65,7 +66,7 @@ function createProtocolBinding({ app, host, windows, unsupported }) {
     return sessions.get(partition);
   }, fromPath:()=>unsupported('session.fromPath')};
   Object.defineProperty(session,'defaultSession',{get:()=>session.fromPartition('')});
-  async function normalize(result, kind) {
+  async function normalize(result, kind, signal) {
     if(typeof result==='number')return {error:result};
     if(typeof result==='string')result=kind==='file'?{path:result}:{data:result};
     if(Buffer.isBuffer(result))result={data:result};
@@ -86,8 +87,11 @@ function createProtocolBinding({ app, host, windows, unsupported }) {
     let data=result.data;
     if(data instanceof Readable || data?.[Symbol.asyncIterator]) {
       const chunks=[];let bytes=0;
-      try { for await(const chunk of data) {const part=Buffer.from(chunk);bytes+=part.length;if(bytes>MAX_BUFFER)throw new RangeError('Buffered protocol response exceeds 512 KiB; use registerFileProtocol for large files');chunks.push(part);} }
-      finally { data.destroy?.(); }
+      let stop;
+      const cancelled=new Promise((_,reject)=>{stop=()=>{data.destroy?.();reject(new Error('Protocol resource cancelled'));};signal.addEventListener('abort',stop,{once:true});if(signal.aborted)stop();});
+      const read=async()=>{for await(const chunk of data) {const part=Buffer.from(chunk);bytes+=part.length;if(bytes>MAX_BUFFER)throw new RangeError('Buffered protocol response exceeds 512 KiB; use registerFileProtocol for large files');chunks.push(part);}};
+      try { await Promise.race([read(),cancelled]); }
+      finally { signal.removeEventListener('abort',stop);data.destroy?.(); }
       data=Buffer.concat(chunks,bytes);
     } else data=Buffer.from(data??'',result.charset||'utf8');
     if(data.length>MAX_BUFFER)throw new RangeError('Buffered protocol response exceeds 512 KiB');
@@ -96,26 +100,55 @@ function createProtocolBinding({ app, host, windows, unsupported }) {
   host.on('event', message=>{
     if(message.event!=='resource-request')return;
     const win=windows.get(message.windowId);
-    const protocol=win?.webContents?.session?.protocol;
+    const wc=win?.webContents, owner=wc?.session;
+    const protocol=owner?.protocol;
+    const navigation=wc?._navigation;
+    const abort=new AbortController();
+    const cancel=()=>abort.abort();
+    // Bound all policy, handler and stream stages below the engine's 25s resource deadline.
+    const deadline=setTimeout(cancel,20000);
+    app.once('quit',cancel);wc?.once('destroyed',cancel);wc?.once('did-start-loading',cancel);
+    const live=()=>{if(abort.signal.aborted||!win||win.isDestroyed()||wc._navigation!==navigation)throw new Error('Resource owner is no longer active');};
     const handle=async()=>{
+      live();
       const request={...message.request};
       const name=new URL(request.url).protocol.slice(0,-1);
       const entry=protocol?.handlers.get(name);
       if(!entry)throw new Error('Protocol is no longer registered for this session');
       if(request.body)request.uploadData=[{type:'rawData',bytes:Buffer.from(request.body,'base64')}];
       delete request.body;request.referrer ||= request.headers?.referer || '';
+      const types={Document:'mainFrame',Stylesheet:'stylesheet',Script:'script',Image:'image',Font:'font',Fetch:'xhr',Xhr:'xhr',Media:'media'};
+      const details=requestDetails({url:request.url,method:request.method||'GET',webContentsId:wc.id,webContents:wc,
+        frame:wc.mainFrame,resourceType:types[request.resourceType]||'other', ...(request.uploadData?{uploadData:request.uploadData}:{})});
+      const before=await owner.webRequest._dispatch('onBeforeRequest',details,abort.signal);
+      live();
+      if(before.cancel)throw new Error('net::ERR_BLOCKED_BY_CLIENT');
+      if(before.redirectURL&&before.redirectURL!==request.url)throw new Error('Weber has not implemented custom-protocol webRequest redirects');
       const result=await new Promise((resolve,reject)=>{
-        const timer=setTimeout(()=>reject(new Error('Protocol handler timed out')),20000);
         let completed=false;
-        const done=value=>{if(completed)return;completed=true;clearTimeout(timer);resolve(value);};
-        try { Promise.resolve(entry.handler(request,done)).catch(error=>{clearTimeout(timer);reject(error);}); }
-        catch(error){clearTimeout(timer);reject(error);}
+        const finish=(error,value)=>{if(completed)return;completed=true;abort.signal.removeEventListener('abort',stop);if(error)reject(error);else resolve(value);};
+        const stop=()=>finish(new Error('Protocol handler cancelled or timed out'));
+        abort.signal.addEventListener('abort',stop,{once:true});
+        if(abort.signal.aborted)return stop();
+        const done=value=>finish(null,value);
+        try { Promise.resolve(entry.handler(request,done)).catch(error=>finish(error)); }
+        catch(error){finish(error);}
       });
-      return normalize(result,entry.kind);
+      live();
+      const response=await normalize(result,entry.kind,abort.signal);
+      if(response.error!==undefined)return response;
+      const headers=await owner.webRequest._dispatch('onHeadersReceived',{...details,statusCode:response.statusCode,
+        statusLine:`HTTP/1.1 ${response.statusCode}`,responseHeaders:Object.fromEntries(Object.entries(response.headers).map(([key,value])=>[key,[value]])),fromCache:false},abort.signal);
+      live();
+      if(headers.cancel)throw new Error('net::ERR_BLOCKED_BY_CLIENT');
+      if(headers.responseHeaders)response.headers=Object.fromEntries(Object.entries(headers.responseHeaders).map(([key,value])=>[key,value.join(', ')]));
+      if(headers.statusLine)response.statusCode=Number(headers.statusLine.split(' ')[1]);
+      return response;
     };
     handle().catch(error=>({error:String(error?.message||error)})).then(response=>
       host.request('resource.reply',{windowId:message.windowId,resourceId:message.resourceId,response})
-    ).catch(error=>{if(win&&!win.isDestroyed())app.emit('weber-error',error);});
+    ).catch(error=>{if(win&&!win.isDestroyed())app.emit('weber-error',error);})
+      .finally(()=>{clearTimeout(deadline);app.removeListener('quit',cancel);wc?.removeListener('destroyed',cancel);wc?.removeListener('did-start-loading',cancel);});
   });
   return {session, Session, binding:{Protocol,registerSchemesAsPrivileged,getStandardSchemes:()=>[...privileges].filter(([,v])=>v.standard).map(([name])=>name)}};
 }

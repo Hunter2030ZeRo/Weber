@@ -7,6 +7,7 @@ const { pathToFileURL } = require('node:url');
 const { UtilityWire } = require('./utility-wire.cjs');
 const { UtilityInbox } = require('./utility-inbox.cjs');
 const { createCommonJSLoader } = require('./commonjs-loader.cjs');
+const archiveRuntime = require('./asar.cjs').installAsar();
 
 async function main() {
   const parentPid = Number(process.env.WEBER_UTILITY_PARENT_PID);
@@ -112,10 +113,11 @@ async function main() {
   if (process.versions.bun) {
     bunLoader = createCommonJSLoader(request => {
       if (isElectron(request)) return { value: api };
+      if (request === 'original-fs' || request === 'node:original-fs') return { value: archiveRuntime.originalFs };
       rejectBrowser(request);
       const file = resolveInternal(request);
       return file ? { value: bunLoader.load(file) } : undefined;
-    });
+    }, archiveRuntime);
   } else Module._load = function(request, parent, isMain) {
     if (isElectron(request)) return api;
     rejectBrowser(request);

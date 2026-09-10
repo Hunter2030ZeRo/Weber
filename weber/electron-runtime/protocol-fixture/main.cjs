@@ -27,6 +27,15 @@ app.whenReady().then(async()=>{
   assert.equal(await first.webContents.executeJavaScript("new URL(location.href).origin"),'weber-test://app');
   const fetchResult=await first.webContents.executeJavaScript("fetch('weber-test://app/classic.js').then(async r=>({status:r.status,text:await r.text(),header:r.headers.get('x-weber-protocol')}))");
   assert.equal(fetchResult.status,200);assert.match(fetchResult.text,/classicLoaded/);assert.equal(fetchResult.header,'actual-native-file');
+  const policy=session.defaultSession.webRequest;
+  policy.onBeforeRequest({urls:['weber-test://app/classic.js']},(_details,callback)=>callback({cancel:true}));
+  const beforeCount=requested.length;
+  assert.equal(await first.webContents.executeJavaScript("fetch('weber-test://app/classic.js').then(()=>false,()=>true)"),true);
+  assert.equal(requested.length,beforeCount);
+  policy.onBeforeRequest(null);
+  policy.onHeadersReceived({urls:['weber-test://app/classic.js']},(details,callback)=>callback({responseHeaders:{...details.responseHeaders,'x-session-policy':['enforced']}}));
+  assert.equal(await first.webContents.executeJavaScript("fetch('weber-test://app/classic.js').then(r=>r.headers.get('x-session-policy'))"),'enforced');
+  policy.onHeadersReceived(null);
   assert.equal(await first.webContents.executeJavaScript("fetch('weber-test://other/classic.js').then(()=>false,()=>true)"),true);
   await assert.rejects(first.loadFile('index.html'), /-3|Blocked|blocked/);
   // A separate partition has no handler until it explicitly registers one.
@@ -43,5 +52,5 @@ app.whenReady().then(async()=>{
   await second.loadURL('weber-test://app/index.html');
   assert.equal(await second.webContents.executeJavaScript('document.title'),'Response handler');
   for(const suffix of ['index.html','style.css','classic.js','module.mjs','dependency.mjs'])assert.ok(requested.some(url=>url.endsWith(suffix)),suffix);
-  finish(null,{sourceModules:['protocol'],checked:['document','CSS','classic script','ES module graph','fetch','origin separation','file interception','partition ownership','Request/Response handle']});
+  finish(null,{sourceModules:['protocol'],checked:['document','CSS','classic script','ES module graph','fetch','origin separation','file interception','partition ownership','Request/Response handle','session request cancellation','session response headers']});
 }).catch(finish);

@@ -55,6 +55,7 @@ struct PlatformSync::State {
   std::map<Key, uint64_t> shortcuts;
   uint64_t last_request = 0;
   Json display_snapshot = Json::array();
+  Json theme_snapshot;
   std::string accent_color;
   std::unique_ptr<NotificationCenter> notifications;
   std::unique_ptr<PowerMonitor> power;
@@ -82,6 +83,24 @@ struct PlatformSync::State {
       try { self->PublishDisplays(); } catch (...) {}
     }), this);
   }
+  void PublishTheme() {
+    try {
+      const auto current = DisplayCommand({{"method", "nativeTheme.snapshot"}});
+      if (current != theme_snapshot) {
+        theme_snapshot = current;
+        emit({{"event", "native-theme-updated"}});
+      }
+    } catch (...) {
+      theme_snapshot = nullptr;
+      emit({{"event", "native-theme-updated"}});
+    }
+    // A theme lacking appearance colors must not disable accent notifications.
+    const auto color = DisplayCommand({{"method", "systemPreferences.snapshot"}}).value("accentColor", "");
+    if (color != accent_color) {
+      accent_color = color;
+      emit({{"event", "system-accent-color-changed"}, {"color", color}});
+    }
+  }
 
   State(int socket, Emit callback) : fd(socket), emit(std::move(callback)) {
     notifications = std::make_unique<NotificationCenter>(emit);
@@ -100,13 +119,14 @@ struct PlatformSync::State {
       try { self->PublishDisplays(); } catch (...) {}
     }), this);
     accent_color = DisplayCommand({{"method", "systemPreferences.snapshot"}}).value("accentColor", "");
-    g_signal_connect(gtk_settings_get_default(), "notify::gtk-theme-name", G_CALLBACK(+[](GObject*, GParamSpec*, gpointer pointer) {
-      auto* self = static_cast<State*>(pointer);
-      try {
-        const auto color = DisplayCommand({{"method", "systemPreferences.snapshot"}}).value("accentColor", "");
-        if (color != self->accent_color) { self->accent_color = color; self->emit({{"event", "system-accent-color-changed"}, {"color", color}}); }
-      } catch (...) {}
-    }), this);
+    // A custom GTK theme can omit named colors. That must not prevent the
+    // entire host from starting; the explicit snapshot read reports the error.
+    try { theme_snapshot = DisplayCommand({{"method", "nativeTheme.snapshot"}}); } catch (...) {}
+    for (const auto* signal : {"notify::gtk-theme-name", "notify::gtk-application-prefer-dark-theme"})
+      g_signal_connect(gtk_settings_get_default(), signal, G_CALLBACK(+[](GObject*, GParamSpec*, gpointer pointer) {
+        auto* self = static_cast<State*>(pointer);
+        try { self->PublishTheme(); } catch (...) {}
+      }), this);
     if (GDK_IS_X11_DISPLAY(gdk)) {
       xdisplay = gdk_x11_display_get_xdisplay(gdk);
       for (int screen = 0; screen < ScreenCount(xdisplay); ++screen)
@@ -236,6 +256,7 @@ struct PlatformSync::State {
     if (method.rfind("notification.", 0) == 0) return notifications->Command(request);
     if (method.rfind("powerSaveBlocker.", 0) == 0) return blocker->Command(request);
     if (method.rfind("powerMonitor.", 0) == 0) return power->Command(request);
+    if (method == "nativeTheme.snapshot") return weber::desktop::DisplayCommand(request);
     if (method.rfind("screen.", 0) == 0 || method.rfind("systemPreferences.", 0) == 0) return weber::desktop::DisplayCommand(request);
     if (method.rfind("clipboard.", 0) == 0) return Clipboard(request);
     if (!xdisplay) throw std::runtime_error("Global shortcuts currently require X11; Wayland portal support is not implemented");

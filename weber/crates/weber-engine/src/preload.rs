@@ -12,6 +12,7 @@ const MAX_PENDING: usize = 256;
 pub(crate) struct Preload {
     pub generation: u64,
     pending_ipc: HashSet<u64>,
+    pending_browser: HashSet<u64>,
     pending_evaluations: HashSet<String>,
     configured_preload: bool,
     active_preload: bool,
@@ -38,7 +39,7 @@ fn settle_many(page: &mut Page, replies: &[Value]) -> Result<(), String> {
 impl Preload {
     pub fn new(page: &mut Page) -> Self {
         page.set_desktop_preload(MAIN_BOOTSTRAP.into(), ISOLATED_BOOTSTRAP.into(), String::new());
-        Self { generation: 0, pending_ipc: HashSet::new(), pending_evaluations: HashSet::new(),
+        Self { generation: 0, pending_ipc: HashSet::new(), pending_browser: HashSet::new(), pending_evaluations: HashSet::new(),
             configured_preload: false, active_preload: false }
     }
 
@@ -46,6 +47,7 @@ impl Preload {
     pub fn before_navigation(&mut self) -> Result<(), String> {
         self.generation = self.generation.checked_add(1).ok_or("Document generation exhausted")?;
         self.pending_ipc.clear();
+        self.pending_browser.clear();
         self.pending_evaluations.clear();
         self.active_preload = self.configured_preload;
         Ok(())
@@ -100,6 +102,28 @@ impl Preload {
                 self.pending_ipc.remove(&id);
                 Ok(b"null".to_vec())
             })()),
+            "resolveBrowserOperation" => Some((|| {
+                if request.get("generation").and_then(Value::as_u64) != Some(self.generation) {
+                    return Err("Stale browser operation document generation".into());
+                }
+                let text = request.get("id").and_then(Value::as_str).ok_or("Invalid browser operation ID")?;
+                let id = text.parse::<u64>().map_err(|_| "Invalid browser operation ID")?;
+                if id.to_string() != text || !self.pending_browser.contains(&id) {
+                    return Err("Unknown or completed browser operation".into());
+                }
+                let ok = request.get("ok").and_then(Value::as_bool).ok_or("Missing browser operation outcome")?;
+                let reply = if ok {
+                    json!({"method": "resolveBrowserOperation", "id": id, "ok": true,
+                        "value": request.get("value").cloned().unwrap_or(Value::Null)})
+                } else {
+                    json!({"method": "resolveBrowserOperation", "id": id, "ok": false,
+                        "error": request.get("error").and_then(Value::as_str).ok_or("Missing browser operation error")?,
+                        "errorName": request.get("errorName").and_then(Value::as_str).unwrap_or("NotAllowedError")})
+                };
+                bridge(page, false, reply)?;
+                self.pending_browser.remove(&id);
+                Ok(b"null".to_vec())
+            })()),
             "resolveIpcBatch" => Some((|| {
                 if request.get("generation").and_then(Value::as_u64) != Some(self.generation) {
                     return Err("Stale IPC document generation".into());
@@ -138,10 +162,13 @@ impl Preload {
     }
 
     /// Bounded work between renderer commands; never waits for the main process.
-    /// Only IPC requests produced inside the isolated preload leave the renderer.
+    /// Application IPC comes only from the isolated preload. Fixed browser API
+    /// operations come from the private main bootstrap and carry Rust-owned
+    /// document identity, never a URL or session supplied by page JavaScript.
     pub fn pump(&mut self, page: &mut Page) -> Result<Vec<Value>, String> {
         if page.js.is_none() { return Ok(Vec::new()); }
-        if !self.active_preload && self.pending_evaluations.is_empty() && self.pending_ipc.is_empty() {
+        if !self.active_preload && self.pending_evaluations.is_empty() && self.pending_ipc.is_empty()
+            && self.pending_browser.is_empty() && !page.desktop_bridge_has_events(false)? {
             return Ok(Vec::new());
         }
         let mut outgoing = Vec::new();
@@ -162,6 +189,23 @@ impl Preload {
                         if !self.pending_evaluations.remove(id) { return Err("Unknown evaluation completion".into()); }
                         let mut event = event.clone();
                         event["generation"] = json!(self.generation);
+                        outgoing.push(event);
+                    }
+                    Some("browser-operation") => {
+                        let id = event.get("id").and_then(Value::as_u64).ok_or("Invalid browser operation ID")?;
+                        let action = event.get("action").and_then(Value::as_str).ok_or("Missing browser operation")?;
+                        if !matches!(action, "clipboard-read" | "clipboard-write" | "permission-query" |
+                            "geolocation" | "media" | "display-media" | "notification-permission")
+                            || !event.get("args").is_some_and(Value::is_array) {
+                            return Err("Invalid browser operation".into());
+                        }
+                        if self.pending_browser.len() >= MAX_PENDING || !self.pending_browser.insert(id) {
+                            return Err("Duplicate browser operation or pending limit exceeded".into());
+                        }
+                        let mut event = event.clone();
+                        event["generation"] = json!(self.generation);
+                        event["sourceURL"] = json!(page.url_string());
+                        event["id"] = json!(id.to_string());
                         outgoing.push(event);
                     }
                     _ => return Err("Unsupported main bridge event".into()),
@@ -247,6 +291,51 @@ mod tests {
     fn evaluate(driver: &mut Preload, page: &mut Page, id: &str, source: &str) -> Value {
         command(driver, page, json!({"method": "startEvaluation", "id": id, "source": source})).unwrap();
         wait_for(driver, page, "evaluation-result")
+    }
+
+    #[test]
+    fn browser_permissions_without_preload_have_owned_origin_and_navigation_revocation() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let _guard = runtime.enter();
+        let mut page = Page::new("browser-permission-test".into(),
+            Arc::new(BrowserContext::new("browser-permission-test".into())));
+        let mut driver = Preload::new(&mut page);
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../electron-runtime/permission-fixture/index.html").canonicalize().unwrap();
+        let document_url = url::Url::from_file_path(fixture).unwrap().to_string();
+        driver.before_navigation().unwrap();
+        runtime.block_on(page.navigate(&document_url)).unwrap();
+        // A browser operation from page script must be drained even without an
+        // application preload or an executeJavaScript evaluation ticket.
+        page.js.as_mut().unwrap().evaluate(
+            "navigator.clipboard.readText().then(value => {globalThis.permissionValue=value;});"
+        ).unwrap();
+        let request = wait_for(&mut driver, &mut page, "browser-operation");
+        assert_eq!(request["action"], "clipboard-read");
+        assert_eq!(request["sourceURL"], document_url);
+        assert_eq!(request["generation"], driver.generation);
+        assert!(request.get("channel").is_none());
+        let reply = json!({"method": "resolveBrowserOperation", "generation": request["generation"],
+            "id": request["id"], "ok": true, "value": "native clipboard"});
+        command(&mut driver, &mut page, reply.clone()).unwrap();
+        let result = evaluate(&mut driver, &mut page, "read-result", "permissionValue");
+        assert_eq!(result["value"], "native clipboard");
+        assert!(command(&mut driver, &mut page, reply).unwrap_err().contains("completed"));
+
+        page.js.as_mut().unwrap().evaluate("navigator.clipboard.writeText('old document');").unwrap();
+        let old = wait_for(&mut driver, &mut page, "browser-operation");
+        driver.before_navigation().unwrap();
+        runtime.block_on(page.navigate(&document_url)).unwrap();
+        page.js.as_mut().unwrap().evaluate("navigator.clipboard.writeText('new document');").unwrap();
+        let new = wait_for(&mut driver, &mut page, "browser-operation");
+        assert!(command(&mut driver, &mut page, json!({"method": "resolveBrowserOperation",
+            "generation": old["generation"], "id": old["id"], "ok": true, "value": null
+        })).unwrap_err().contains("Stale"));
+        assert_eq!(driver.pending_browser.len(), 1);
+        command(&mut driver, &mut page, json!({"method": "resolveBrowserOperation",
+            "generation": new["generation"], "id": new["id"], "ok": true, "value": null
+        })).unwrap();
+        assert!(driver.pending_browser.is_empty());
     }
 
     #[test]

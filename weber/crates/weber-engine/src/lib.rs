@@ -118,14 +118,15 @@ impl Engine {
                 self.critical_bytes += size;
                 self.critical_events.push_back((event, size));
             }
-            Some("ipc-invoke") => {
+            Some("ipc-invoke" | "browser-operation") => {
                 let size = event.to_string().len();
                 if size > MAX_REQUEST
                     || self.evaluation_tickets.len() + self.queued_ipc >= MAX_CRITICAL_EVENTS
                     || self.critical_bytes + self.completion_reservations() + size > MAX_CRITICAL_BYTES {
                     // Reject only this invocation, using the existing isolated
                     // resolver. Accepted tickets already queued remain intact.
-                    self.preload.command(&mut self.page, &json!({"method": "resolveIpc",
+                    let method = if event["type"] == "browser-operation" { "resolveBrowserOperation" } else { "resolveIpc" };
+                    self.preload.command(&mut self.page, &json!({"method": method,
                         "generation": event["generation"], "id": event["id"], "ok": false,
                         "error": "IPC delivery queue is full; poll events before submitting more work"}))
                         .ok_or("Missing IPC resolver")??;

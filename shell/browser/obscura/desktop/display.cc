@@ -48,6 +48,36 @@ Json DisplayCommand(const Json& request) {
     }
     return all;
   }
+  if (method == "nativeTheme.snapshot") {
+    auto* settings = gtk_settings_get_default();
+    if (!settings) throw std::runtime_error("Native GTK theme is unavailable");
+    gchar* theme_name = nullptr;
+    g_object_get(settings, "gtk-theme-name", &theme_name, nullptr);
+    const std::string theme = theme_name ? theme_name : "";
+    g_free(theme_name);
+    auto* probe = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    g_object_ref_sink(probe);
+    auto* style = gtk_widget_get_style_context(probe);
+    GdkRGBA background{}, foreground{};
+    const bool background_found = gtk_style_context_lookup_color(style, "theme_bg_color", &background);
+    gtk_style_context_get_color(style, GTK_STATE_FLAG_NORMAL, &foreground);
+    gtk_widget_destroy(probe);
+    g_object_unref(probe);
+    if (!background_found) throw std::runtime_error("GTK theme does not expose its background color");
+    const auto luminance = [](const GdkRGBA& color) {
+      return 0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue;
+    };
+    // Compare the actual theme's foreground/background, including themes whose
+    // names do not contain "dark". A prefer-dark hint alone is not proof that
+    // GTK successfully loaded a dark variant.
+    const bool dark = luminance(background) < luminance(foreground);
+    const bool high_contrast = theme == "HighContrast" || theme == "HighContrastInverse";
+    return {{"themeSource", "system"}, {"shouldUseDarkColors", dark},
+      {"shouldUseDarkColorsForSystemIntegratedUI", dark}, {"shouldUseHighContrastColors", high_contrast},
+      // Linux GTK has no Windows forced-colors or macOS display-inversion API.
+      // Obscura does not impose a forced palette on web content either.
+      {"inForcedColorsMode", false}, {"shouldUseInvertedColorScheme", false}};
+  }
   if (method == "systemPreferences.snapshot") {
     auto* settings = gtk_settings_get_default(); gboolean animations = TRUE;
     g_object_get(settings, "gtk-enable-animations", &animations, nullptr);

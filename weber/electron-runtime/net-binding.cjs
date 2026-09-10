@@ -85,12 +85,12 @@ function createNetBinding({ app, unsupported = name => {
     },
     createURLLoader: options => {
       try {
-        if ((options.partition && options.partition !== '') ||
-            (options.session && options.session !== session?.defaultSession)) unsupported('net session partition');
+        const owner = options.session || (options.partition ? session?.fromPartition?.(options.partition) : session?.defaultSession);
+        if (options.partition && !owner) unsupported('net session partition');
         if (options.referrerPolicy || options.priority !== undefined || options.priorityIncremental !== undefined ||
             options.mode === 'same-origin') unsupported('net request policy');
         return createURLLoader(options, { track, untrack: value => active.delete(value),
-          agentFor: protocol => agents[protocol], unsupported, onAuthRequired });
+          agentFor: protocol => agents[protocol], unsupported, onAuthRequired, webRequest: owner?.webRequest });
       } catch (error) {
         // _startRequest also runs in the original SlurpStream finish listener.
         // Report admission errors asynchronously through its URLLoader contract.

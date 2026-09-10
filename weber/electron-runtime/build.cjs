@@ -17,6 +17,7 @@ const entries = [
   'browser/ipc-main-internal',
   'browser/api/menu', 'browser/api/menu-item',
   'browser/api/notification',
+  'browser/api/native-theme',
   'browser/api/desktop-capturer',
   'browser/api/power-monitor', 'browser/api/power-save-blocker',
   'browser/api/crash-reporter', 'browser/api/content-tracing',

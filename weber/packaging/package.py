@@ -28,6 +28,7 @@ RUNTIME_HELPERS = (
     "utility-binding.cjs", "utility-bootstrap.cjs", "utility-wire.cjs", "utility-inbox.cjs", "utility-socket.cjs",
     "diagnostics-binding.cjs", "startup-options.cjs",
     "shell-binding.cjs", "safe-storage-binding.cjs",
+    "asar.cjs", "web-request.cjs", "session-permissions.cjs", "native-theme-binding.cjs",
 )
 
 

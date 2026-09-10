@@ -9,6 +9,7 @@ const { pathToFileURL } = require('node:url');
 const { HostClient } = require('./host-client.cjs');
 const { createBindings } = require('./bindings.cjs');
 const { createCommonJSLoader } = require('./commonjs-loader.cjs');
+const archiveRuntime = require('./asar.cjs').installAsar();
 let activeHost;
 
 async function main() {
@@ -33,16 +34,14 @@ async function main() {
   const originalBinding = process._linkedBinding?.bind(process);
   const api = {};
   const loaded = new Map();
-  // Electron exposes both names (including the node: form in asar-spec.ts).
-  // This runtime has no ASAR fs wrapper, so its original fs is exactly node:fs.
-  // Introducing ASAR later must preserve this native path before any wrapping.
+  // Preserve the real filesystem even after the read-only ASAR view is installed.
   const isOriginalFs = request => request === 'original-fs' || request === 'node:original-fs';
   const bunLoader = process.versions.bun ? createCommonJSLoader(request => {
     if (request === 'electron' || request === 'electron/main') return { value: api };
-    if (isOriginalFs(request)) return { value: fs };
+    if (isOriginalFs(request)) return { value: archiveRuntime.originalFs };
     if (request.startsWith('@electron/internal/')) return { value: loadInternal(request.slice('@electron/internal/'.length)) };
     return undefined;
-  }) : null;
+  }, archiveRuntime) : null;
   function loadInternal(id) {
     if (!allowedModules.has(id)) throw new Error(`Electron source module was not compiled: ${id}`);
     const filename = path.join(dist, `${id}.js`);
@@ -62,6 +61,7 @@ async function main() {
     Menu: 'browser/api/menu', MenuItem: 'browser/api/menu-item',
     screen: 'browser/api/screen', systemPreferences: 'browser/api/system-preferences',
     Notification: 'browser/api/notification',
+    nativeTheme: 'browser/api/native-theme',
     desktopCapturer: 'browser/api/desktop-capturer',
     powerMonitor: 'browser/api/power-monitor', powerSaveBlocker: 'browser/api/power-save-blocker',
     crashReporter: 'browser/api/crash-reporter', contentTracing: 'browser/api/content-tracing',
@@ -92,7 +92,7 @@ async function main() {
     showErrorBox: (title, message) => { console.error(`${title}: ${message}`); } };
   if (!bunLoader) Module._load = function (request, parent, isMain) {
     if (request === 'electron' || request === 'electron/main') return api;
-    if (isOriginalFs(request)) return fs;
+    if (isOriginalFs(request)) return archiveRuntime.originalFs;
     if (request === 'electron/renderer') return runtime.unsupported('renderer API in the main process');
     if (request.startsWith('@electron/internal/')) return loadInternal(request.slice('@electron/internal/'.length));
     return originalLoad.call(this, request, parent, isMain);
@@ -102,7 +102,6 @@ async function main() {
   // 'electron'. The generated facade names exports statically for CJS/ESM.
   if (!bunLoader && typeof Module.registerHooks === 'function') {
     Module.registerHooks({ resolve(specifier, context, nextResolve) {
-      if (isOriginalFs(specifier)) return { url: 'node:fs', shortCircuit: true };
       if (specifier === 'electron' || specifier === 'electron/main') {
         return { url: pathToFileURL(path.join(__dirname, 'electron-api.cjs')).href, shortCircuit: true };
       }
