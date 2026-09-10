@@ -14,7 +14,7 @@ add_library(weber_desktop_output STATIC ../shell/browser/obscura/desktop/async_o
 target_compile_options(weber_desktop_output PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(weber_desktop_output PUBLIC Threads::Threads)
 add_executable(weber-desktop-host ../shell/browser/obscura/desktop/main.cc ../shell/browser/obscura/desktop/platform_sync.cc
-  ../shell/browser/obscura/desktop/clipboard.cc ../shell/browser/obscura/desktop/resource_broker.cc)
+  ../shell/browser/obscura/desktop/display.cc ../shell/browser/obscura/desktop/clipboard.cc ../shell/browser/obscura/desktop/resource_broker.cc)
 target_compile_options(weber-desktop-host PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(weber-desktop-host PRIVATE obscura_browser_proxy weber_desktop_output PkgConfig::GTK nlohmann_json::nlohmann_json X11::X11)
 add_executable(weber-async-output-test tests/async-output.cc)

@@ -1,6 +1,7 @@
 // Copyright (c) Weber contributors. SPDX-License-Identifier: MIT
 #include "platform_sync.h"
 #include "clipboard.h"
+#include "display.h"
 #include "platform_wire.h"
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
@@ -50,10 +51,53 @@ struct PlatformSync::State {
   unsigned ignored = LockMask;
   std::map<Key, uint64_t> shortcuts;
   uint64_t last_request = 0;
+  Json display_snapshot = Json::array();
+  std::string accent_color;
+  void PublishDisplays() {
+    const auto current = DisplayCommand({{"method", "screen.displays"}});
+    for (const auto& item : current) {
+      auto old = std::find_if(display_snapshot.begin(), display_snapshot.end(), [&](const Json& previous) { return previous["id"] == item["id"]; });
+      if (old == display_snapshot.end()) emit({{"event", "screen-display-added"}, {"display", item}});
+      else if (*old != item) {
+        Json changed = Json::array();
+        for (const auto* field : {"bounds", "workArea", "scaleFactor", "displayFrequency"})
+          if ((*old)[field] != item[field]) changed.push_back(field);
+        emit({{"event", "screen-display-metrics-changed"}, {"display", item}, {"changed", changed}});
+      }
+    }
+    for (const auto& old : display_snapshot)
+      if (std::none_of(current.begin(), current.end(), [&](const Json& item) { return item["id"] == old["id"]; }))
+        emit({{"event", "screen-display-removed"}, {"display", old}});
+    display_snapshot = current;
+  }
+  void WatchMonitor(GdkMonitor* monitor) {
+    g_signal_connect(monitor, "notify", G_CALLBACK(+[](GObject*, GParamSpec*, gpointer pointer) {
+      auto* self = static_cast<State*>(pointer);
+      try { self->PublishDisplays(); } catch (...) {}
+    }), this);
+  }
 
   State(int socket, Emit callback) : fd(socket), emit(std::move(callback)) {
     wire::Nonblocking(fd);
     gdk = gdk_display_get_default();
+    display_snapshot = DisplayCommand({{"method", "screen.displays"}});
+    for (int i = 0; i < gdk_display_get_n_monitors(gdk); ++i) WatchMonitor(gdk_display_get_monitor(gdk, i));
+    g_signal_connect(gdk, "monitor-added", G_CALLBACK(+[](GdkDisplay*, GdkMonitor* monitor, gpointer pointer) {
+      auto* self = static_cast<State*>(pointer); self->WatchMonitor(monitor);
+      try { self->PublishDisplays(); } catch (...) {}
+    }), this);
+    g_signal_connect(gdk, "monitor-removed", G_CALLBACK(+[](GdkDisplay*, GdkMonitor* monitor, gpointer pointer) {
+      auto* self = static_cast<State*>(pointer); g_signal_handlers_disconnect_by_data(monitor, self);
+      try { self->PublishDisplays(); } catch (...) {}
+    }), this);
+    accent_color = DisplayCommand({{"method", "systemPreferences.snapshot"}}).value("accentColor", "");
+    g_signal_connect(gtk_settings_get_default(), "notify::gtk-theme-name", G_CALLBACK(+[](GObject*, GParamSpec*, gpointer pointer) {
+      auto* self = static_cast<State*>(pointer);
+      try {
+        const auto color = DisplayCommand({{"method", "systemPreferences.snapshot"}}).value("accentColor", "");
+        if (color != self->accent_color) { self->accent_color = color; self->emit({{"event", "system-accent-color-changed"}, {"color", color}}); }
+      } catch (...) {}
+    }), this);
     if (GDK_IS_X11_DISPLAY(gdk)) {
       xdisplay = gdk_x11_display_get_xdisplay(gdk);
       for (int screen = 0; screen < ScreenCount(xdisplay); ++screen)
@@ -63,6 +107,10 @@ struct PlatformSync::State {
     }
   }
   ~State() {
+    g_signal_handlers_disconnect_by_data(gdk, this);
+    g_signal_handlers_disconnect_by_data(gtk_settings_get_default(), this);
+    for (int i = 0; i < gdk_display_get_n_monitors(gdk); ++i)
+      g_signal_handlers_disconnect_by_data(gdk_display_get_monitor(gdk, i), this);
     stopping = true;
     shutdown(fd, SHUT_RDWR);
     {
@@ -176,6 +224,7 @@ struct PlatformSync::State {
   }
   Json Dispatch(const Json& request) {
     const auto method = request.at("method").get<std::string>();
+    if (method.rfind("screen.", 0) == 0 || method.rfind("systemPreferences.", 0) == 0) return weber::desktop::DisplayCommand(request);
     if (method.rfind("clipboard.", 0) == 0) return Clipboard(request);
     if (!xdisplay) throw std::runtime_error("Global shortcuts currently require X11; Wayland portal support is not implemented");
     if (method == "globalShortcut.unregisterAll") { UnregisterAll(); return nullptr; }

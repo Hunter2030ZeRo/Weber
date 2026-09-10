@@ -60,6 +60,7 @@ async function main() {
     webContents: 'browser/api/web-contents', View: 'browser/api/view',
     WebContentsView: 'browser/api/web-contents-view', ipcMain: 'browser/api/ipc-main',
     Menu: 'browser/api/menu', MenuItem: 'browser/api/menu-item',
+    screen: 'browser/api/screen', systemPreferences: 'browser/api/system-preferences',
     MessageChannelMain: 'browser/api/message-channel', clipboard: 'browser/api/clipboard', ClipboardItem: 'browser/api/clipboard-item',
     globalShortcut: 'browser/api/global-shortcut', protocol: 'browser/api/protocol',
   };

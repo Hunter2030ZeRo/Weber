@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const { spawn, spawnSync } = require('node:child_process');
-const { app, clipboard, ClipboardItem } = require('electron');
+const { app, clipboard, ClipboardItem, screen, systemPreferences } = require('electron');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 let owner;
 const timeout = setTimeout(() => { owner?.kill(); app.exit(1); }, 20000);
@@ -10,6 +10,17 @@ app.whenReady().then(async () => {
     assert.equal(result.status, 0, result.stderr);
     return result.stdout;
   };
+  const primary = screen.getPrimaryDisplay();
+  assert.ok(screen.getAllDisplays().some(display => display.id === primary.id));
+  const geometry = spawnSync('xdotool', ['getdisplaygeometry'], { encoding: 'utf8', timeout: 3000 });
+  assert.equal(geometry.status, 0);
+  assert.deepEqual([primary.bounds.width, primary.bounds.height], geometry.stdout.trim().split(/\s+/).map(Number));
+  assert.equal(screen.getDisplayMatching(primary.bounds).id, primary.id);
+  assert.equal(spawnSync('xdotool', ['mousemove', '30', '40'], { timeout: 3000 }).status, 0);
+  assert.deepEqual(screen.getCursorScreenPoint(), { x: 30, y: 40 });
+  assert.equal(screen.getDisplayNearestPoint({ x: 30, y: 40 }).id, primary.id);
+  assert.match(systemPreferences.getAccentColor(), /^(?:[0-9a-f]{8})?$/);
+  assert.equal(typeof systemPreferences.getAnimationSettings().prefersReducedMotion, 'boolean');
   clipboard.writeText('Weber 한글 — system clipboard');
   assert.equal(clipboard.readText(), 'Weber 한글 — system clipboard');
   assert.equal(externalRead('clipboard'), clipboard.readText());
@@ -41,6 +52,6 @@ app.whenReady().then(async () => {
   clipboard.writeText('clear me'); clipboard.clear();
   assert.equal(clipboard.readText(), '');
   console.log(JSON.stringify({ kind: 'clipboard-acceptance', ok: true,
-    checked: ['external X11 reader and writer', 'primary selection', 'Unicode', 'text/HTML/RTF', 'binary', 'ClipboardItem', '128 KiB text', 'bounded write rejection'] }));
+    checked: ['native monitor geometry and pointer', 'native appearance settings', 'external X11 reader and writer', 'primary selection', 'Unicode', 'text/HTML/RTF', 'binary', 'ClipboardItem', '128 KiB text', 'bounded write rejection'] }));
   clearTimeout(timeout); app.exit(0);
 }).catch(error => { owner?.kill(); clearTimeout(timeout); console.error(error); app.exit(1); });
