@@ -10,7 +10,15 @@ globalThis.MonacoEnvironment = { getWorker: () => {
   const worker = new Worker('/editor.worker.js', { type: 'module' });
   monacoProbe.workers++;
   worker.addEventListener('message', () => monacoProbe.workerMessages++);
-  worker.addEventListener('error', event => monacoProbe.errors.push('Editor worker: ' + event.message));
+  const reportWorkerError = event => {
+    const message = 'Editor worker: ' + String(event.message || event);
+    if (!monacoProbe.errors.includes(message)) monacoProbe.errors.push(message);
+  };
+  worker.addEventListener('error', reportWorkerError);
+  // Observe both standard error entry points. The pinned Obscura Worker shim
+  // currently calls onerror for script failures but misses EventTarget listeners.
+  // This exposes the actual failure instead of waiting for the diff deadline.
+  worker.onerror = reportWorkerError;
   return worker;
 } };
 </script></head><body><div id="editor"></div><script type="module" src="/editor.js"></script></body></html>
