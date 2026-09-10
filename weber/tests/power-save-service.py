@@ -137,7 +137,7 @@ finally:
     for owner in owners.values():
         Gio.bus_unown_name(owner)
 
-expected = -signal.SIGKILL if scenario == 'crash' else 0
+expected = -signal.SIGKILL if scenario == 'crash' else 1 if scenario == 'host-crash' else 0
 assert exit_code == expected and not active and not pending, (scenario, exit_code, active, records)
 assert all(record['valid'] for record in records if record['event'] == 'release'), records
 acquisitions = [record for record in records if record['event'] == 'acquire']

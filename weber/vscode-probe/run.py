@@ -130,6 +130,20 @@ def stop_group(process: subprocess.Popen, sig: int) -> None:
         pass
 
 
+def extract_exception(stderr: str, stdout: str) -> tuple[str | None, list[str]]:
+    error = None
+    stack = []
+    for line in (stderr + "\n" + stdout).splitlines():
+        clean = re.sub(r"\x1b\[[0-9;]*m", "", line).strip()
+        # Node prints the minified source line before an exception. Error-like
+        # strings embedded in that source are not diagnostic messages.
+        if error is None and re.match(r"^(?:[A-Za-z]+Error|Error)(?:\s*\[[^]]+\])?:", clean):
+            error = clean[:2000]
+        elif error is not None and clean.startswith("at ") and len(stack) < 12:
+            stack.append(clean[:1000])
+    return error, stack
+
+
 def startup(command: list[str], app: Path, temporary: Path, timeout: float) -> dict:
     env = os.environ.copy()
     # The official distribution's own package.json selects its unmodified main.
@@ -178,14 +192,7 @@ def startup(command: list[str], app: Path, temporary: Path, timeout: float) -> d
         for reader in readers:
             reader.join(timeout=5)
     text = {name: bytes(value).decode("utf-8", errors="replace") for name, value in captured.items()}
-    error = None
-    stack = []
-    for line in (text["stderr"] + "\n" + text["stdout"]).splitlines():
-        clean = re.sub(r"\x1b\[[0-9;]*m", "", line).strip()
-        if error is None and re.search(r"(?:^|\s)(?:[A-Za-z]+Error|Error)(?:\s*\[[^]]+\])?:", clean):
-            error = clean[:2000]
-        elif error is not None and clean.startswith("at ") and len(stack) < 12:
-            stack.append(clean[:1000])
+    error, stack = extract_exception(text["stderr"], text["stdout"])
     if error is None:
         error = ("Startup exceeded the diagnostic deadline; readiness was not established" if timed_out else
                  "Startup output exceeded the diagnostic limit" if overflow.is_set() else

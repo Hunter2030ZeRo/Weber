@@ -39,6 +39,8 @@ jobs:
           bun test ./weber/electron-runtime/test-safe-storage.cjs
           node --test weber/electron-runtime/test-power-save.cjs
           bun test ./weber/electron-runtime/test-power-save.cjs
+      - name: Test VS Code diagnostic extraction
+        run: python3 -m unittest discover -s weber/vscode-probe -p 'test_*.py'
       - name: Compile native inhibition without the engine
         run: c++ -std=c++17 -Wall -Wextra -Werror -pthread $(pkg-config --cflags gio-2.0) -c shell/browser/obscura/desktop/power_save_blocker.cc -o "$RUNNER_TEMP/power-save.o"
       - name: Test real keyring across Node and Bun processes

@@ -13,7 +13,9 @@ function createPowerSaveBinding({ host, app }) {
   function lost(event) {
     if (closed || event.generation !== generation || active === 'none') return;
     requests.clear(); active = 'none';
-    app.emit('weber-error', Object.assign(new Error('Operating system power-save inhibitor was lost'), { code: 'ERR_WEBER_INHIBITOR_LOST' }));
+    const error = Object.assign(new Error('Operating system power-save inhibitor was lost'), { code: 'ERR_WEBER_INHIBITOR_LOST' });
+    // This is recoverable OS state loss, not the fatal host-error channel.
+    if (!app.emit('weber-power-save-blocker-lost', error)) process.emitWarning(error);
   }
   host.on('event', event => {
     if (event.event !== 'power-save-blocker-lost') return;

@@ -58,7 +58,7 @@ function createBindings(host, appPath, loadInternal) {
       const timer = setTimeout(() => { host.child.kill('SIGTERM'); nativeExit(code); }, 3000);
       timer.unref();
       host.child.once('exit', () => nativeExit(code));
-      if (host.child.exitCode !== null) nativeExit(code);
+      if (host.child.exitCode !== null || host.child.signalCode !== null) nativeExit(code);
     },
     quit() {
       const before = event(app);

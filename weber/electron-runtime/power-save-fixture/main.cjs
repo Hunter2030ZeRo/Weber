@@ -25,7 +25,7 @@ app.whenReady().then(async () => {
       api.stop(a); api.stop(b);
     }
   } else if (scenario === 'lost') {
-    const lost = once(app, 'weber-error');
+    const lost = once(app, 'weber-power-save-blocker-lost');
     const a = api.start(weak); const [error] = await lost;
     assert.equal(error.code, 'ERR_WEBER_INHIBITOR_LOST');
     assert.equal(api.isStarted(a), false); assert.equal(api.stop(a), false);
@@ -34,7 +34,10 @@ app.whenReady().then(async () => {
     api.start(strong); process.kill(process.pid, 'SIGKILL');
   } else if (scenario === 'host-crash') {
     const a = api.start(strong);
-    const lost = once(app, 'weber-error');
+    app.prependOnceListener('weber-error', () => {
+      assert.equal(api.isStarted(a), false);
+      console.log(JSON.stringify({ kind: 'native-power-save-integration', backend: process.versions.bun ? 'bun' : 'node', scenario, passed: true, expectedFatalHostExit: true }));
+    });
     // Only inspect this fixture's direct children, then kill its own host.
     const task = fs.readFileSync('/proc/self/stat', 'utf8').split(' ')[0];
     const children = fs.readFileSync(`/proc/self/task/${task}/children`, 'utf8').trim().split(/\s+/).filter(Boolean);
@@ -43,10 +46,9 @@ app.whenReady().then(async () => {
     const status = fs.readFileSync(`/proc/${hosts[0]}/status`, 'utf8');
     const localPid = status.match(/^NSpid:\s+(.+)$/m)?.[1].trim().split(/\s+/).at(-1) || hosts[0];
     process.kill(Number(localPid), 'SIGKILL');
-    await lost; assert.equal(api.isStarted(a), false);
-    clearTimeout(timer);
-    console.log(JSON.stringify({ kind: 'native-power-save-integration', backend: process.versions.bun ? 'bun' : 'node', scenario, passed: true }));
-    process.exit(0);
+    // Keep the production fatal-host handler: it exits with code 1 after the
+    // assertion above. The private service verifies the dead host's lease drops.
+    await new Promise(() => {});
   } else if (scenario === 'late') {
     const a = api.start(weak); assert.equal(api.stop(a), true);
   } else {

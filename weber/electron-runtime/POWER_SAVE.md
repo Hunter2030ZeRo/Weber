@@ -25,7 +25,9 @@ own connections, including when the service accepts an inhibitor but replies lat
 Release addresses the issuing daemon's unique name, avoiding cookie reuse by a
 new daemon. Quit, private-transport EOF and host death release ownership. Service
 owner loss or connection closure invalidates the IDs and emits an app
-`weber-error` with `ERR_WEBER_INHIBITOR_LOST`. A later explicit start may retry.
+`weber-power-save-blocker-lost` with `ERR_WEBER_INHIBITOR_LOST` (or a warning if
+unhandled). This recoverable condition does not terminate the app; actual host
+death still uses the runtime's fatal-host path. A later explicit start may retry.
 
 Acquisition has a two-second cancellation deadline, including D-Bus connection
 authentication, and individual method calls are capped at 750 ms. Release waits

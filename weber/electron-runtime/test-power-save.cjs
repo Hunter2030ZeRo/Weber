@@ -45,7 +45,8 @@ test('failed acquisition and downgrade preserve ids and cannot re-enter a mutati
 });
 test('lost generations, host closure and quit invalidate ownership without stale events', () => {
   const { api, host, app, calls } = original();
-  const errors = []; app.on('weber-error', error => errors.push(error));
+  const errors = []; app.on('weber-power-save-blocker-lost', error => errors.push(error));
+  app.on('weber-error', () => assert.fail('Service loss must not terminate the runtime'));
   const a = api.start(weak); const b = api.start(strong);
   host.emit('event', { event: 'power-save-blocker-lost', generation: 1 });
   assert.equal(api.isStarted(a), true);
