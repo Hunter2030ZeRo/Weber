@@ -15,7 +15,7 @@ Electron's MIT license remains at the repository root; its README is
 The runtime compiles 42 Electron TypeScript source modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem,
 Notification, powerMonitor, powerSaveBlocker, utilityProcess, ParentPort, globalShortcut, protocol,
 clipboard, screen, systemPreferences, shell, safeStorage, crashReporter, contentTracing and
-IPC helpers, main/utility networking and WebSocket. Two network source modules
+IPC helpers, main/utility networking, WebSocket and desktopCapturer. Two network source modules
 carry scoped Weber fixes, recorded in the compiled source manifest. Their
 implemented scopes differ; crash collection is still absent. A
 replacement `process._linkedBinding` layer routes their native operations to a
@@ -27,7 +27,7 @@ The original Chromium-dependent GN build and native Electron implementation rema
 as migration reference in this source fork. Build Weber using the CMake/Cargo path
 below; running the upstream GN build does not produce the replacement runtime.
 
-[The network/authentication build](weber/packaging/results/1219c94.json) passed
+[The desktop-capture build](weber/packaging/results/5ea3180.json) passed
 16 execution gates, extracted Node/Bun/native bundle checks, and the identical-app
 Electron comparison. The build also runs an unmodified VS Code startup diagnostic;
 that diagnostic is not a VS Code acceptance pass.
@@ -41,6 +41,11 @@ supports queued structured data and ownership transfer between main-process port
 Main-process ports can now move into a separate utility process and exchange
 structured messages in both directions. Renderer transfers and nested utility
 port transfers are still missing.
+
+The original desktopCapturer API now enumerates real X11 windows and monitors,
+with bounded PNG thumbnails and optional window icons. Node/Bun live tests and a
+native pixel fixture pass. Full NativeImage, obscured-window capture, Wayland
+portals and display-media streams remain outside this implementation.
 
 Linux notifications use the desktop D-Bus service. Power observation uses UPower,
 logind and XScreenSaver; it does not add a periodic idle polling loop. Node and
@@ -59,7 +64,7 @@ calls or recurring polling. Eighteen Node/Bun protocol scenarios verify priority
 failed-transition rollback, service loss, process death and delayed replies.
 These use controlled desktop peers, not physical machine-sleep acceptance.
 
-Download the [Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34470208877/artifacts/10149427807) and follow the
+Download the [Linux development archive](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34473199782/artifacts/10150658642) and follow the
 [packaging instructions](weber/packaging/README.md). Node/Bun executables are
 external. The bundle record identifies the exact runtime commit and checksum.
 
@@ -110,8 +115,9 @@ the TOML selector automatically.
 
 The [binding scope](weber/electron-runtime/README.md) and
 [VS Code compatibility matrix](weber/vscode-probe/COMPATIBILITY.md) distinguish
-verified operations from missing behavior. The verified 1219c94 diagnostic advanced past `net` and now stops at the missing
-`desktopCapturer` export. HTTP/HTTPS, streaming fetch, WebSocket and opt-in utility
+verified operations from missing behavior. The verified 5ea3180 diagnostic passes the previous `desktopCapturer` import failure
+and now stops resolving `@vscode/spdlog` inside VS Code’s `node_modules.asar`.
+Transparent ASAR filesystem/module loading remains unimplemented. HTTP/HTTPS, streaming fetch, WebSocket and opt-in utility
 Basic authentication forwarding have scoped execution tests. Workbench startup, editing,
 terminal, extension hosting and full-app migration have not passed acceptance.
 No compatibility percentage is claimed.

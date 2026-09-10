@@ -57,3 +57,22 @@ workbench, editing, terminal, extension and multiwindow acceptance work.
 The independent [Monaco diagnostic](../monaco-probe/README.md) now exercises
 real editor input, edits/undo and a 1,000-line document. Its unresolved original
 worker/diff check is recorded separately from this whole-app import failure.
+
+## Optional ASAR layout diagnostic
+
+The strict probe now advances past the desktopCapturer import and stops at
+`@vscode/spdlog`, whose JavaScript package resides inside the distribution's
+`node_modules.asar`. Weber does not yet provide transparent ASAR filesystem or
+module loading.
+
+`--expand-dependencies` runs a separate diagnostic. In its temporary application
+tree, it expands the authentic archive entries into `node_modules`, including
+native binaries declared in `node_modules.asar.unpacked`. It validates paths,
+size/offset bounds, links, symlink ancestors and collisions before writing;
+existing dependency files must be byte-identical. It does not rewrite application
+source, install replacement dependencies or substitute API implementations.
+
+The report kind becomes `vscode-expanded-dependency-diagnostic`; it records
+`app_modified: true` for the expanded package layout, `source_files_modified: false`, archive/file hashes, copied bytes and native-addon count. `ready` remains
+false. This can reveal later startup failures, but is neither an unmodified-layout
+pass nor a transparent ASAR implementation. CI retains both reports independently.

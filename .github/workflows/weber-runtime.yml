@@ -271,6 +271,10 @@ jobs:
         id: vscode
         continue-on-error: true
         run: xvfb-run -a python3 weber/vscode-probe/run.py --output out/vscode-startup.json
+      - name: Diagnose VS Code with authentic ASAR dependencies expanded
+        id: vscodeexpanded
+        continue-on-error: true
+        run: xvfb-run -a python3 weber/vscode-probe/run.py --expand-dependencies --output out/vscode-expanded-dependencies.json
       - name: Require every runtime check to pass
         if: always()
         env:
@@ -286,6 +290,7 @@ jobs:
         env:
           BENCHMARK: ${{ steps.benchmark.outcome }}
           VSCODE_DIAGNOSTIC: ${{ steps.vscode.outcome }}
+          VSCODE_EXPANDED_DIAGNOSTIC: ${{ steps.vscodeexpanded.outcome }}
           MONACO_DIAGNOSTIC: ${{ steps.monaco.outcome }}
         run: |
           python3 - <<'PY_EVIDENCE'
@@ -293,6 +298,7 @@ jobs:
           # These assert evidence collection, never a performance win or VS Code readiness.
           assert os.environ['BENCHMARK'] == 'success', os.environ['BENCHMARK']
           assert os.environ['VSCODE_DIAGNOSTIC'] == 'success', os.environ['VSCODE_DIAGNOSTIC']
+          assert os.environ['VSCODE_EXPANDED_DIAGNOSTIC'] == 'success', os.environ['VSCODE_EXPANDED_DIAGNOSTIC']
           assert os.environ['MONACO_DIAGNOSTIC'] == 'success', os.environ['MONACO_DIAGNOSTIC']
           PY_EVIDENCE
       - uses: actions/upload-artifact@v4
@@ -305,7 +311,7 @@ jobs:
             out/node-live.json
             out/bun-live.json
             out/benchmark.json
-            out/vscode-startup.json
+            out/vscode-*.json
             out/monaco-*.json
             out/monaco-*.png
             weber/monaco-probe/package-lock.json

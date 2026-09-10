@@ -211,6 +211,8 @@ def main() -> int:
     parser.add_argument("--runtime-root", type=Path)
     parser.add_argument("--node", default=shutil.which("node") or "node")
     parser.add_argument("--timeout", type=float, default=30)
+    parser.add_argument("--expand-dependencies", action="store_true",
+                        help="Secondary diagnostic: expand authentic ASAR dependencies without rewriting source files")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     repo = args.repo.resolve()
@@ -219,7 +221,10 @@ def main() -> int:
               "readiness_checked": False, "diagnostic_completed": False,
               "version": PIN["version"], "commit": PIN["commit"],
               "source_url": PIN["source_url"], "pin": PIN,
-              "bundled_electron_executed": False, "stage": "setup"}
+              "bundled_electron_executed": False, "stage": "setup",
+              "dependency_layout_expanded": False}
+    if args.expand_dependencies:
+        report["kind"] = "vscode-expanded-dependency-diagnostic"
     try:
         if not 1 <= args.timeout <= 120:
             raise ValueError("Startup timeout must be between 1 and 120 seconds")
@@ -235,6 +240,14 @@ def main() -> int:
             archive, report["archive"] = download(temporary)
             report["stage"] = "extract"
             app, report["application"] = extract_app(archive, temporary)
+            if args.expand_dependencies:
+                from asar_dependencies import expand_dependencies
+                report["stage"] = "dependency-expansion"
+                report["dependency_expansion"] = expand_dependencies(app)
+                report["dependency_layout_expanded"] = True
+                report["application"]["app_modified"] = True
+                report["application"]["source_files_modified"] = False
+                report["application"]["modification"] = "Authentic ASAR dependency bytes expanded into node_modules"
             imports = set()
             for script in (app / "out").rglob("*.js"):
                 if script.stat().st_size > 64 * 1024 * 1024:

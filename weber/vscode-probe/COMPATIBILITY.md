@@ -2,14 +2,15 @@
 
 Target: the unmodified Linux x64 VS Code 1.136.2 application at the revision in
 `pin.json`, running through the original Electron source modules on Obscura.
-The latest full native probe (1219c94) advances past `net` and exits before
-workbench startup because `desktopCapturer` is missing. Main/utility HTTP, HTTPS,
-streaming fetch, WebSocket and opt-in Basic authentication forwarding have
-scoped tests. Bun bare Electron ESM imports remain unresolved. A diagnostic exit code of zero means evidence collection succeeded;
-the report itself has `ready: false`. No whole-app compatibility percentage is
-inferred from exported names or module counts.
+The latest full native probe (5ea3180) passes the previous `desktopCapturer`
+import failure and exits while resolving `@vscode/spdlog`. That package is present
+inside the original `node_modules.asar`; transparent archive filesystem/module
+loading is missing. A diagnostic exit code of zero means evidence collection
+succeeded; the report itself has `ready: false`. No whole-app compatibility
+percentage is inferred from exported names or module counts. Bun bare Electron
+ESM imports remain unresolved.
 
-Latest validated runtime: [1219c94](../packaging/results/1219c94.json), with 16
+Latest validated runtime: [5ea3180](../packaging/results/5ea3180.json), with 16
 execution gates and extracted Node/Bun/native examples passing. Utility tests
 pass seven per JavaScript backend, startup services pass four on Node and three
 on Bun (one Node-only skip), and safeStorage unit checks pass four per backend.
@@ -28,11 +29,16 @@ The startup diagnostic also has three regression tests to distinguish actual
 exceptions from error-like text embedded in minified source lines.
 
 Successive unmodified VS Code runs moved from missing crashReporter to shell,
-safeStorage, powerSaveBlocker, net and now desktopCapturer. This remains import-stage progress, not
-proof of a running workbench. Monaco's module-worker blocker is unchanged.
+safeStorage, powerSaveBlocker, net and desktopCapturer to ASAR dependency loading.
+This remains startup progress, not proof of a running workbench. Desktop capture
+adds seven callback tests per backend and actual X11 window/screen capture on
+Node/Bun, including extracted bundles. A native fixture verifies real pixels,
+icons, titles and source lifecycle. Monaco's module-worker blocker is unchanged.
 
 The probe records these 24 named imports from the pinned application. An API
-appearing in this table does not mean every method works.
+appearing in this table does not mean every method works. This inventory does
+not include every access through a default import: VS Code also reads
+`electron.nativeTheme`, which is still absent.
 
 | VS Code import | Implemented and exercised scope | Remaining migration work |
 | --- | --- | --- |
@@ -47,7 +53,7 @@ appearing in this table does not mean every method works.
 | clipboard | Native CLIPBOARD/PRIMARY, modern ClipboardItem and legacy text/HTML/RTF/binary | Full NativeImage, bookmarks and additional platform formats |
 | contentTracing | Original module; actual bounded Node main-process marks/measures, trace-event JSON, start/stop/restart | Renderer traces, sampling, memory dumps, Chromium categories, Bun recording |
 | crashReporter | Original module; inactive metadata and no-upload queries; enabling capture/upload fails explicitly | Native crash collection, process integration and uploading |
-| desktopCapturer | Missing | Authorized desktop/window capture and source selection |
+| desktopCapturer | Original wrapper connected to X11 window/screen enumeration, titles, monitor IDs, icons and PNG thumbnails | Full NativeImage, obscured windows, Wayland portals, display-media streams and other platforms |
 | dialog | Error logging only; no verified native dialog contract | Native file/message dialogs and cancellation |
 | globalShortcut | Original module, real X11 registration/conflicts/callbacks | Wayland portals, suspension and keyboard-map changes |
 | net | HTTP/HTTPS streams, redirects, compression, cancellation, explicit-omit fetch, DNS and WebSocket; main and utility paths | Shared browser cookies, proxy/PAC, session interception/cache and complete network semantics |
@@ -62,7 +68,7 @@ appearing in this table does not mean every method works.
 | utilityProcess | Original wrapper and ParentPort; real same-backend child, stdio/argv/cwd/env, CJS/ESM entry (Electron ESM imports only on Node), main-to-child port transfer, two-way data and termination | Actual VS Code extension host, renderer ports, nested transfers, session/proxy auth integration and full process-tree cleanup |
 
 The Electron TypeScript modules remain in the fork source tree.
-The replacement runtime compiles 41 of them and records exact source hashes.
+The replacement runtime compiles 42 of them and records exact source hashes.
 Two network modules carry explicit, manifest-recorded Weber adaptations.
 Additional behavior lives at their native binding boundary, with explicit
 unsupported errors where implemented entry points cannot perform an operation.
@@ -85,6 +91,21 @@ Independent utility-process execution and main-to-utility MessagePort transfer
 have dedicated tests; they do not establish complete extension-host compatibility.
 Native Notification/powerMonitor checks use actual runtime transport
 with controlled D-Bus peers, not a full desktop acceptance suite.
+
+## Confirmed follow-up dependencies
+
+The pinned [CodeApplication source](https://github.com/microsoft/vscode/blob/88e44fa0e00b08f7758b4f6d05632e4fd5e4df6f/src/vs/code/electron-main/app.ts)
+installs `setPermissionRequestHandler`, `setPermissionCheckHandler`,
+`setDisplayMediaRequestHandler`, and `webRequest.onBeforeRequest/onHeadersReceived`
+during session configuration. Those Session APIs are absent. Implementing them
+requires enforcement at the actual engine request/permission boundary, including
+cancellation and partition ownership; accepting registrations alone is insufficient.
+
+The pinned [theme service](https://github.com/microsoft/vscode/blob/88e44fa0e00b08f7758b4f6d05632e4fd5e4df6f/src/vs/platform/theme/electron-main/themeMainServiceImpl.ts)
+subscribes to `nativeTheme.updated` and reads/writes theme properties through the
+default Electron import. This dependency is outside the named-import inventory.
+These are source-audited gaps; only the startup report establishes which one is
+encountered next during execution.
 
 ## Acceptance work still required
 

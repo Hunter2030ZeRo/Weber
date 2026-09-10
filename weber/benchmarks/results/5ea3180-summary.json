@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 1,
+  "methodologyVersion": 2,
+  "createdAt": "2026-09-10T11:54:58.510Z",
+  "provenance": {
+    "githubSha": {
+      "status": "provided",
+      "value": "5ea3180e63f85c9abaab5a653b01ec6f67eafdbc"
+    },
+    "githubRunId": "34473199782",
+    "applicationFiles": [
+      {
+        "path": "index.html",
+        "status": "present",
+        "requestedPath": "/home/runner/work/Weber/Weber/weber/benchmarks/app/index.html",
+        "realPath": "/home/runner/work/Weber/Weber/weber/benchmarks/app/index.html",
+        "bytes": 816,
+        "sha256": "ad2443e144b813992d3d8fcd32cfebf52d5c46ca1c4fbe26a7431acbee8bb048"
+      },
+      {
+        "path": "main.cjs",
+        "status": "present",
+        "requestedPath": "/home/runner/work/Weber/Weber/weber/benchmarks/app/main.cjs",
+        "realPath": "/home/runner/work/Weber/Weber/weber/benchmarks/app/main.cjs",
+        "bytes": 8591,
+        "sha256": "98f781abcc25395160e87050e5787d4486598cecd07ec70512a9533021617aac"
+      },
+      {
+        "path": "package.json",
+        "status": "present",
+        "requestedPath": "/home/runner/work/Weber/Weber/weber/benchmarks/app/package.json",
+        "realPath": "/home/runner/work/Weber/Weber/weber/benchmarks/app/package.json",
+        "bytes": 86,
+        "sha256": "54ad58968b64e7a4d0fc721ca251a0ee3b0771757c85c4c5ff1e2d3089cd9279"
+      },
+      {
+        "path": "preload.cjs",
+        "status": "present",
+        "requestedPath": "/home/runner/work/Weber/Weber/weber/benchmarks/app/preload.cjs",
+        "realPath": "/home/runner/work/Weber/Weber/weber/benchmarks/app/preload.cjs",
+        "bytes": 185,
+        "sha256": "a25a3045b4add4e4178a8f8b7f15f6a2c38f7b50fe5b2d3898754c3efc3c8e02"
+      }
+    ],
+    "executables": {
+      "electron": {
+        "status": "present",
+        "requestedPath": "/home/runner/work/_temp/electron-baseline/node_modules/electron/dist/electron",
+        "realPath": "/home/runner/work/_temp/electron-baseline/node_modules/electron/dist/electron",
+        "bytes": 210107608,
+        "sha256": "cc8ac510760beb9ba61ce30b3b3c3e3055f7ec9a25a0d9ae4deec74b4d4f6bce"
+      },
+      "node": {
+        "status": "present",
+        "requestedPath": "/opt/hostedtoolcache/node/24.20.0/x64/bin/node",
+        "realPath": "/opt/hostedtoolcache/node/24.20.0/x64/bin/node",
+        "bytes": 126458664,
+        "sha256": "89af8424dd53e560b1933f87ba650d8bf57c83ca5a04600eefb31f416aabbae7"
+      },
+      "desktopHost": {
+        "status": "present",
+        "requestedPath": "/home/runner/work/Weber/Weber/out/runtime/weber-desktop-host",
+        "realPath": "/home/runner/work/Weber/Weber/out/runtime/weber-desktop-host",
+        "bytes": 859192,
+        "sha256": "3f63a44d6ea45e43db975a25f713df5fdcdf5e81ea06cd7331d8652a0078f8bf"
+      },
+      "obscuraRenderer": {
+        "status": "present",
+        "requestedPath": "/home/runner/work/Weber/Weber/out/runtime/obscura/weber-obscura-renderer",
+        "realPath": "/home/runner/work/Weber/Weber/out/runtime/obscura/weber-obscura-renderer",
+        "bytes": 140233056,
+        "sha256": "97ea4e9ba2810d8c9af2cba9a5e15ec6f67a1d4ae254499821bff08c1bfcf0b0"
+      }
+    },
+    "bootstrap": {
+      "status": "present",
+      "requestedPath": "/home/runner/work/Weber/Weber/weber/electron-runtime/bootstrap.cjs",
+      "realPath": "/home/runner/work/Weber/Weber/weber/electron-runtime/bootstrap.cjs",
+      "bytes": 8077,
+      "sha256": "c8b07bc91c47fb633dba70647e7376273354c74a3f4bcc1f57462ff47a05db7f"
+    },
+    "compiledElectronSourceManifest": {
+      "status": "present",
+      "requestedPath": "/home/runner/work/Weber/Weber/weber/electron-runtime/dist/source-manifest.json",
+      "realPath": "/home/runner/work/Weber/Weber/weber/electron-runtime/dist/source-manifest.json",
+      "bytes": 8293,
+      "sha256": "d3431f6801e0953b1d7f555f6b64a9d3f2e6d7e7533b061035f77bc70c349e27"
+    },
+    "cmake": {
+      "desktopHost": {
+        "status": "set",
+        "cachePath": "/home/runner/work/Weber/Weber/out/runtime/CMakeCache.txt",
+        "buildType": "Release",
+        "configurations": null,
+        "cacheIdentity": {
+          "status": "present",
+          "requestedPath": "/home/runner/work/Weber/Weber/out/runtime/CMakeCache.txt",
+          "realPath": "/home/runner/work/Weber/Weber/out/runtime/CMakeCache.txt",
+          "bytes": 129515,
+          "sha256": "ad124ac6ea8cb03400e21f10438df061e73f3372c29d8930d84789186700596e"
+        },
+        "reason": null
+      },
+      "obscuraRenderer": {
+        "status": "set",
+        "cachePath": "/home/runner/work/Weber/Weber/out/runtime/CMakeCache.txt",
+        "buildType": "Release",
+        "configurations": null,
+        "cacheIdentity": {
+          "status": "present",
+          "requestedPath": "/home/runner/work/Weber/Weber/out/runtime/CMakeCache.txt",
+          "realPath": "/home/runner/work/Weber/Weber/out/runtime/CMakeCache.txt",
+          "bytes": 129515,
+          "sha256": "ad124ac6ea8cb03400e21f10438df061e73f3372c29d8930d84789186700596e"
+        },
+        "reason": null
+      }
+    },
+    "hashing": "All hashes are SHA-256, captured before timed trials. Reading binaries can warm the filesystem cache.",
+    "limits": "CMake cache values describe the nearby build configuration; missing/empty values remain explicit. No Release configuration is inferred from filenames."
+  },
+  "environment": {
+    "platform": "linux",
+    "architecture": "x64",
+    "release": "6.17.0-1022-azure",
+    "cpuCount": 4,
+    "clockTicksPerSecond": 100,
+    "display": ":99"
+  },
+  "conditions": {
+    "pinnedElectron": "42.0.0",
+    "trialsPerFramework": 3,
+    "windows": 2,
+    "applicationFilesIdentical": true,
+    "osSandboxEnabled": false,
+    "contextIsolation": true,
+    "windowPlacement": "setBounds places 768x512 windows at (16,16) and (816,16); requires a 1600x900 or larger display",
+    "domUpdateAndCaptureDefinition": "visible text and geometry mutation, two requestAnimationFrame callbacks, then capturePage and PNG encoding",
+    "methodologyChange": "Version 2 waits two animation frames after every DOM mutation and positions windows side by side. DOM/capture timings are not directly comparable with version 1 as an optimization-only result.",
+    "startupDefinition": "spawn through loadFile, ready-to-show, show, two animation frames and captures for both windows, including preload setup",
+    "idleDefinition": "five full descendant-tree samples, 500 ms apart, after 500 ms settling",
+    "pssDefinition": "sum of all descendant smaps_rollup Pss; shared mappings apportioned by the kernel",
+    "rssDefinition": "sum of all descendant smaps_rollup Rss; shared mappings may be counted more than once",
+    "cpuDefinition": "sum of per-process user+system ticks; 100% means one fully occupied logical CPU",
+    "launchOrder": "alternates per trial; operating-system page caches are not flushed",
+    "scope": "small local HTML fixture under the current display; not a VS Code, general web compatibility, or production sandbox benchmark"
+  },
+  "extendedConditions": {
+    "version": 1,
+    "afterBaselineIdleMeasurement": true,
+    "ipcBurst": "eight rounds, each 32 simultaneous ipcRenderer.invoke calls per window, 64 total; verifies all ordered results",
+    "components": "1000 row elements per window; six rounds update 256 rows per window then wait two animation frames and capture both PNGs",
+    "idle": "five descendant-tree samples 500 ms apart, after a further 500 ms settling; both 1000-row documents remain loaded",
+    "scope": "synthetic component and IPC workload; not Monaco, extension hosting, or a VS Code memory prediction"
+  },
+  "complete": true,
+  "summary": {
+    "electron": {
+      "trials": 3,
+      "startupToLoadAndCaptureMs": 608.4005219999999,
+      "javascriptRoundTripMs": 0.28619350000008126,
+      "ipcRoundTripMs": 0.5253689999999551,
+      "rendererOriginatedWarmIpcMs": 0.23080000000004658,
+      "domUpdateAndCaptureMs": 48.845827499999984,
+      "idlePssBytes": 394169344,
+      "idleRssBytes": 919814144,
+      "idleCpuOneCorePercent": 0
+    },
+    "weber": {
+      "trials": 3,
+      "startupToLoadAndCaptureMs": 253.5982589999985,
+      "javascriptRoundTripMs": 0.4563670000000002,
+      "ipcRoundTripMs": 1.1938139999999748,
+      "rendererOriginatedWarmIpcMs": 0.442,
+      "domUpdateAndCaptureMs": 48.93298849999999,
+      "idlePssBytes": 188122112,
+      "idleRssBytes": 289906688,
+      "idleCpuOneCorePercent": 0
+    },
+    "weberDividedByElectron": {
+      "startupToLoadAndCaptureMs": 0.4168278129781068,
+      "javascriptRoundTripMs": 1.5946099404768823,
+      "ipcRoundTripMs": 2.272334302176331,
+      "rendererOriginatedWarmIpcMs": 1.915077989601,
+      "domUpdateAndCaptureMs": 1.0017844103470253,
+      "idlePssBytes": 0.47726215867259325,
+      "idleRssBytes": 0.3151796369854474,
+      "idleCpuOneCorePercent": null
+    }
+  },
+  "extendedSummary": {
+    "electron": {
+      "trials": 3,
+      "ipcBurst64CallsMs": 4.627477999999883,
+      "update512ComponentsAndCaptureTwoWindowsMs": 65.77163850000034,
+      "idlePssBytes": 435968000,
+      "idleCpuOneCorePercent": 0
+    },
+    "weber": {
+      "trials": 3,
+      "ipcBurst64CallsMs": 5.258839500000022,
+      "update512ComponentsAndCaptureTwoWindowsMs": 94.3570635000001,
+      "idlePssBytes": 234925056,
+      "idleCpuOneCorePercent": 0
+    }
+  },
+  "rawEvidenceArtifact": 10150657912
+}

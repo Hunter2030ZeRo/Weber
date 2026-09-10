@@ -1,0 +1,78 @@
+{
+  "kind": "validated-linux-development-bundle",
+  "commit": "5ea3180e63f85c9abaab5a653b01ec6f67eafdbc",
+  "workflowRun": 34473199782,
+  "allRuntimeGatesPassed": true,
+  "runtimeGates": 16,
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34473199782/artifacts/10150658642",
+  "artifactZipBytes": 56901071,
+  "artifactZipSha256": "696463d05da3343c41e5e7c69bc58257c79048b102a01598014b44ab626a4784",
+  "sourceEvidenceArtifact": 10150657912,
+  "sourceEvidenceZipSha256": "e04129107ebc7db16d47b17e313b88cc435120edb014af33851dd1abb31f3224",
+  "electronSourceModules": 42,
+  "adaptedSources": [
+    "lib/browser/api/net-fetch.ts",
+    "lib/common/api/net-client-request.ts"
+  ],
+  "compiledForkSourcesVerified": true,
+  "extractedBackendSmokes": {
+    "node": true,
+    "bun": true,
+    "native": true
+  },
+  "chromiumBrowserRuntimeIncluded": false,
+  "nodeAndBunExecutablesIncluded": false,
+  "osSandbox": false,
+  "desktopCapture": {
+    "nodeUnitTests": 7,
+    "bunUnitTests": 7,
+    "nativeChecks": [
+      "actual window pixels",
+      "window icons",
+      "UTF-8 titles",
+      "screen IDs",
+      "aspect ratio",
+      "PNG dimensions",
+      "zero thumbnails",
+      "type selection",
+      "invalid dimensions",
+      "EWMH lists",
+      "destroyed windows",
+      "malformed icons"
+    ],
+    "nodeLivePassed": true,
+    "bunLivePassed": true,
+    "platform": "Linux/X11",
+    "fullNativeImage": false,
+    "waylandPortal": false,
+    "displayMediaStreams": false
+  },
+  "vscode": {
+    "version": "1.136.2",
+    "ready": false,
+    "diagnostic_completed": true,
+    "error": "Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@vscode/spdlog' imported from /tmp/weber-vscode-probe-vha30kri/VSCode-linux-x64/resources/app/out/main.js",
+    "exit_code": 1,
+    "timed_out": false
+  },
+  "monaco": {
+    "version": "0.52.2",
+    "ready": false,
+    "coreEditingReady": true,
+    "checks": [
+      "document-load",
+      "editor-construction",
+      "model-edit",
+      "undo",
+      "native-keyboard-input",
+      "visible-line-dom-and-capture",
+      "thousand-line-scroll-and-visible-range"
+    ],
+    "error": "Error: Editor worker: Unexpected token 'export'\n    at /home/runner/work/Weber/Weber/weber/monaco-probe/main.cjs:92:42\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+  },
+  "performance": {
+    "comparisonComplete": true,
+    "wholeVscodeVerified": false,
+    "summary": "Same-app three-trial fixture; Weber IPC remains slower than Electron. No whole-VS-Code memory or latency claim."
+  }
+}

@@ -3,13 +3,11 @@
 Experimental GUI framework using **obscura-for-weber** as its web engine,
 with Node.js, Bun, and native Rust application backends.
 
-**Status: this branch is the original integration prototype.** Active
-Electron-based engine migration is now in
-[`codex/electron-obscura`](https://github.com/Hunter2030ZeRo/Weber/tree/codex/electron-obscura).
-That branch preserves Electron's source/ancestry and Weber's development history,
-and includes a tested C++/Obscura engine boundary. Its BrowserWindow/WebContents
-still use Chromium; the replacement is not complete. Backend extensions and
-agent features are deferred while the Electron engine route is implemented.
+**Historical prototype documentation.** The active Electron/Obscura runtime is
+on [`codex/obscura-runtime`](https://github.com/Hunter2030ZeRo/Weber/tree/codex/obscura-runtime).
+Use the [repository README](../README.md) for its current CMake/Cargo build,
+Node/Bun/native backend selection and verified limitations. The instructions below
+describe the earlier standalone Rust prototype; they are retained as history.
 
 ## Product acceptance goals
 
