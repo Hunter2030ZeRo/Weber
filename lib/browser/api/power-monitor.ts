@@ -14,7 +14,7 @@ class PowerMonitor extends EventEmitter implements Electron.PowerMonitor {
     super();
     // Don't start the event source until both a) the app is ready and b)
     // there's a listener registered for a powerMonitor event.
-    this.once('newListener', () => {
+    this.once('newListener', (firstEvent) => {
       pm = createPowerMonitor();
       pm.emit = this.emit.bind(this);
 
@@ -23,7 +23,8 @@ class PowerMonitor extends EventEmitter implements Electron.PowerMonitor {
         // decide whether or not it wants to prevent the shutdown. We don't
         // inhibit the shutdown event unless there's a listener for it. This
         // keeps the C++ code informed about whether there are any listeners.
-        pm.setListeningForShutdown(this.listenerCount('shutdown') > 0);
+        // newListener runs before the first listener is inserted.
+        pm.setListeningForShutdown(firstEvent === 'shutdown' || this.listenerCount('shutdown') > 0);
         this.on('newListener', (event) => {
           if (event === 'shutdown') {
             pm.setListeningForShutdown(this.listenerCount('shutdown') + 1 > 0);

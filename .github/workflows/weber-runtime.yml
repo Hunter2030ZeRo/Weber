@@ -12,7 +12,7 @@ concurrency:
 jobs:
   utility-compatibility:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,6 +39,14 @@ jobs:
           bun test ./weber/electron-runtime/test-safe-storage.cjs
           node --test weber/electron-runtime/test-power-save.cjs
           bun test ./weber/electron-runtime/test-power-save.cjs
+          node --test weber/electron-runtime/test-power-monitor.cjs
+          bun test ./weber/electron-runtime/test-power-monitor.cjs
+      - name: Test shutdown delay descriptors and original listener lifecycle without the engine
+        run: |
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror -pthread weber/tests/power-monitor-host.cc shell/browser/obscura/desktop/{platform_sync,display,notification,power,power_save_blocker,clipboard}.cc $(pkg-config --cflags --libs gtk+-3.0 x11 xscrnsaver) -o "$RUNNER_TEMP/power-monitor-host"
+          for backend in node bun; do
+            dbus-run-session -- xvfb-run -a /usr/bin/python3 weber/tests/shutdown-service.py "$backend" "$RUNNER_TEMP/power-monitor-host"
+          done
       - name: Test original network APIs with real HTTP and utility processes
         run: |
           node --test weber/electron-runtime/test-net.cjs
@@ -248,6 +256,13 @@ jobs:
         run: |
           xvfb-run -a node weber/electron-runtime/bootstrap.cjs weber/electron-runtime/clipboard-fixture
           xvfb-run -a bun weber/electron-runtime/bootstrap.cjs weber/electron-runtime/clipboard-fixture
+      - name: Test real shutdown descriptors through the complete source runtime
+        id: shutdown
+        continue-on-error: true
+        run: |
+          for backend in node bun; do
+            dbus-run-session -- xvfb-run -a /usr/bin/python3 weber/tests/shutdown-service.py "$backend"
+          done
       - name: Assemble and execute Linux development bundle
         id: bundle
         continue-on-error: true
@@ -296,12 +311,12 @@ jobs:
       - name: Require every runtime check to pass
         if: always()
         env:
-          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.clipboard.outcome }} ${{ steps.bundle.outcome }} ${{ steps.protocols.outcome }} ${{ steps.notifications.outcome }} ${{ needs.utility-compatibility.result }} ${{ steps.safestorage.outcome }} ${{ steps.powersave.outcome }}
+          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.clipboard.outcome }} ${{ steps.bundle.outcome }} ${{ steps.protocols.outcome }} ${{ steps.notifications.outcome }} ${{ needs.utility-compatibility.result }} ${{ steps.safestorage.outcome }} ${{ steps.powersave.outcome }} ${{ steps.shutdown.outcome }}
         run: |
           python3 - <<'PY_GATE'
           import os
           outcomes = os.environ['RESULTS'].split()
-          assert len(outcomes) == 16 and all(result == 'success' for result in outcomes), outcomes
+          assert len(outcomes) == 17 and all(result == 'success' for result in outcomes), outcomes
           PY_GATE
       - name: Require measurements and startup diagnostic to complete
         if: always()

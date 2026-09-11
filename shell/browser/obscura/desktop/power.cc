@@ -3,6 +3,8 @@
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
 #include <X11/extensions/scrnsaver.h>
+#include <gio/gunixfdlist.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <algorithm>
 #include <stdexcept>
@@ -47,14 +49,148 @@ struct PowerMonitor::State {
   std::vector<guint> subscriptions;
   std::string session;
   bool started = false;
+  // All shutdown state is owned by the GTK context. D-Bus acquisition is
+  // asynchronous; neither acquiring an FD nor waiting for JS blocks GTK.
+  std::shared_ptr<int> alive = std::make_shared<int>(0);
+  GCancellable* acquisition = nullptr;
+  guint login_watch = 0;
+  gulong bus_closed = 0;
+  guint shutdown_timer = 0;
+  uint64_t generation = 0;
+  int shutdown_fd = -1;
+  bool listening = false;
+  bool preparing = false;
+  bool decision_pending = false;
+  bool closed = false;
+  std::string login_owner;
+  std::string who = "Weber";
+  struct Acquisition {
+    std::weak_ptr<int> alive;
+    State* state;
+    uint64_t generation;
+  };
   explicit State(std::function<void(Json)> callback) : emit(std::move(callback)) {}
   ~State() {
+    alive.reset();
+    CloseShutdown();
+    if (login_watch) g_bus_unwatch_name(login_watch);
+    if (bus && bus_closed) g_signal_handler_disconnect(bus, bus_closed);
     if (bus) { for (const auto id : subscriptions) g_dbus_connection_signal_unsubscribe(bus, id); g_object_unref(bus); }
+  }
+  void CancelAcquisition() {
+    ++generation;
+    if (acquisition) { g_cancellable_cancel(acquisition); g_object_unref(acquisition); acquisition = nullptr; }
+  }
+  void ReleaseShutdown() {
+    if (shutdown_timer) { g_source_remove(shutdown_timer); shutdown_timer = 0; }
+    if (shutdown_fd >= 0) { close(shutdown_fd); shutdown_fd = -1; }
+    decision_pending = false;
+  }
+  void CloseShutdown() {
+    closed = true; listening = false; preparing = false;
+    CancelAcquisition(); ReleaseShutdown();
+  }
+  void ShutdownStatus(const std::string& reason = {}) {
+    Json event = {{"event", "power-monitor-shutdown-status"}, {"generation", generation}, {"active", shutdown_fd >= 0}};
+    if (!reason.empty()) event["reason"] = reason;
+    try { emit(event); } catch (...) {}
+  }
+  void AcquireShutdown() {
+    if (closed || !listening || preparing || shutdown_fd >= 0 || acquisition || login_owner.empty()) return;
+    acquisition = g_cancellable_new();
+    const auto serial = ++generation;
+    // Use the unique owner: replacement cannot redirect an outstanding call
+    // to a different daemon. Finish always consumes and closes stale FDs.
+    g_dbus_connection_call_with_unix_fd_list(bus, login_owner.c_str(), "/org/freedesktop/login1",
+      "org.freedesktop.login1.Manager", "Inhibit",
+      g_variant_new("(ssss)", "shutdown", who.c_str(), "Ensure a clean shutdown", "delay"),
+      G_VARIANT_TYPE("(h)"), G_DBUS_CALL_FLAGS_NO_AUTO_START, 1000, nullptr, acquisition,
+      +[](GObject* connection, GAsyncResult* result, gpointer data) {
+        std::unique_ptr<Acquisition> pending(static_cast<Acquisition*>(data));
+        GError* error = nullptr; GUnixFDList* fds = nullptr;
+        auto* reply = g_dbus_connection_call_with_unix_fd_list_finish(G_DBUS_CONNECTION(connection), &fds, result, &error);
+        int fd = -1;
+        if (reply && g_variant_is_of_type(reply, G_VARIANT_TYPE("(h)")) && fds) {
+          gint handle = -1; g_variant_get(reply, "(h)", &handle);
+          if (handle >= 0 && handle < g_unix_fd_list_get_length(fds)) fd = g_unix_fd_list_get(fds, handle, nullptr);
+        }
+        if (reply) g_variant_unref(reply);
+        if (fds) g_object_unref(fds);
+        if (!pending->alive.expired()) {
+          auto* self = pending->state;
+          if (pending->generation == self->generation) {
+            g_clear_object(&self->acquisition);
+            if (fd >= 0 && fcntl(fd, F_SETFD, FD_CLOEXEC) == 0) {
+              self->shutdown_fd = fd; fd = -1;
+              self->ShutdownStatus();
+            } else {
+              self->ShutdownStatus(error ? error->message : "logind returned an invalid shutdown inhibitor descriptor");
+            }
+          }
+        }
+        if (fd >= 0) close(fd);
+        if (error) g_error_free(error);
+      }, new Acquisition{alive, this, serial});
+  }
+  void PrepareShutdown(bool active) {
+    if (closed) return;
+    if (!active) {
+      preparing = false; CancelAcquisition(); ReleaseShutdown();
+      ShutdownStatus(); AcquireShutdown(); return;
+    }
+    if (preparing) return;
+    preparing = true;
+    // A notification without an owned delay FD is not a safe shutdown window.
+    CancelAcquisition();
+    if (!listening || shutdown_fd < 0) return;
+    decision_pending = true;
+    // logind enforces its own (possibly shorter) deadline. Weber additionally
+    // bounds a missing JS decision or a cancelled shutdown to five seconds.
+    shutdown_timer = g_timeout_add(5000, +[](gpointer data) -> gboolean {
+      auto* self = static_cast<State*>(data);
+      self->shutdown_timer = 0;
+      self->ReleaseShutdown(); ++self->generation; self->ShutdownStatus();
+      return G_SOURCE_REMOVE;
+    }, this);
+    try { emit({{"event", "power-monitor"}, {"type", "shutdown"}, {"generation", generation}}); }
+    catch (...) { ReleaseShutdown(); }
+  }
+  void WatchShutdown() {
+    if (login_watch || closed) return;
+    if (!Connect()) { ShutdownStatus("System bus unavailable; shutdown inhibition is inactive"); return; }
+    subscriptions.push_back(g_dbus_connection_signal_subscribe(bus, "org.freedesktop.login1", "org.freedesktop.login1.Manager",
+      "PrepareForShutdown", "/org/freedesktop/login1", nullptr, G_DBUS_SIGNAL_FLAGS_NONE,
+      +[](GDBusConnection*, const gchar* sender, const gchar*, const gchar*, const gchar*, GVariant* parameters, gpointer data) {
+        auto* self = static_cast<State*>(data);
+        if (self->login_owner != sender || !g_variant_is_of_type(parameters, G_VARIANT_TYPE("(b)"))) return;
+        gboolean active; g_variant_get(parameters, "(b)", &active); self->PrepareShutdown(active);
+      }, this, nullptr));
+    login_watch = g_bus_watch_name_on_connection(bus, "org.freedesktop.login1", G_BUS_NAME_WATCHER_FLAGS_NONE,
+      +[](GDBusConnection*, const gchar*, const gchar* owner, gpointer data) {
+        auto* self = static_cast<State*>(data);
+        if (self->login_owner != owner) {
+          self->CancelAcquisition(); self->ReleaseShutdown(); self->preparing = false;
+          self->login_owner = owner;
+        }
+        self->AcquireShutdown();
+      }, +[](GDBusConnection*, const gchar*, gpointer data) {
+        auto* self = static_cast<State*>(data);
+        self->CancelAcquisition(); self->ReleaseShutdown(); self->preparing = false; self->login_owner.clear();
+        if (self->listening && !self->closed) self->ShutdownStatus("logind is unavailable; shutdown inhibition is inactive");
+      }, this, nullptr);
   }
   bool Connect() {
     if (bus) return !g_dbus_connection_is_closed(bus);
     GError* error = nullptr; bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
     if (error) g_error_free(error);
+    if (bus) {
+      g_dbus_connection_set_exit_on_close(bus, FALSE);
+      bus_closed = g_signal_connect(bus, "closed", G_CALLBACK(+[](GDBusConnection*, gboolean, GError*, gpointer data) {
+        auto* self = static_cast<State*>(data);
+        self->CancelAcquisition(); self->ReleaseShutdown(); self->login_owner.clear();
+        if (self->listening && !self->closed) self->ShutdownStatus("System bus closed; shutdown inhibition is inactive");
+      }), this);
+    }
     return bus;
   }
   GVariant* Call(const char* service, const char* path, const char* interface, const char* method,
@@ -111,6 +247,28 @@ struct PowerMonitor::State {
   }
   Json Command(const Json& request) {
     const auto method = request.at("method").get<std::string>();
+    if (method == "powerMonitor.close") { CloseShutdown(); return nullptr; }
+    if (method == "powerMonitor.setListeningForShutdown") {
+      if (closed) return nullptr;
+      listening = request.at("listening").get<bool>();
+      who = request.value("who", "Weber");
+      if (who.empty() || who.size() > 256) who = "Weber";
+      if (listening) { WatchShutdown(); AcquireShutdown(); }
+      else {
+        // once removal happens before its handler. A preparing cycle owns the
+        // lease until the synchronous JS decision, cancellation deadline or exit.
+        if (!preparing) { CancelAcquisition(); ReleaseShutdown(); ShutdownStatus(); }
+      }
+      return nullptr;
+    }
+    if (method == "powerMonitor.shutdownDecision") {
+      const auto serial = request.at("generation").get<uint64_t>();
+      const auto prevented = request.at("prevented").get<bool>();
+      if (closed || !preparing || !decision_pending || serial != generation) return false;
+      decision_pending = false;
+      if (!prevented) { ReleaseShutdown(); ShutdownStatus(); }
+      return true;
+    }
     if (method == "powerMonitor.start") { Start(); return nullptr; }
     if (method == "powerMonitor.battery") return Property("org.freedesktop.UPower", "/org/freedesktop/UPower", "org.freedesktop.UPower", "OnBattery", BatteryFromKernel());
     if (method == "powerMonitor.idleTime") {

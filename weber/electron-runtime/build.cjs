@@ -31,6 +31,7 @@ const sources = [];
 const bindings = new Set();
 // Record scoped fork fixes rather than labelling adapted source as unmodified.
 const adaptations = {
+  'lib/browser/api/power-monitor.ts': 'Enable shutdown observation when shutdown is the first registered listener; native binding preserves the in-flight once-listener decision',
   'lib/common/api/net-client-request.ts': 'Start empty chunked uploads and propagate response destruction to the owned URLLoader',
   'lib/browser/api/net-fetch.ts': 'Preserve explicit Bun fetch policies and abort failed streaming uploads',
 };
