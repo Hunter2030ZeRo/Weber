@@ -51,7 +51,11 @@ app.whenReady().then(() => {
           generation: command.generation, prevented: false,
         }), false);
       } else if (command.action === 'quit') {
-        input.close(); app.quit();
+        // readline.close() alone can leave the inherited pipe referenced.
+        // Acknowledge first, then close this fixture's control input.
+        send({ reply: command.id });
+        input.close(); process.stdin.destroy(); app.quit();
+        return;
       } else if (command.action === 'crash') {
         process.kill(process.pid, 'SIGKILL');
       } else if (command.action === 'host-crash') {
