@@ -1,5 +1,23 @@
 # VS Code startup diagnostic
 
+## Latest shutdown milestone (`ea03b58`)
+
+[CI run 34602840275](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34602840275)
+passed all **17 runtime gates**, including Node/Bun shutdown wrapper regressions
+and real Unix-FD logind tests through both the isolated native host and the full
+source runtime. Every shutdown fixture ended with zero remaining leases.
+See the [validation record](../packaging/results/ea03b58.json) and
+[shutdown scope](../electron-runtime/POWER_MONITOR.md).
+
+The strict original-layout VS Code 1.136.2 run now passes shutdown registration
+and reports `TypeError: t.setTitleBarOverlay is not a function` during window
+configuration. The expanded-dependency comparison reports the same error.
+Both retain `ready: false` and `timed_out: true`; their reported exit code 0
+comes after diagnostic termination and is **not** successful workbench startup.
+CommonJS and Node ESM loaders are unchanged. The smallest observed next contract
+is BrowserWindow title-bar overlay configuration, followed by another strict
+application run; standalone Monaco worker semantics remain a separate gap.
+
 This downloads the pinned official Linux x64 VS Code 1.136.2 distribution,
 extracts only its `resources/app` directory and runs its unmodified application
 entry through Weber's Electron-source bootstrap. It records the first actual
@@ -64,7 +82,7 @@ A direct check loaded the pinned distribution's unmodified ASAR-backed
 suites report 69 passes on Node and 50 passes with five skips on Bun; the
 runners count subtests differently.
 
-Current validation: [72f2c8d](../packaging/results/72f2c8d.json) passed all 16
+Previous validation: [72f2c8d](../packaging/results/72f2c8d.json) passed all 16
 runtime gates in [CI run 34503083387](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34503083387),
 including 11 engine tests, actual GTK nativeTheme changes, Node/Bun protocol and
 browser-clipboard permission fixtures, and extracted Node/Bun/native bundles.
@@ -78,7 +96,7 @@ the same failure as the separate expanded-dependency run.
 Both application processes exit 1 without timing out and both reports retain
 `ready: false`. The earlier [71ac31a strict run](../packaging/results/71ac31a.json)
 failed to resolve `node_modules.asar/@vscode/spdlog/index.js`; that startup
-composition failure is resolved in this verified run. A running workbench is
+composition failure is resolved in that verified baseline run. A running workbench is
 still not established.
 
 The independent [Monaco diagnostic](../monaco-probe/README.md) passes seven core
@@ -115,3 +133,4 @@ to the explicit powerMonitor shutdown-inhibition error. It remains an altered
 dependency-layout diagnostic, not an unmodified VS Code workbench pass.
 The log parser now recognizes VS Code's timestamped `[main ...]` error prefix;
 it was checked against the archived stderr and regression tests.
+

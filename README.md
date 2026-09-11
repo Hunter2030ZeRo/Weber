@@ -10,12 +10,30 @@ Electron's MIT license remains at the repository root; its README is
 `weber/`; individual source SPDX notices remain intact. Exact imported revisions are recorded in
 [weber/UPSTREAM_REVISIONS](weber/UPSTREAM_REVISIONS).
 
+## Latest shutdown milestone (`ea03b58`)
+
+[CI run 34602840275](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34602840275)
+passed all **17 runtime gates**, including Node/Bun shutdown wrapper regressions
+and real Unix-FD logind tests through both the isolated native host and the full
+source runtime. Every shutdown fixture ended with zero remaining leases.
+See the [validation record](weber/packaging/results/ea03b58.json) and
+[shutdown scope](weber/electron-runtime/POWER_MONITOR.md).
+
+The strict original-layout VS Code 1.136.2 run now passes shutdown registration
+and reports `TypeError: t.setTitleBarOverlay is not a function` during window
+configuration. The expanded-dependency comparison reports the same error.
+Both retain `ready: false` and `timed_out: true`; their reported exit code 0
+comes after diagnostic termination and is **not** successful workbench startup.
+CommonJS and Node ESM loaders are unchanged. The smallest observed next contract
+is BrowserWindow title-bar overlay configuration, followed by another strict
+application run; standalone Monaco worker semantics remain a separate gap.
+
 ## Executable implementation
 
 The runtime compiles 43 Electron TypeScript source modules, including BrowserWindow, BaseWindow, WebContents, Menu, MenuItem,
 Notification, powerMonitor, powerSaveBlocker, utilityProcess, ParentPort, globalShortcut, protocol,
 clipboard, screen, systemPreferences, shell, safeStorage, crashReporter, contentTracing and
-IPC helpers, main/utility networking, WebSocket, desktopCapturer and nativeTheme. Two network source modules
+IPC helpers, main/utility networking, WebSocket, desktopCapturer and nativeTheme. Two network source modules and the shutdown first-listener wrapper
 carry scoped Weber fixes, recorded in the compiled source manifest. Their
 implemented scopes differ; crash collection is still absent. A
 replacement `process._linkedBinding` layer routes their native operations to a
@@ -47,7 +65,7 @@ clipboard. nativeTheme observes GTK system appearance and emits changes. See
 [session/appearance scope](weber/electron-runtime/SESSION.md) for the implemented
 paths and explicit limits.
 
-Current validation (`72f2c8d`): the local new-feature suites report 69 passes on Node
+Previous validation (`72f2c8d`): the local new-feature suites report 69 passes on Node
 and 50 passes with five skips on Bun; the runners count subtests differently.
 A direct check loaded the pinned VS Code distribution's original ASAR-backed
 `@vscode/spdlog`, including its unpacked native addon. The full unmodified-layout
@@ -193,3 +211,4 @@ complete worker execution, tray, drag and drop, production installers and Window
 Separate processes and private transport are implemented; an OS sandbox and
 comprehensive origin/network policy are not. Obscura agent access should share
 application page/input state with explicit application authorization.
+

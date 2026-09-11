@@ -1,0 +1,129 @@
+{
+  "allRuntimeGatesPassed": true,
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34602840275/artifacts/10265507032",
+  "chromiumBrowserRuntimeIncluded": false,
+  "commit": "ea03b5896cbf91ccbc1d7a9464204dccfb7513c4",
+  "developmentBundleArtifact": 10265507032,
+  "evidenceSource": "Completed CI job logs; VS Code objects below are the exact printed diagnostic summaries, not full artifact reports",
+  "kind": "validated-shutdown-runtime-milestone",
+  "moduleLoadersModified": false,
+  "previousStartupError": "Error: Weber has not implemented powerMonitor shutdown inhibition",
+  "previousValidatedRuntime": "72f2c8d2e606ebed5169da2f0b4bc12b039466fd",
+  "runtimeGateEvidence": "Final RESULTS assertion uses all 17 step.outcome values",
+  "runtimeGates": 17,
+  "shutdownProtocols": [
+    {
+      "backend": "node",
+      "checks": [
+        "first-last",
+        "ordinary",
+        "once-cancel",
+        "deadline",
+        "daemon-loss-recovery",
+        "denied",
+        "malformed-fd",
+        "late-reply",
+        "quit",
+        "crash"
+      ],
+      "fullRuntime": false,
+      "kind": "native-shutdown-fd-protocol",
+      "passed": true,
+      "physicalShutdownTested": false,
+      "remainingLeases": 0
+    },
+    {
+      "backend": "bun",
+      "checks": [
+        "first-last",
+        "ordinary",
+        "once-cancel",
+        "deadline",
+        "daemon-loss-recovery",
+        "denied",
+        "malformed-fd",
+        "late-reply",
+        "quit",
+        "crash"
+      ],
+      "fullRuntime": false,
+      "kind": "native-shutdown-fd-protocol",
+      "passed": true,
+      "physicalShutdownTested": false,
+      "remainingLeases": 0
+    },
+    {
+      "backend": "node",
+      "checks": [
+        "first-last",
+        "ordinary",
+        "once-cancel",
+        "deadline",
+        "daemon-loss-recovery",
+        "denied",
+        "malformed-fd",
+        "late-reply",
+        "quit",
+        "crash"
+      ],
+      "fullRuntime": true,
+      "kind": "native-shutdown-fd-protocol",
+      "passed": true,
+      "physicalShutdownTested": false,
+      "remainingLeases": 0
+    },
+    {
+      "backend": "bun",
+      "checks": [
+        "first-last",
+        "ordinary",
+        "once-cancel",
+        "deadline",
+        "daemon-loss-recovery",
+        "denied",
+        "malformed-fd",
+        "late-reply",
+        "quit",
+        "crash"
+      ],
+      "fullRuntime": true,
+      "kind": "native-shutdown-fd-protocol",
+      "passed": true,
+      "physicalShutdownTested": false,
+      "remainingLeases": 0
+    }
+  ],
+  "shutdownScope": {
+    "asyncLogindUnixFd": true,
+    "localMaximumDelayMs": 5000,
+    "physicalShutdownTested": false,
+    "synchronousPreventDefault": true
+  },
+  "sourceEvidenceArtifact": 10265601880,
+  "vscode": {
+    "diagnostic_completed": true,
+    "error": "TypeError: t.setTitleBarOverlay is not a function",
+    "exit_code": 0,
+    "kind": "vscode-startup-diagnostic",
+    "ready": false,
+    "stage": "complete",
+    "timed_out": true,
+    "version": "1.136.2"
+  },
+  "vscodeExpandedDependencies": {
+    "diagnostic_completed": true,
+    "error": "TypeError: t.setTitleBarOverlay is not a function",
+    "exit_code": 0,
+    "kind": "vscode-expanded-dependency-diagnostic",
+    "ready": false,
+    "stage": "complete",
+    "timed_out": true,
+    "version": "1.136.2"
+  },
+  "wholeVscodeVerified": false,
+  "workflowRun": 34602840275,
+  "wrapperTests": {
+    "bunPassed": 7,
+    "nodePassed": 7
+  }
+}

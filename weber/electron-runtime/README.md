@@ -1,5 +1,23 @@
 # Electron source runtime on Obscura
 
+## Latest shutdown milestone (`ea03b58`)
+
+[CI run 34602840275](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34602840275)
+passed all **17 runtime gates**, including Node/Bun shutdown wrapper regressions
+and real Unix-FD logind tests through both the isolated native host and the full
+source runtime. Every shutdown fixture ended with zero remaining leases.
+See the [validation record](../packaging/results/ea03b58.json) and
+[shutdown scope](../electron-runtime/POWER_MONITOR.md).
+
+The strict original-layout VS Code 1.136.2 run now passes shutdown registration
+and reports `TypeError: t.setTitleBarOverlay is not a function` during window
+configuration. The expanded-dependency comparison reports the same error.
+Both retain `ready: false` and `timed_out: true`; their reported exit code 0
+comes after diagnostic termination and is **not** successful workbench startup.
+CommonJS and Node ESM loaders are unchanged. The smallest observed next contract
+is BrowserWindow title-bar overlay configuration, followed by another strict
+application run; standalone Monaco worker semantics remain a separate gap.
+
 This build compiles 43 Electron TypeScript modules, including the fork's original
 `lib/browser/api/browser-window.ts`, `base-window.ts`, `web-contents.ts`,
 `native-theme.ts`, and their internal dependencies. It executes
@@ -93,7 +111,7 @@ values; this is a subset of Electron's full contextBridge contract.
 
 ## Actual scope and validation
 
-Current validation: [72f2c8d](../packaging/results/72f2c8d.json) passed all 16
+Previous validation: [72f2c8d](../packaging/results/72f2c8d.json) passed all 16
 runtime gates in [CI run 34503083387](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34503083387),
 including 11 engine tests, actual GTK nativeTheme changes, Node/Bun protocol and
 browser-clipboard permission fixtures, and extracted Node/Bun/native bundles.
@@ -325,3 +343,4 @@ can have empty thumbnails; pixels hidden behind other windows are not guaranteed
 without XComposite. Wayland portal capture, display-media streams and a system
 picker remain unimplemented. The native fixture checks actual pixel colors and
 icons; Node/Bun fixtures exercise the original API through the real desktop host.
+

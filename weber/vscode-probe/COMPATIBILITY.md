@@ -1,5 +1,23 @@
 # VS Code migration status
 
+## Latest shutdown milestone (`ea03b58`)
+
+[CI run 34602840275](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34602840275)
+passed all **17 runtime gates**, including Node/Bun shutdown wrapper regressions
+and real Unix-FD logind tests through both the isolated native host and the full
+source runtime. Every shutdown fixture ended with zero remaining leases.
+See the [validation record](../packaging/results/ea03b58.json) and
+[shutdown scope](../electron-runtime/POWER_MONITOR.md).
+
+The strict original-layout VS Code 1.136.2 run now passes shutdown registration
+and reports `TypeError: t.setTitleBarOverlay is not a function` during window
+configuration. The expanded-dependency comparison reports the same error.
+Both retain `ready: false` and `timed_out: true`; their reported exit code 0
+comes after diagnostic termination and is **not** successful workbench startup.
+CommonJS and Node ESM loaders are unchanged. The smallest observed next contract
+is BrowserWindow title-bar overlay configuration, followed by another strict
+application run; standalone Monaco worker semantics remain a separate gap.
+
 Target: the unmodified Linux x64 VS Code 1.136.2 application at the revision in
 `pin.json`, running through the original Electron source modules on Obscura.
 The historical full native probe (45c56bb) passed the previous `desktopCapturer`
@@ -27,7 +45,7 @@ module. A direct check loaded the pinned distribution's original ASAR-backed
 or rewriting the package layout. See [ASAR.md](../electron-runtime/ASAR.md) and
 [SESSION.md](../electron-runtime/SESSION.md) for exact boundaries.
 
-Current validation: [72f2c8d](../packaging/results/72f2c8d.json) passed all 16
+Previous validation: [72f2c8d](../packaging/results/72f2c8d.json) passed all 16
 runtime gates in [CI run 34503083387](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34503083387).
 This includes 11 engine tests, actual GTK nativeTheme changes, Node/Bun protocol
 and browser-clipboard permission fixtures, and extracted Node/Bun/native bundles.
@@ -44,7 +62,7 @@ expanded-dependency run. Both application processes exit 1 without a timeout and
 both reports retain `ready: false`. The prior
 [71ac31a strict run](../packaging/results/71ac31a.json) failed to resolve
 `node_modules.asar/@vscode/spdlog/index.js`; that composition failure is resolved
-in the current run. This establishes a later failure in the unmodified application,
+in the 72f2c8d run. This establishes a later failure in the unmodified application,
 not a running workbench.
 
 Historical [45c56bb validation](../packaging/results/45c56bb.json) passed 16
@@ -97,7 +115,7 @@ application diagnostics still fail at the boundaries identified above.
 | dialog | Error logging only; no verified native dialog contract | Native file/message dialogs and cancellation |
 | globalShortcut | Original module, real X11 registration/conflicts/callbacks | Wayland portals, suspension and keyboard-map changes |
 | net | HTTP/HTTPS streams, redirects, compression, cancellation, explicit-omit fetch, DNS and WebSocket; main and utility paths; session-owned policy on main HTTP/HTTPS | Shared browser cookies, proxy/PAC/cache, interception of direct renderer HTTP/HTTPS, WebSocket and utility networking, complete network semantics |
-| powerMonitor | Original module; native X11 idle queries, UPower/logind power/suspend/resume/lock transport on Node/Bun | Shutdown inhibition, unsupported thermal/platform data, full desktop acceptance |
+| powerMonitor | Original module; native X11 idle queries, UPower/logind power/suspend/resume/lock transport; bounded shutdown delay descriptors on Node/Bun | Unsupported thermal/platform data, physical shutdown and full desktop acceptance |
 | powerSaveBlocker | Original module; aggregated IDs and priority; native GNOME/freedesktop acquisition/release, failed-transition rollback and ownership cleanup | Real desktop physical sleep/display acceptance, raw XScreenSaver fallback, Wayland portals and other platforms |
 | protocol | Original module, custom/file interception, handle/Response, document/CSS/JS/module/fetch loading; session policy cancellation and response-header/status changes | Full redirects, HTTP handlers, renderer ASAR URL reads and complete browser privilege semantics |
 | safeStorage | Original module; Linux libsecret-backed sync encryption, v10/v11 Buffer format and explicit basic-text opt-in; derived-key cache | Async format/key migration, KWallet, other operating systems and full VS Code secret-service acceptance |
@@ -110,7 +128,7 @@ application diagnostics still fail at the boundaries identified above.
 
 The Electron TypeScript modules remain in the fork source tree.
 The replacement runtime compiles 43 of them and records exact source hashes.
-Two network modules carry explicit, manifest-recorded Weber adaptations.
+Two network modules and the shutdown first-listener wrapper carry explicit, manifest-recorded Weber adaptations.
 Additional behavior lives at their native binding boundary, with explicit
 unsupported errors where implemented entry points cannot perform an operation.
 
@@ -160,29 +178,18 @@ establishes workbench startup.
 
 ## Acceptance work still required
 
-The next observed startup contract is shutdown-listener registration in VS
-Code's `initChannels`, before any actual shutdown. Implement it across
-`power-binding.cjs` and the native `desktop/power.cc` boundary using logind's
-system-bus `Inhibit("shutdown", ..., "delay")` descriptor ownership. The existing
-session-bus powerSaveBlocker cookie leases implement a different contract.
-See the [systemd inhibitor contract](https://systemd.io/INHIBITOR_LOCKS/).
+Shutdown-listener registration, previously the first failure in `initChannels`,
+is implemented and verified in `ea03b58`; the source wrapper adaptation is
+recorded in the manifest. See [POWER_MONITOR.md](../electron-runtime/POWER_MONITOR.md)
+for asynchronous logind descriptor ownership, synchronous cancellation,
+once-listener handling, cleanup, best-effort availability and the five-second
+local delay bound. This does not establish physical desktop shutdown acceptance.
 
-Native code must retain the descriptor while dispatching a generation-bound
-`PrepareForShutdown` event, then consume JavaScript's synchronous listener
-decision without blocking GTK. Cancellation retains the lease until exit or
-the bounded shutdown lifecycle; ordinary completion and every destruction path
-release it. Acquisition uses GIO's
-[Unix-FD-aware call](https://docs.gtk.org/gio/method.DBusConnection.call_with_unix_fd_list_sync.html),
-with reply validation, descriptor ownership and daemon-replacement cleanup.
-
-Read-only wrapper checks found two regression cases for that implementation:
-the first-ever shutdown listener does not request enablement, and automatic
-removal of a final `once` listener can disable observation before its handler
-calls `preventDefault()`. Any original-wrapper correction must be recorded in
-the source manifest. Actual D-Bus FD tests should verify first/last/once
-listeners, cancellation, failed acquisition, stale decisions, daemon loss and
-zero surviving leases after app/host exit on both Node and Bun. This is pending
-implementation work, not an existing inhibition guarantee.
+The next observed startup failure is `t.setTitleBarOverlay is not a function`.
+Implement the original BrowserWindow title-bar overlay contract at the GTK
+boundary, including actual visible title-bar behavior and option changes,
+then repeat the original-layout diagnostic. An empty compatibility method would
+only conceal the missing behavior. Workbench readiness remains unverified.
 
 [ACCEPTANCE.md](ACCEPTANCE.md) records the project success criterion: the same
 VS Code application must provide equivalent visible behavior with lower resource
@@ -210,3 +217,4 @@ translate VS Code's JavaScript main or extension hosts into Rust.
 Process separation and isolated preload are implemented. The current build
 requires an explicit trusted-development opt-in because it has no OS sandbox.
 That limitation remains part of migration acceptance, independent of memory use.
+
