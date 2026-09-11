@@ -41,6 +41,12 @@ jobs:
           bun test ./weber/electron-runtime/test-power-save.cjs
           node --test weber/electron-runtime/test-power-monitor.cjs
           bun test ./weber/electron-runtime/test-power-monitor.cjs
+          node --test weber/electron-runtime/test-titlebar-options.cjs
+          bun test ./weber/electron-runtime/test-titlebar-options.cjs
+      - name: Test native title bar overlay pixels and control lifecycle
+        run: |
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror weber/tests/titlebar-overlay.cc $(pkg-config --cflags --libs gtk+-3.0) -o "$RUNNER_TEMP/titlebar-overlay"
+          xvfb-run -a "$RUNNER_TEMP/titlebar-overlay"
       - name: Test shutdown delay descriptors and original listener lifecycle without the engine
         run: |
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -pthread weber/tests/power-monitor-host.cc shell/browser/obscura/desktop/{platform_sync,display,notification,power,power_save_blocker,clipboard}.cc $(pkg-config --cflags --libs gtk+-3.0 x11 xscrnsaver) -o "$RUNNER_TEMP/power-monitor-host"
@@ -263,6 +269,12 @@ jobs:
           for backend in node bun; do
             dbus-run-session -- xvfb-run -a /usr/bin/python3 weber/tests/shutdown-service.py "$backend"
           done
+      - name: Test title bar updates and native close through the source runtime
+        id: titlebar
+        continue-on-error: true
+        run: |
+          xvfb-run -a node weber/electron-runtime/bootstrap.cjs weber/electron-runtime/titlebar-fixture
+          xvfb-run -a bun weber/electron-runtime/bootstrap.cjs weber/electron-runtime/titlebar-fixture
       - name: Assemble and execute Linux development bundle
         id: bundle
         continue-on-error: true
@@ -311,12 +323,12 @@ jobs:
       - name: Require every runtime check to pass
         if: always()
         env:
-          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.clipboard.outcome }} ${{ steps.bundle.outcome }} ${{ steps.protocols.outcome }} ${{ steps.notifications.outcome }} ${{ needs.utility-compatibility.result }} ${{ steps.safestorage.outcome }} ${{ steps.powersave.outcome }} ${{ steps.shutdown.outcome }}
+          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.clipboard.outcome }} ${{ steps.bundle.outcome }} ${{ steps.protocols.outcome }} ${{ steps.notifications.outcome }} ${{ needs.utility-compatibility.result }} ${{ steps.safestorage.outcome }} ${{ steps.powersave.outcome }} ${{ steps.shutdown.outcome }} ${{ steps.titlebar.outcome }}
         run: |
           python3 - <<'PY_GATE'
           import os
           outcomes = os.environ['RESULTS'].split()
-          assert len(outcomes) == 17 and all(result == 'success' for result in outcomes), outcomes
+          assert len(outcomes) == 18 and all(result == 'success' for result in outcomes), outcomes
           PY_GATE
       - name: Require measurements and startup diagnostic to complete
         if: always()

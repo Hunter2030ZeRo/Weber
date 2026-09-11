@@ -8,6 +8,7 @@
 #include "resource_broker.h"
 #include "frame.h"
 #include "desktop_capture.h"
+#include "titlebar_overlay.h"
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 #include <nlohmann/json.hpp>
@@ -76,6 +77,7 @@ struct Window {
   GtkWidget* box = nullptr;
   GtkWidget* area = nullptr;
   std::unique_ptr<weber::desktop::MenuView> menu;
+  std::unique_ptr<weber::desktop::TitleBarOverlay> titlebar;
   std::atomic<bool> closed{false};
   std::mutex mutex;
   int wake_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
@@ -115,6 +117,7 @@ void Close(std::shared_ptr<Window> window) {
   window->Wake();
   { std::lock_guard<std::mutex> lock(window->mutex); if (window->resources) window->resources->Cancel(); }
   window->menu.reset();
+  window->titlebar.reset();
   gtk_widget_destroy(window->window);
   windows.erase(window->id);
   { std::lock_guard<std::mutex> lock(routes_mutex); routes.erase(window->id); }
@@ -311,7 +314,26 @@ void Create(const Json& request) {
   gtk_window_set_deletable(GTK_WINDOW(window->window), options.value("closable", true));
   gtk_window_set_default_size(GTK_WINDOW(window->window), window->width, window->height);
   gtk_container_add(GTK_CONTAINER(window->window), window->box);
-  gtk_box_pack_end(GTK_BOX(window->box), window->area, TRUE, TRUE, 0);
+  auto* overlay = gtk_overlay_new();
+  gtk_container_add(GTK_CONTAINER(overlay), window->area);
+  gtk_box_pack_end(GTK_BOX(window->box), overlay, TRUE, TRUE, 0);
+  const bool hidden = options.value("titleBarStyle", "default") == "hidden";
+  gtk_window_set_decorated(GTK_WINDOW(window->window), options.value("frame", true) && !hidden);
+  const auto titlebar = options.value("titleBarOverlay", Json(false));
+  if (hidden && titlebar != false) {
+    auto* widget = window->window;
+    try {
+    window->titlebar = std::make_unique<weber::desktop::TitleBarOverlay>(widget, overlay,
+      titlebar == true ? Json::object() : titlebar, options.value("minimizable", true),
+      options.value("maximizable", true), options.value("closable", true), [widget](const std::string& action) {
+        if (action == "minimize") gtk_window_iconify(GTK_WINDOW(widget));
+        else if (action == "maximize") {
+          if (gtk_window_is_maximized(GTK_WINDOW(widget))) gtk_window_unmaximize(GTK_WINDOW(widget));
+          else gtk_window_maximize(GTK_WINDOW(widget));
+        } else gtk_window_close(GTK_WINDOW(widget));
+      });
+    } catch (...) { gtk_widget_destroy(window->window); throw; }
+  }
   window->menu = std::make_unique<weber::desktop::MenuView>(window->window, window->box, id, Emit);
   gtk_widget_set_can_focus(window->area, TRUE);
   gtk_widget_add_events(window->area, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
@@ -421,12 +443,21 @@ void Dispatch(const Json& request) {
     }
     if (method == "page.command") { Queue(window, request); return; }
     if (method == "window.getMenuState") { Reply(request, window->menu->Describe()); return; }
+    if (method == "window.getTitleBarOverlayState") {
+      Json state = window->titlebar ? window->titlebar->Describe() : Json(nullptr);
+      if (!state.is_null()) state["content"] = {{"width", gtk_widget_get_allocated_width(window->area)}, {"height", gtk_widget_get_allocated_height(window->area)}};
+      Reply(request, state); return;
+    }
     if (method == "window.close") Close(window);
     else if (method == "window.setMenu") window->menu->Set(request.at("menu"));
     else if (method == "window.updateMenu") window->menu->Update(request.at("menu"));
     else if (method == "window.show") gtk_widget_show_all(window->window);
     else if (method == "window.hide") gtk_widget_hide(window->window);
     else if (method == "window.setTitle") gtk_window_set_title(GTK_WINDOW(window->window), request.at("title").get<std::string>().c_str());
+    else if (method == "window.setTitleBarOverlay") {
+      if (!window->titlebar) throw std::runtime_error("Title bar overlay is not enabled for this window");
+      window->titlebar->Update(request.at("options"));
+    }
     else if (method == "window.setBounds") {
       const auto& bounds = request.at("bounds");
       const int width = bounds.value("width", window->width), height = bounds.value("height", window->height);

@@ -91,6 +91,7 @@ function createBindings(host, appPath, loadInternal) {
 
   function startWindow(self, options) {
     if (!ready) throw new Error('Cannot create BrowserWindow before app is ready');
+    const titlebar = require('./titlebar-options.cjs').windowTitleBarOptions(options);
     EventEmitter.call(self);
     self.id = ++nextId;
     self._destroyed = false;
@@ -100,9 +101,11 @@ function createBindings(host, appPath, loadInternal) {
       width: options.width ?? 800, height: options.height ?? 600 };
     self._title = options.title ?? name;
     self._options = options;
+    self._titleBarOverlayEnabled = titlebar.titleBarOverlay !== false;
     self._parent = options.parent ?? null;
     self._ready = host.request('window.create', { windowId: self.id,
-      options: { ...self._bounds, title: self._title, show: self._visible, closable: options.closable !== false } });
+      options: { ...self._bounds, ...titlebar, title: self._title, show: self._visible,
+        closable: options.closable !== false, minimizable: options.minimizable !== false, maximizable: options.maximizable !== false } });
     self._ready.catch(error => { self.emit('creation-failed', error); app.emit('weber-error', error); });
     windows.set(self.id, self);
   }
@@ -128,6 +131,12 @@ function createBindings(host, appPath, loadInternal) {
     getSize() { return [this._bounds.width, this._bounds.height]; },
     getContentSize() { return this.getSize(); },
     getTitle() { return this._title; },
+    setTitleBarOverlay(options) {
+      if (this._destroyed) throw new Error('Object has been destroyed');
+      if (!this._titleBarOverlayEnabled) throw new Error('Title bar overlay is not enabled for this window');
+      const update = require('./titlebar-options.cjs').titleBarOptions(options);
+      this._host('window.setTitleBarOverlay', { options: update }).catch(error => app.emit('weber-error', error));
+    },
     setTitle(title) {
       this._title = String(title);
       this._host('window.setTitle', { title: this._title }).catch(error => app.emit('weber-error', error));
