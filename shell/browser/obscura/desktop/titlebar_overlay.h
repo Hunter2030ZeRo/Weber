@@ -117,7 +117,7 @@ class TitleBarOverlay {
   }
   void Restyle() {
     gchar* color = gdk_rgba_to_string(&background_);
-    const std::string css = std::string("#weber-window-control { padding: 0; margin: 0; border: none; border-radius: 0; min-width: 0; min-height: 0; box-shadow: none; background-image: none; background-color: ") + color + "; }\n"
+    const std::string css = std::string("#weber-window-control { padding: 0; margin: 0; border: none; border-radius: 0; min-width: 0; min-height: 0; box-shadow: none; transition-duration: 0s; background-image: none; background-color: ") + color + "; }\n"
       "#weber-window-control:hover { background-image: linear-gradient(rgba(127,127,127,0.2),rgba(127,127,127,0.2)); }";
     g_free(color);
     auto* provider = gtk_css_provider_new();

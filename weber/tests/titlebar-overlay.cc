@@ -33,7 +33,10 @@ int main(int argc, char** argv) {
     Check(pixels() == 0x112233, "initial native background pixels");
     bar.Update({{"height", 44}, {"color", "#aabbcc"}}); Settle();
     state = bar.Describe();
-    Check(state["controls"]["height"] == 44 && pixels() == 0xaabbcc, "updated geometry and pixels");
+    const auto updated_pixel = pixels();
+    std::cerr << "updated-state=" << state.dump() << " pixel=" << std::hex << updated_pixel << std::dec << std::endl;
+    Check(state["controls"]["height"] == 44, "updated geometry");
+    Check(updated_pixel == 0xaabbcc, "updated native background pixels");
     Check(state["symbolColor"] == "rgb(255,255,255)", "partial update preserves symbol color");
     try { bar.Update({{"height", 55}, {"color", "not-a-color"}}); throw std::logic_error("accepted bad color"); }
     catch (const std::runtime_error&) {}
