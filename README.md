@@ -10,23 +10,27 @@ Electron's MIT license remains at the repository root; its README is
 `weber/`; individual source SPDX notices remain intact. Exact imported revisions are recorded in
 [weber/UPSTREAM_REVISIONS](weber/UPSTREAM_REVISIONS).
 
-## Latest shutdown milestone (`ea03b58`)
+## Latest native title-bar milestone (`2642ee0`)
 
-[CI run 34602840275](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34602840275)
-passed all **17 runtime gates**, including Node/Bun shutdown wrapper regressions
-and real Unix-FD logind tests through both the isolated native host and the full
-source runtime. Every shutdown fixture ended with zero remaining leases.
-See the [validation record](weber/packaging/results/ea03b58.json) and
-[shutdown scope](weber/electron-runtime/POWER_MONITOR.md).
+[CI run 34611746936, attempt 2](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34611746936/attempts/2)
+passed all **18 runtime gates**. Native GTK pixel tests and Node/Bun full-runtime
+fixtures verify title-bar creation, color/height updates, independent windows,
+real X11 close input, close cancellation and no click-through. Existing shutdown
+FD regressions also pass with zero remaining leases. See the
+[validation record](weber/packaging/results/2642ee0.json) and [title-bar scope](weber/electron-runtime/TITLEBAR.md).
 
-The strict original-layout VS Code 1.136.2 run now passes shutdown registration
-and reports `TypeError: t.setTitleBarOverlay is not a function` during window
-configuration. The expanded-dependency comparison reports the same error.
-Both retain `ready: false` and `timed_out: true`; their reported exit code 0
-comes after diagnostic termination and is **not** successful workbench startup.
-CommonJS and Node ESM loaders are unchanged. The smallest observed next contract
-is BrowserWindow title-bar overlay configuration, followed by another strict
-application run; standalone Monaco worker semantics remain a separate gap.
+The strict original-layout VS Code 1.136.2 run now passes the previous
+`setTitleBarOverlay` failure and reports
+`TypeError: e?.isFullScreen is not a function`. The expanded-dependency comparison
+reports the same error. Both retain `ready: false` and `timed_out: true`; exit
+code 0 follows diagnostic termination and is **not** successful workbench startup.
+The first CI attempt failed while extracting a truncated official download;
+retrying the same source commit completed both application diagnostics.
+
+CommonJS/Node ESM loaders and shutdown implementation are unchanged. The next
+observed contract is native window fullscreen state and its original Electron
+query API. Browser-side Window Controls Overlay geometry/CSS integration and
+standalone Monaco worker semantics remain separate gaps.
 
 ## Executable implementation
 

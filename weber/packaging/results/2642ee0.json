@@ -1,0 +1,147 @@
+{
+  "kind": "validated-native-titlebar-runtime-milestone",
+  "commit": "2642ee0fcc906ba637ea01adab3bef549a4a801f",
+  "previousValidatedRuntime": "ea03b5896cbf91ccbc1d7a9464204dccfb7513c4",
+  "workflowRun": 34611746936,
+  "workflowAttempt": 2,
+  "linuxJob": 103306963573,
+  "utilityJob": 103306961520,
+  "allRuntimeGatesPassed": true,
+  "runtimeGates": 18,
+  "runtimeGateEvidence": "Final RESULTS assertion uses all 18 step.outcome values",
+  "evidenceSource": "Completed CI job logs; VS Code objects are exact printed diagnostic summaries, not full artifact reports",
+  "sourceEvidenceArtifact": 10269905522,
+  "developmentBundleArtifact": 10269855526,
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34611746936/artifacts/10269855526",
+  "chromiumBrowserRuntimeIncluded": false,
+  "moduleLoadersModified": false,
+  "shutdownImplementationModified": false,
+  "previousStartupError": "TypeError: t.setTitleBarOverlay is not a function",
+  "vscode": {
+    "kind": "vscode-startup-diagnostic",
+    "diagnostic_completed": true,
+    "ready": false,
+    "version": "1.136.2",
+    "stage": "complete",
+    "error": "TypeError: e?.isFullScreen is not a function",
+    "exit_code": 0,
+    "timed_out": true
+  },
+  "vscodeExpandedDependencies": {
+    "kind": "vscode-expanded-dependency-diagnostic",
+    "diagnostic_completed": true,
+    "ready": false,
+    "version": "1.136.2",
+    "stage": "complete",
+    "error": "TypeError: e?.isFullScreen is not a function",
+    "exit_code": 0,
+    "timed_out": true
+  },
+  "titlebarRuntime": [
+    {
+      "kind": "titlebar-runtime-acceptance",
+      "backend": "node",
+      "passed": true,
+      "checks": [
+        "original-BrowserWindow",
+        "creation",
+        "partial-update",
+        "content-size",
+        "independent-window",
+        "native-X11-close",
+        "cancel-close",
+        "no-click-through",
+        "destroyed-window"
+      ]
+    },
+    {
+      "kind": "titlebar-runtime-acceptance",
+      "backend": "bun",
+      "passed": true,
+      "checks": [
+        "original-BrowserWindow",
+        "creation",
+        "partial-update",
+        "content-size",
+        "independent-window",
+        "native-X11-close",
+        "cancel-close",
+        "no-click-through",
+        "destroyed-window"
+      ]
+    }
+  ],
+  "nativeTitlebar": [
+    {
+      "kind": "native-titlebar-overlay",
+      "passed": true,
+      "checks": [
+        "geometry",
+        "native-pixels",
+        "partial-update",
+        "invalid-rollback",
+        "button-actions",
+        "content-size",
+        "lifecycle"
+      ]
+    }
+  ],
+  "shutdownProtocols": [
+    {
+      "kind": "native-shutdown-fd-protocol",
+      "backend": "node",
+      "fullRuntime": true,
+      "passed": true,
+      "remainingLeases": 0,
+      "physicalShutdownTested": false,
+      "checks": [
+        "first-last",
+        "ordinary",
+        "once-cancel",
+        "deadline",
+        "daemon-loss-recovery",
+        "denied",
+        "malformed-fd",
+        "late-reply",
+        "quit",
+        "crash"
+      ]
+    },
+    {
+      "kind": "native-shutdown-fd-protocol",
+      "backend": "bun",
+      "fullRuntime": true,
+      "passed": true,
+      "remainingLeases": 0,
+      "physicalShutdownTested": false,
+      "checks": [
+        "first-last",
+        "ordinary",
+        "once-cancel",
+        "deadline",
+        "daemon-loss-recovery",
+        "denied",
+        "malformed-fd",
+        "late-reply",
+        "quit",
+        "crash"
+      ]
+    }
+  ],
+  "titlebarScope": {
+    "nativeGtkControls": true,
+    "partialUpdates": true,
+    "nativePixelsTested": true,
+    "closeCancellationTested": true,
+    "windowControlsOverlayWebApi": false,
+    "cssTitlebarAreaEnvironment": false,
+    "desktopWindowManagerAcceptance": false
+  },
+  "wholeVscodeVerified": false,
+  "firstAttempt": {
+    "diagnosticCompleted": false,
+    "stage": "extract",
+    "error": "EOFError: Compressed file ended before the end-of-stream marker was reached",
+    "resolution": "Reran failed workflow jobs at the identical source commit; both application diagnostics completed"
+  }
+}
