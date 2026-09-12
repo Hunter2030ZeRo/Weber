@@ -92,11 +92,13 @@ function createBindings(host, appPath, loadInternal) {
   function startWindow(self, options) {
     if (!ready) throw new Error('Cannot create BrowserWindow before app is ready');
     const titlebar = require('./titlebar-options.cjs').windowTitleBarOptions(options);
+    if (options.fullscreen !== undefined && typeof options.fullscreen !== 'boolean') throw new TypeError('fullscreen must be a boolean');
     EventEmitter.call(self);
     self.id = ++nextId;
     self._destroyed = false;
     self._visible = options.show !== false;
     self._focused = false;
+    self._fullScreen = false; // Confirmed native state, never the requested state.
     self._bounds = { x: options.x ?? 0, y: options.y ?? 0,
       width: options.width ?? 800, height: options.height ?? 600 };
     self._title = options.title ?? name;
@@ -104,7 +106,7 @@ function createBindings(host, appPath, loadInternal) {
     self._titleBarOverlayEnabled = titlebar.titleBarOverlay !== false;
     self._parent = options.parent ?? null;
     self._ready = host.request('window.create', { windowId: self.id,
-      options: { ...self._bounds, ...titlebar, title: self._title, show: self._visible,
+      options: { ...self._bounds, ...titlebar, title: self._title, show: self._visible, fullscreen: options.fullscreen === true,
         closable: options.closable !== false, minimizable: options.minimizable !== false, maximizable: options.maximizable !== false } });
     self._ready.catch(error => { self.emit('creation-failed', error); app.emit('weber-error', error); });
     windows.set(self.id, self);
@@ -123,6 +125,15 @@ function createBindings(host, appPath, loadInternal) {
     isDestroyed() { return this._destroyed; },
     isVisible() { return this._visible && !this._destroyed; },
     isFocused() { return this._focused && !this._destroyed; },
+    isFullScreen() {
+      if (this._destroyed) throw new Error('Object has been destroyed');
+      return this._fullScreen;
+    },
+    setFullScreen(flag) {
+      if (this._destroyed) throw new Error('Object has been destroyed');
+      if (typeof flag !== 'boolean') throw new TypeError('fullscreen must be a boolean');
+      this._host('window.setFullScreen', { fullscreen: flag }).catch(error => app.emit('weber-error', error));
+    },
     isMinimized() { return false; },
     isEnabled() { return !this._destroyed; },
     isClosable() { return this._options.closable !== false; },
@@ -178,7 +189,7 @@ function createBindings(host, appPath, loadInternal) {
     setMenu(menu) { menuBinding.setWindowMenu(this, menu); },
   });
   for (const method of ['focus', 'blur', 'maximize', 'unmaximize', 'minimize',
-    'restore', 'setFullScreen', 'setAlwaysOnTop', 'setResizable', 'center', 'setBackgroundColor',
+    'restore', 'setAlwaysOnTop', 'setResizable', 'center', 'setBackgroundColor',
     'isMinimizable', 'isFullScreenable']) {
     BaseWindow.prototype[method] = function () { return unsupported(`BaseWindow.${method}`); };
   }
@@ -504,6 +515,10 @@ function createBindings(host, appPath, loadInternal) {
     else if (type === 'focus' || type === 'blur') {
       win._focused = type === 'focus';
       win.emit(type, event(win));
+    } else if (type === 'fullscreen-changed') {
+      if (typeof message.fullscreen !== 'boolean' || win._fullScreen === message.fullscreen) return;
+      win._fullScreen = message.fullscreen;
+      win.emit(win._fullScreen ? 'enter-full-screen' : 'leave-full-screen', event(win));
     } else if (type === 'resize') {
       if (message.width && message.height) Object.assign(win._bounds, { width: message.width, height: message.height });
       win.emit('resize');

@@ -128,7 +128,7 @@ jobs:
             weber -> target
             weber/runtime-config -> target
           cache-on-failure: true
-      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libgtk-3-dev libglib2.0-bin libsecret-1-dev gnome-keyring libxss-dev nlohmann-json3-dev cmake xvfb xauth xdotool xclip python3-gi dbus-x11
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libgtk-3-dev libglib2.0-bin libsecret-1-dev gnome-keyring libxss-dev nlohmann-json3-dev cmake xvfb xauth xdotool xclip python3-gi dbus-x11 openbox wmctrl
       - name: Test real engine APIs
         id: engine
         continue-on-error: true
@@ -275,6 +275,13 @@ jobs:
         run: |
           xvfb-run -a node weber/electron-runtime/bootstrap.cjs weber/electron-runtime/titlebar-fixture
           xvfb-run -a bun weber/electron-runtime/bootstrap.cjs weber/electron-runtime/titlebar-fixture
+      - name: Test fullscreen state with a real X11 window manager
+        id: fullscreen
+        continue-on-error: true
+        run: |
+          for backend in node bun; do
+            xvfb-run -a -s '-screen 0 1024x768x24' bash weber/tests/fullscreen-runtime.sh "$backend"
+          done
       - name: Assemble and execute Linux development bundle
         id: bundle
         continue-on-error: true
@@ -323,7 +330,7 @@ jobs:
       - name: Require every runtime check to pass
         if: always()
         env:
-          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.clipboard.outcome }} ${{ steps.bundle.outcome }} ${{ steps.protocols.outcome }} ${{ steps.notifications.outcome }} ${{ needs.utility-compatibility.result }} ${{ steps.safestorage.outcome }} ${{ steps.powersave.outcome }} ${{ steps.shutdown.outcome }} ${{ steps.titlebar.outcome }}
+          RESULTS: ${{ steps.engine.outcome }} ${{ steps.boundary.outcome }} ${{ steps.desktop.outcome }} ${{ steps.config.outcome }} ${{ steps.native.outcome }} ${{ steps.node.outcome }} ${{ steps.bun.outcome }} ${{ steps.menus.outcome }} ${{ steps.shortcuts.outcome }} ${{ steps.clipboard.outcome }} ${{ steps.bundle.outcome }} ${{ steps.protocols.outcome }} ${{ steps.notifications.outcome }} ${{ needs.utility-compatibility.result }} ${{ steps.safestorage.outcome }} ${{ steps.powersave.outcome }} ${{ steps.shutdown.outcome }} ${{ steps.titlebar.outcome }} ${{ steps.fullscreen.outcome }}
         run: |
           python3 - <<'PY_GATE'
           import os

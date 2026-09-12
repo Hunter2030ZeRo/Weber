@@ -347,6 +347,13 @@ void Create(const Json& request) {
       Emit({{"event", event->in ? "focus" : "blur"}, {"windowId", w->id}});
       return FALSE;
     })), window.get());
+  g_signal_connect(window->window, "window-state-event", G_CALLBACK((+[](GtkWidget*, GdkEventWindowState* state, gpointer data) -> gboolean {
+    auto* w = static_cast<Window*>(data);
+    if (!w->closed && (state->changed_mask & GDK_WINDOW_STATE_FULLSCREEN))
+      Emit({{"event", "fullscreen-changed"}, {"windowId", w->id},
+        {"fullscreen", (state->new_window_state & GDK_WINDOW_STATE_FULLSCREEN) != 0}});
+    return FALSE;
+  })), window.get());
   g_signal_connect(window->window, "delete-event", G_CALLBACK((+[](GtkWidget*, GdkEvent*, gpointer data) -> gboolean {
     auto found = windows.find(static_cast<Window*>(data)->id);
     if (found != windows.end()) Emit({{"event", "close-requested"}, {"windowId", found->first}});
@@ -417,6 +424,7 @@ void Create(const Json& request) {
         {"key", DomKey(event->keyval)}, {"text", text}, {"modifiers", modifiers}});
       return TRUE;
     })), window.get());
+  if (options.value("fullscreen", false)) gtk_window_fullscreen(GTK_WINDOW(window->window));
   if (options.value("show", true)) gtk_widget_show_all(window->window);
   window->worker = std::thread(Work, window, request);
 }
@@ -442,6 +450,11 @@ void Dispatch(const Json& request) {
       Reply(request, nullptr); return;
     }
     if (method == "page.command") { Queue(window, request); return; }
+    if (method == "window.getFullScreenState") {
+      auto* native = gtk_widget_get_window(window->window);
+      Reply(request, native && (gdk_window_get_state(native) & GDK_WINDOW_STATE_FULLSCREEN) != 0);
+      return;
+    }
     if (method == "window.getMenuState") { Reply(request, window->menu->Describe()); return; }
     if (method == "window.getTitleBarOverlayState") {
       Json state = window->titlebar ? window->titlebar->Describe() : Json(nullptr);
@@ -454,6 +467,10 @@ void Dispatch(const Json& request) {
     else if (method == "window.show") gtk_widget_show_all(window->window);
     else if (method == "window.hide") gtk_widget_hide(window->window);
     else if (method == "window.setTitle") gtk_window_set_title(GTK_WINDOW(window->window), request.at("title").get<std::string>().c_str());
+    else if (method == "window.setFullScreen") {
+      if (request.at("fullscreen").get<bool>()) gtk_window_fullscreen(GTK_WINDOW(window->window));
+      else gtk_window_unfullscreen(GTK_WINDOW(window->window));
+    }
     else if (method == "window.setTitleBarOverlay") {
       if (!window->titlebar) throw std::runtime_error("Title bar overlay is not enabled for this window");
       window->titlebar->Update(request.at("options"));
