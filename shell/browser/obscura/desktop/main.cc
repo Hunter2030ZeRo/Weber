@@ -352,6 +352,10 @@ void Create(const Json& request) {
     if (!w->closed && (state->changed_mask & GDK_WINDOW_STATE_FULLSCREEN))
       Emit({{"event", "fullscreen-changed"}, {"windowId", w->id},
         {"fullscreen", (state->new_window_state & GDK_WINDOW_STATE_FULLSCREEN) != 0}});
+    if (!w->closed && (state->changed_mask & (GDK_WINDOW_STATE_MAXIMIZED | GDK_WINDOW_STATE_ICONIFIED)))
+      Emit({{"event", "window-state-changed"}, {"windowId", w->id},
+        {"maximized", (state->new_window_state & GDK_WINDOW_STATE_MAXIMIZED) != 0},
+        {"minimized", (state->new_window_state & GDK_WINDOW_STATE_ICONIFIED) != 0}});
     return FALSE;
   })), window.get());
   g_signal_connect(window->window, "delete-event", G_CALLBACK((+[](GtkWidget*, GdkEvent*, gpointer data) -> gboolean {
@@ -450,6 +454,13 @@ void Dispatch(const Json& request) {
       Reply(request, nullptr); return;
     }
     if (method == "page.command") { Queue(window, request); return; }
+    if (method == "window.getWindowState") {
+      auto* native = gtk_widget_get_window(window->window);
+      const auto state = native ? gdk_window_get_state(native) : GdkWindowState(0);
+      Reply(request, {{"maximized", (state & GDK_WINDOW_STATE_MAXIMIZED) != 0},
+        {"minimized", (state & GDK_WINDOW_STATE_ICONIFIED) != 0}});
+      return;
+    }
     if (method == "window.getFullScreenState") {
       auto* native = gtk_widget_get_window(window->window);
       Reply(request, native && (gdk_window_get_state(native) & GDK_WINDOW_STATE_FULLSCREEN) != 0);
@@ -467,6 +478,20 @@ void Dispatch(const Json& request) {
     else if (method == "window.show") gtk_widget_show_all(window->window);
     else if (method == "window.hide") gtk_widget_hide(window->window);
     else if (method == "window.setTitle") gtk_window_set_title(GTK_WINDOW(window->window), request.at("title").get<std::string>().c_str());
+    else if (method == "window.maximize") {
+      gtk_window_maximize(GTK_WINDOW(window->window));
+      gtk_widget_show_all(window->window);
+    }
+    else if (method == "window.unmaximize") gtk_window_unmaximize(GTK_WINDOW(window->window));
+    else if (method == "window.minimize") {
+      gtk_window_iconify(GTK_WINDOW(window->window));
+      gtk_widget_show_all(window->window);
+    }
+    else if (method == "window.restore") {
+      gtk_window_deiconify(GTK_WINDOW(window->window));
+      gtk_window_unmaximize(GTK_WINDOW(window->window));
+      gtk_widget_show_all(window->window);
+    }
     else if (method == "window.setFullScreen") {
       if (request.at("fullscreen").get<bool>()) gtk_window_fullscreen(GTK_WINDOW(window->window));
       else gtk_window_unfullscreen(GTK_WINDOW(window->window));

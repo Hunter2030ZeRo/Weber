@@ -10,4 +10,4 @@ for ((i=0; i<100; i++)); do
   sleep 0.05
 done
 if [[ "$fullscreen_wm_ready" != true ]]; then echo 'Window manager did not start' >&2; exit 1; fi
-timeout 40s "$1" weber/electron-runtime/bootstrap.cjs weber/electron-runtime/fullscreen-fixture
+timeout 40s "$1" weber/electron-runtime/bootstrap.cjs "${2:-weber/electron-runtime/fullscreen-fixture}"

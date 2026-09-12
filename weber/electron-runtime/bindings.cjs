@@ -98,6 +98,8 @@ function createBindings(host, appPath, loadInternal) {
     self._destroyed = false;
     self._visible = options.show !== false;
     self._focused = false;
+    self._maximized = false;
+    self._minimized = false;
     self._fullScreen = false; // Confirmed native state, never the requested state.
     self._bounds = { x: options.x ?? 0, y: options.y ?? 0,
       width: options.width ?? 800, height: options.height ?? 600 };
@@ -137,7 +139,14 @@ function createBindings(host, appPath, loadInternal) {
       if (typeof flag !== 'boolean') throw new TypeError('fullscreen must be a boolean');
       this._host('window.setFullScreen', { fullscreen: flag }).catch(error => app.emit('weber-error', error));
     },
-    isMinimized() { return false; },
+    isMaximized() {
+      if (this._destroyed) throw new Error('Object has been destroyed');
+      return this._maximized;
+    },
+    isMinimized() {
+      if (this._destroyed) throw new Error('Object has been destroyed');
+      return this._minimized;
+    },
     isEnabled() { return !this._destroyed; },
     isClosable() { return this._options.closable !== false; },
     getBounds() { return { ...this._bounds }; },
@@ -191,8 +200,18 @@ function createBindings(host, appPath, loadInternal) {
     },
     setMenu(menu) { menuBinding.setWindowMenu(this, menu); },
   });
-  for (const method of ['focus', 'blur', 'maximize', 'unmaximize', 'minimize',
-    'restore', 'setAlwaysOnTop', 'setResizable', 'center', 'setBackgroundColor',
+  for (const method of ['maximize', 'unmaximize', 'minimize', 'restore']) {
+    BaseWindow.prototype[method] = function () {
+      if (this._destroyed) throw new Error('Object has been destroyed');
+      this._host(`window.${method}`).then(() => {
+        if (!this._destroyed && !this._visible && method !== 'unmaximize') {
+          this._visible = true;
+          this.emit('show');
+        }
+      }).catch(error => app.emit('weber-error', error));
+    };
+  }
+  for (const method of ['focus', 'blur', 'setAlwaysOnTop', 'setResizable', 'center', 'setBackgroundColor',
     'isMinimizable', 'isFullScreenable']) {
     BaseWindow.prototype[method] = function () { return unsupported(`BaseWindow.${method}`); };
   }
@@ -518,6 +537,14 @@ function createBindings(host, appPath, loadInternal) {
     else if (type === 'focus' || type === 'blur') {
       win._focused = type === 'focus';
       win.emit(type, event(win));
+    } else if (type === 'window-state-changed') {
+      if (typeof message.maximized !== 'boolean' || typeof message.minimized !== 'boolean') return;
+      const maximizedChanged = win._maximized !== message.maximized;
+      const minimizedChanged = win._minimized !== message.minimized;
+      win._maximized = message.maximized;
+      win._minimized = message.minimized;
+      if (maximizedChanged) win.emit(win._maximized ? 'maximize' : 'unmaximize', event(win));
+      if (minimizedChanged) win.emit(win._minimized ? 'minimize' : 'restore', event(win));
     } else if (type === 'fullscreen-changed') {
       if (typeof message.fullscreen !== 'boolean' || win._fullScreen === message.fullscreen) return;
       win._fullScreen = message.fullscreen;
