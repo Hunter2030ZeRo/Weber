@@ -26,6 +26,13 @@ changes, hidden creation, independent windows and destruction in fullscreen.
 Run it with `xvfb-run -a -s '-screen 0 1024x768x24' bash
 weber/tests/fullscreen-runtime.sh node` (or `bun`) after building the host.
 
+On Linux, `isSimpleFullScreen`, `setSimpleFullScreen` and the original
+`simpleFullScreen` property use this same native state and transition path.
+This matches `NativeWindowViews::SetSimpleFullScreen` / `IsSimpleFullScreen`
+in the retained Electron source (`shell/browser/native_window_views.cc`).
+The fixture checks the aliases while entering, leaving, receiving external
+window-manager changes and after destruction.
+
 This scope does not implement HTML element fullscreen, kiosk policy,
 `setFullScreenable`, macOS simple fullscreen, or acceptance on Wayland and
 other desktop window managers. Workbench readiness is established only by the

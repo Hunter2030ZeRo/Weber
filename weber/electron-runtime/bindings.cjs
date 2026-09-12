@@ -129,6 +129,9 @@ function createBindings(host, appPath, loadInternal) {
       if (this._destroyed) throw new Error('Object has been destroyed');
       return this._fullScreen;
     },
+    // NativeWindowViews uses the same fullscreen state for these APIs on Linux.
+    isSimpleFullScreen() { return this.isFullScreen(); },
+    setSimpleFullScreen(flag) { this.setFullScreen(flag); },
     setFullScreen(flag) {
       if (this._destroyed) throw new Error('Object has been destroyed');
       if (typeof flag !== 'boolean') throw new TypeError('fullscreen must be a boolean');

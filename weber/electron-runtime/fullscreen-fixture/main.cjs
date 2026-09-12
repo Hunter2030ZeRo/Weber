@@ -23,10 +23,13 @@ app.whenReady().then(async () => {
   const overlay = () => win._host('window.getTitleBarOverlayState');
   await wait(async () => (await overlay()).content.width === 500);
   assert.equal(win.isFullScreen(), false);
+  assert.equal(win.isSimpleFullScreen(), false);
+  assert.equal(win.simpleFullScreen, false);
   assert.equal(await state(), false);
   const before = (await overlay()).content;
   assert.throws(() => win.setFullScreen(1), TypeError);
-  win.setFullScreen(true);
+  assert.throws(() => win.setSimpleFullScreen(1), TypeError);
+  win.setSimpleFullScreen(true);
   // The setter cannot turn a queued request into confirmed native state.
   assert.equal(win.isFullScreen(), false);
   await wait(async () => win.fullScreen && await state() && !(await overlay()).visible);
@@ -34,13 +37,15 @@ app.whenReady().then(async () => {
   win.setFullScreen(true);
   await win._host('window.getFullScreenState'); await delay(100);
   assert.deepEqual(transitions, [true], 'duplicate request must not duplicate transition');
-  win.fullScreen = false;
+  assert.equal(win.isSimpleFullScreen(), true);
+  win.simpleFullScreen = false;
   await wait(async () => !win.isFullScreen() && !(await state()) && (await overlay()).visible);
   await wait(async () => JSON.stringify((await overlay()).content) === JSON.stringify(before));
   const xid = execFileSync('xdotool', ['search', '--name', '^weber-fullscreen-test$'], { encoding: 'utf8' }).trim().split('\n').at(-1);
   const external = action => execFileSync('wmctrl', ['-i', '-r', xid, '-b', action + ',fullscreen']);
   external('add'); await wait(() => win.isFullScreen());
   assert.equal(await state(), true);
+  assert.equal(win.simpleFullScreen, true);
   external('remove'); await wait(() => !win.isFullScreen());
   assert.deepEqual(transitions, [true, false, true, false]);
   const other = new BrowserWindow({ show: false, fullscreen: true, width: 400, height: 250 });
@@ -54,9 +59,11 @@ app.whenReady().then(async () => {
   win.setFullScreen(true); await wait(() => win.isFullScreen());
   win.close(); await wait(() => win.isDestroyed());
   assert.throws(() => win.isFullScreen(), /destroyed/);
+  assert.throws(() => win.isSimpleFullScreen(), /destroyed/);
+  assert.throws(() => win.setSimpleFullScreen(false), /destroyed/);
   assert.throws(() => win.setFullScreen(false), /destroyed/);
   console.log(JSON.stringify({ kind: 'fullscreen-runtime-acceptance', backend: process.versions.bun ? 'bun' : 'node',
-    passed: true, windowManager: 'Openbox', checks: ['original-BrowserWindow', 'native-state', 'event-order',
+    passed: true, windowManager: 'Openbox', checks: ['original-BrowserWindow', 'Linux-simple-fullscreen-alias', 'native-state', 'event-order',
       'screen-geometry', 'overlay-hide-restore', 'bounds-restore', 'duplicate-request', 'external-WM-change',
       'hidden-creation', 'independent-windows', 'argument-validation', 'destroy-in-fullscreen'] }));
   app.quit();
