@@ -335,7 +335,7 @@ jobs:
           python3 - <<'PY_GATE'
           import os
           outcomes = os.environ['RESULTS'].split()
-          assert len(outcomes) == 18 and all(result == 'success' for result in outcomes), outcomes
+          assert len(outcomes) == 19 and all(result == 'success' for result in outcomes), outcomes
           PY_GATE
       - name: Require measurements and startup diagnostic to complete
         if: always()
