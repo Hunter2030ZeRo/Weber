@@ -109,7 +109,7 @@ class MenuView {
         {"enabled", bool(gtk_widget_get_sensitive(widget))}, {"translated", translated},
         {"x", origin_x + x}, {"y", origin_y + y}, {"width", allocation.width}, {"height", allocation.height}});
     }
-    return {{"menuId", root_menu_id_}, {"barVisible", visible_}, {"autoHide", auto_hide_}, {"barMapped", bar_ && gtk_widget_get_mapped(bar_)}, {"opens", opens_}, {"activations", activations_}, {"items", items}};
+    return {{"menuId", root_menu_id_}, {"barVisible", visible_}, {"barHeight", bar_ ? gtk_widget_get_allocated_height(bar_) : 0}, {"autoHide", auto_hide_}, {"barMapped", bar_ && gtk_widget_get_mapped(bar_)}, {"opens", opens_}, {"activations", activations_}, {"items", items}};
   }
 
  private:

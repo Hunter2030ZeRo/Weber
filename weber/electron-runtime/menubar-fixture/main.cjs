@@ -4,9 +4,10 @@ const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const { app, BrowserWindow, Menu } = require('electron');
 const delay = ms => new Promise(r => setTimeout(r, ms));
+let diagnostic = async () => ({});
 async function wait(predicate) {
   for (let i = 0; i < 250; i++) { if (await predicate()) return; await delay(20); }
-  throw Error('Menu bar fixture timed out');
+  throw Error('Menu bar fixture timed out: ' + JSON.stringify(await diagnostic()));
 }
 app.on('weber-error', error => { console.error(error); process.exit(1); });
 app.on('window-all-closed', () => {});
@@ -19,7 +20,12 @@ app.whenReady().then(async () => {
   ] }]);
   win.setMenu(menu()); await win._menuReady;
   const state = () => win._host('window.getMenuState');
-  await wait(async () => win.isMenuBarVisible() && (await state()).barMapped);
+  diagnostic = async () => ({ native: await state(), visible: win.isMenuBarVisible(), clicked });
+  await wait(async () => {
+    const current = await state();
+    return win.isMenuBarVisible() && current.barMapped && current.barHeight > 1 &&
+      current.content.height + current.barHeight === current.clientHeight;
+  });
   const shownHeight = (await state()).content.height;
   win.setMenuBarVisibility(false);
   await wait(async () => !win.isMenuBarVisible() && !(await state()).barMapped && (await state()).content.height > shownHeight);

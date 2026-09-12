@@ -468,6 +468,7 @@ void Dispatch(const Json& request) {
     }
     if (method == "window.getMenuState") {
       Json state = window->menu->Describe();
+      state["clientHeight"] = gtk_widget_get_allocated_height(window->window);
       state["content"] = {{"width", gtk_widget_get_allocated_width(window->area)}, {"height", gtk_widget_get_allocated_height(window->area)}};
       Reply(request, state); return;
     }
