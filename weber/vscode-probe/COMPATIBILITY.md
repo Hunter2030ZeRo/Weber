@@ -1,26 +1,26 @@
 # VS Code migration status
 
-## Latest native title-bar milestone (`2642ee0`)
+## Latest native fullscreen milestone (`64d48d6`)
 
-[CI run 34611746936, attempt 2](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34611746936/attempts/2)
-passed all **18 runtime gates**. Native GTK pixel tests and Node/Bun full-runtime
-fixtures verify title-bar creation, color/height updates, independent windows,
-real X11 close input, close cancellation and no click-through. Existing shutdown
-FD regressions also pass with zero remaining leases. See the
-[validation record](../packaging/results/2642ee0.json) and [title-bar scope](../electron-runtime/TITLEBAR.md).
+[CI run 34664504876](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34664504876)
+passed all **19 runtime gates**. Node/Bun full-runtime tests with Openbox verify
+actual fullscreen state, transition event ordering, screen-sized content,
+restored dimensions/title-bar controls, external window-manager changes,
+hidden creation, independent windows and destruction in fullscreen. Existing
+title-bar and shutdown regressions also pass. See the
+[validation record](../packaging/results/64d48d6.json) and [fullscreen scope](../electron-runtime/FULLSCREEN.md).
 
-The strict original-layout VS Code 1.136.2 run now passes the previous
-`setTitleBarOverlay` failure and reports
-`TypeError: e?.isFullScreen is not a function`. The expanded-dependency comparison
-reports the same error. Both retain `ready: false` and `timed_out: true`; exit
-code 0 follows diagnostic termination and is **not** successful workbench startup.
-The first CI attempt failed while extracting a truncated official download;
-retrying the same source commit completed both application diagnostics.
+The strict original-layout VS Code 1.136.2 run passes the previous `isFullScreen`
+failure and now reports `TypeError: e?.isSimpleFullScreen is not a function`.
+The expanded-dependency comparison reports the same error. Both retain
+`ready: false` and `timed_out: true`; exit code 0 follows diagnostic termination
+and is **not** successful workbench startup.
 
 CommonJS/Node ESM loaders and shutdown implementation are unchanged. The next
-observed contract is native window fullscreen state and its original Electron
-query API. Browser-side Window Controls Overlay geometry/CSS integration and
-standalone Monaco worker semantics remain separate gaps.
+smallest observed contract is `isSimpleFullScreen`: inspect its original Linux
+behavior before implementing the platform-specific query. HTML fullscreen,
+browser-side Window Controls Overlay geometry/CSS integration and standalone
+Monaco worker semantics remain separate gaps.
 
 Target: the unmodified Linux x64 VS Code 1.136.2 application at the revision in
 `pin.json`, running through the original Electron source modules on Obscura.
@@ -192,9 +192,11 @@ local delay bound. This does not establish physical desktop shutdown acceptance.
 The native title-bar contract is implemented and verified in `2642ee0`; see
 [TITLEBAR.md](../electron-runtime/TITLEBAR.md) for its tested scope and remaining
 browser geometry/CSS gaps. Both VS Code diagnostics now report
-`TypeError: e?.isFullScreen is not a function`. The smallest next step is to
-inspect the existing native window-state events and implement the original
-fullscreen query/state contract, then repeat the original-layout diagnostic.
+`TypeError: e?.isSimpleFullScreen is not a function` after native fullscreen
+query/setter support was verified in `64d48d6`. See
+[FULLSCREEN.md](../electron-runtime/FULLSCREEN.md). The smallest next step is to
+inspect the original Linux behavior of the simple-fullscreen query and preserve
+its distinction from native fullscreen, then repeat the original-layout diagnostic.
 Workbench readiness remains unverified.
 
 [ACCEPTANCE.md](ACCEPTANCE.md) records the project success criterion: the same

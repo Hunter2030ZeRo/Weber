@@ -1,0 +1,173 @@
+{
+  "kind": "validated-native-fullscreen-runtime-milestone",
+  "commit": "64d48d6426f763d366f51ed9ee6eb05051e7d9ae",
+  "implementationCommit": "fcb1a22c9f650e4c81152f3b4558ea526ddb8c62",
+  "previousValidatedRuntime": "2642ee0fcc906ba637ea01adab3bef549a4a801f",
+  "workflowRun": 34664504876,
+  "linuxJob": 103473895465,
+  "utilityJob": 103473588261,
+  "allRuntimeGatesPassed": true,
+  "runtimeGates": 19,
+  "runtimeGateEvidence": "Final RESULTS assertion checks exactly 19 step outcomes, all success",
+  "evidenceSource": "Completed CI job logs; VS Code objects are exact printed diagnostic summaries, not full artifact reports",
+  "sourceEvidenceArtifact": 10289155216,
+  "developmentBundleArtifact": 10288149881,
+  "artifact": "https://github.com/Hunter2030ZeRo/Weber/actions/runs/34664504876/artifacts/10288149881",
+  "moduleLoadersModified": false,
+  "shutdownImplementationModified": false,
+  "chromiumBrowserRuntimeIncluded": false,
+  "previousStartupError": "TypeError: e?.isFullScreen is not a function",
+  "fullscreenRuntime": [
+    {
+      "kind": "fullscreen-runtime-acceptance",
+      "backend": "node",
+      "passed": true,
+      "windowManager": "Openbox",
+      "checks": [
+        "original-BrowserWindow",
+        "native-state",
+        "event-order",
+        "screen-geometry",
+        "overlay-hide-restore",
+        "bounds-restore",
+        "duplicate-request",
+        "external-WM-change",
+        "hidden-creation",
+        "independent-windows",
+        "argument-validation",
+        "destroy-in-fullscreen"
+      ]
+    },
+    {
+      "kind": "fullscreen-runtime-acceptance",
+      "backend": "bun",
+      "passed": true,
+      "windowManager": "Openbox",
+      "checks": [
+        "original-BrowserWindow",
+        "native-state",
+        "event-order",
+        "screen-geometry",
+        "overlay-hide-restore",
+        "bounds-restore",
+        "duplicate-request",
+        "external-WM-change",
+        "hidden-creation",
+        "independent-windows",
+        "argument-validation",
+        "destroy-in-fullscreen"
+      ]
+    }
+  ],
+  "titlebarRuntime": [
+    {
+      "kind": "titlebar-runtime-acceptance",
+      "backend": "node",
+      "passed": true,
+      "checks": [
+        "original-BrowserWindow",
+        "creation",
+        "partial-update",
+        "content-size",
+        "independent-window",
+        "native-X11-close",
+        "cancel-close",
+        "no-click-through",
+        "destroyed-window"
+      ]
+    },
+    {
+      "kind": "titlebar-runtime-acceptance",
+      "backend": "bun",
+      "passed": true,
+      "checks": [
+        "original-BrowserWindow",
+        "creation",
+        "partial-update",
+        "content-size",
+        "independent-window",
+        "native-X11-close",
+        "cancel-close",
+        "no-click-through",
+        "destroyed-window"
+      ]
+    }
+  ],
+  "shutdownProtocols": [
+    {
+      "kind": "native-shutdown-fd-protocol",
+      "backend": "node",
+      "fullRuntime": true,
+      "passed": true,
+      "remainingLeases": 0,
+      "physicalShutdownTested": false,
+      "checks": [
+        "first-last",
+        "ordinary",
+        "once-cancel",
+        "deadline",
+        "daemon-loss-recovery",
+        "denied",
+        "malformed-fd",
+        "late-reply",
+        "quit",
+        "crash"
+      ]
+    },
+    {
+      "kind": "native-shutdown-fd-protocol",
+      "backend": "bun",
+      "fullRuntime": true,
+      "passed": true,
+      "remainingLeases": 0,
+      "physicalShutdownTested": false,
+      "checks": [
+        "first-last",
+        "ordinary",
+        "once-cancel",
+        "deadline",
+        "daemon-loss-recovery",
+        "denied",
+        "malformed-fd",
+        "late-reply",
+        "quit",
+        "crash"
+      ]
+    }
+  ],
+  "vscode": {
+    "kind": "vscode-startup-diagnostic",
+    "diagnostic_completed": true,
+    "ready": false,
+    "version": "1.136.2",
+    "stage": "complete",
+    "error": "TypeError: e?.isSimpleFullScreen is not a function",
+    "exit_code": 0,
+    "timed_out": true
+  },
+  "vscodeExpandedDependencies": {
+    "kind": "vscode-expanded-dependency-diagnostic",
+    "diagnostic_completed": true,
+    "ready": false,
+    "version": "1.136.2",
+    "stage": "complete",
+    "error": "TypeError: e?.isSimpleFullScreen is not a function",
+    "exit_code": 0,
+    "timed_out": true
+  },
+  "wholeVscodeVerified": false,
+  "scope": {
+    "confirmedNativeState": true,
+    "externalWindowManagerChanges": true,
+    "windowManager": "Openbox",
+    "displayProtocol": "X11",
+    "htmlElementFullscreen": false,
+    "waylandAcceptance": false,
+    "simpleFullscreenImplemented": false
+  },
+  "previousRun": {
+    "id": 34663898627,
+    "all19IndividualOutcomesPassed": true,
+    "aggregateFailedBecause": "Expected count remained 18 after adding fullscreen; corrected to 19 in this commit"
+  }
+}
