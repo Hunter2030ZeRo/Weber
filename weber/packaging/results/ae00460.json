@@ -1,0 +1,163 @@
+{
+  "kind": "validated-native-menubar-milestone",
+  "commit": "ae00460f4f21467e3348a85310a0a6f427d548cf",
+  "workflowRun": 34673770600,
+  "runtimeGates": 21,
+  "allRuntimeGatesPassed": true,
+  "evidenceSource": "Completed CI job logs; exact printed summaries, not full artifact reports",
+  "sourceEvidenceArtifact": 10291738066,
+  "developmentBundleArtifact": 10291084480,
+  "moduleLoadersModified": false,
+  "shutdownImplementationModified": false,
+  "fullscreen": [
+    {
+      "backend": "node",
+      "checks": [
+        "original-BrowserWindow",
+        "Linux-simple-fullscreen-alias",
+        "native-state",
+        "event-order",
+        "screen-geometry",
+        "overlay-hide-restore",
+        "bounds-restore",
+        "duplicate-request",
+        "external-WM-change",
+        "hidden-creation",
+        "independent-windows",
+        "argument-validation",
+        "destroy-in-fullscreen"
+      ],
+      "kind": "fullscreen-runtime-acceptance",
+      "passed": true,
+      "windowManager": "Openbox"
+    },
+    {
+      "backend": "bun",
+      "checks": [
+        "original-BrowserWindow",
+        "Linux-simple-fullscreen-alias",
+        "native-state",
+        "event-order",
+        "screen-geometry",
+        "overlay-hide-restore",
+        "bounds-restore",
+        "duplicate-request",
+        "external-WM-change",
+        "hidden-creation",
+        "independent-windows",
+        "argument-validation",
+        "destroy-in-fullscreen"
+      ],
+      "kind": "fullscreen-runtime-acceptance",
+      "passed": true,
+      "windowManager": "Openbox"
+    }
+  ],
+  "windowState": [
+    {
+      "backend": "node",
+      "checks": [
+        "native-state",
+        "event-order",
+        "maximize-geometry",
+        "restore-geometry",
+        "minimize-restore",
+        "external-WM-change",
+        "native-titlebar-buttons",
+        "duplicate-request",
+        "hidden-maximize",
+        "independent-windows",
+        "destroyed-window"
+      ],
+      "kind": "window-state-runtime-acceptance",
+      "passed": true,
+      "windowManager": "Openbox"
+    },
+    {
+      "backend": "bun",
+      "checks": [
+        "native-state",
+        "event-order",
+        "maximize-geometry",
+        "restore-geometry",
+        "minimize-restore",
+        "external-WM-change",
+        "native-titlebar-buttons",
+        "duplicate-request",
+        "hidden-maximize",
+        "independent-windows",
+        "destroyed-window"
+      ],
+      "kind": "window-state-runtime-acceptance",
+      "passed": true,
+      "windowManager": "Openbox"
+    }
+  ],
+  "menubar": [
+    {
+      "backend": "node",
+      "checks": [
+        "native-mapping",
+        "content-resize",
+        "show-hide-preservation",
+        "menu-replacement",
+        "hidden-accelerator",
+        "Alt-toggle",
+        "Escape",
+        "Alt-chord",
+        "auto-hide-policy",
+        "hidden-creation",
+        "independent-windows",
+        "frameless-policy",
+        "detach",
+        "argument-validation",
+        "destroyed-window"
+      ],
+      "kind": "menubar-runtime-acceptance",
+      "passed": true
+    },
+    {
+      "backend": "bun",
+      "checks": [
+        "native-mapping",
+        "content-resize",
+        "show-hide-preservation",
+        "menu-replacement",
+        "hidden-accelerator",
+        "Alt-toggle",
+        "Escape",
+        "Alt-chord",
+        "auto-hide-policy",
+        "hidden-creation",
+        "independent-windows",
+        "frameless-policy",
+        "detach",
+        "argument-validation",
+        "destroyed-window"
+      ],
+      "kind": "menubar-runtime-acceptance",
+      "passed": true
+    }
+  ],
+  "vscode": {
+    "diagnostic_completed": true,
+    "error": "Error: Weber has not implemented webRequest.onBeforeSendHeaders",
+    "exit_code": 0,
+    "kind": "vscode-startup-diagnostic",
+    "ready": false,
+    "stage": "complete",
+    "timed_out": true,
+    "version": "1.136.2"
+  },
+  "vscodeExpandedDependencies": {
+    "diagnostic_completed": true,
+    "error": "Error: Weber has not implemented webRequest.onBeforeSendHeaders",
+    "exit_code": 0,
+    "kind": "vscode-expanded-dependency-diagnostic",
+    "ready": false,
+    "stage": "complete",
+    "timed_out": true,
+    "version": "1.136.2"
+  },
+  "wholeVscodeVerified": false
+}

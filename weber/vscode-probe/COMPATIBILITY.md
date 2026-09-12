@@ -1,26 +1,29 @@
 # VS Code migration status
 
-## Latest native fullscreen milestone (`64d48d6`)
+## Latest native window and menu milestone (`ae00460`)
 
-[CI run 34664504876](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34664504876)
-passed all **19 runtime gates**. Node/Bun full-runtime tests with Openbox verify
-actual fullscreen state, transition event ordering, screen-sized content,
-restored dimensions/title-bar controls, external window-manager changes,
-hidden creation, independent windows and destruction in fullscreen. Existing
-title-bar and shutdown regressions also pass. See the
-[validation record](../packaging/results/64d48d6.json) and [fullscreen scope](../electron-runtime/FULLSCREEN.md).
+[CI run 34673770600](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34673770600)
+passed all **21 runtime gates**. Node/Bun tests with Openbox verify Linux simple
+fullscreen aliases, actual maximize/minimize/restore state and events, and native
+menu visibility with content resizing. Menu checks cover replacement, hidden
+accelerators, Alt toggling, Escape, independent windows and frameless policy.
+Existing title-bar, shutdown and runtime regressions also pass. See the
+[validation record](../packaging/results/ae00460.json), [window-state scope](../electron-runtime/WINDOW_STATE.md)
+and [menu-bar scope](../electron-runtime/MENUBAR.md).
 
-The strict original-layout VS Code 1.136.2 run passes the previous `isFullScreen`
-failure and now reports `TypeError: e?.isSimpleFullScreen is not a function`.
+The strict original-layout VS Code 1.136.2 run passes the previous fullscreen,
+window-state and menu-visibility failures and now reports
+`Error: Weber has not implemented webRequest.onBeforeSendHeaders`.
 The expanded-dependency comparison reports the same error. Both retain
 `ready: false` and `timed_out: true`; exit code 0 follows diagnostic termination
 and is **not** successful workbench startup.
 
 CommonJS/Node ESM loaders and shutdown implementation are unchanged. The next
-smallest observed contract is `isSimpleFullScreen`: inspect its original Linux
-behavior before implementing the platform-specific query. HTML fullscreen,
-browser-side Window Controls Overlay geometry/CSS integration and standalone
-Monaco worker semantics remain separate gaps.
+smallest observed contract is `webRequest.onBeforeSendHeaders`: implement actual
+outgoing-header modification and cancellation, preserving request framing,
+redirect credential stripping and abort behavior, then rerun original VS Code.
+HTML fullscreen, browser-side Window Controls Overlay geometry/CSS integration
+and standalone Monaco worker semantics remain separate gaps.
 
 Target: the unmodified Linux x64 VS Code 1.136.2 application at the revision in
 `pin.json`, running through the original Electron source modules on Obscura.
@@ -191,12 +194,15 @@ local delay bound. This does not establish physical desktop shutdown acceptance.
 
 The native title-bar contract is implemented and verified in `2642ee0`; see
 [TITLEBAR.md](../electron-runtime/TITLEBAR.md) for its tested scope and remaining
-browser geometry/CSS gaps. Both VS Code diagnostics now report
-`TypeError: e?.isSimpleFullScreen is not a function` after native fullscreen
-query/setter support was verified in `64d48d6`. See
-[FULLSCREEN.md](../electron-runtime/FULLSCREEN.md). The smallest next step is to
-inspect the original Linux behavior of the simple-fullscreen query and preserve
-its distinction from native fullscreen, then repeat the original-layout diagnostic.
+browser geometry/CSS gaps. Linux simple fullscreen uses the native fullscreen
+state, as in retained Electron, and is verified alongside maximize/minimize and
+restore in `ca71dce`. Menu visibility and hidden accelerators pass in `ae00460`.
+See [FULLSCREEN.md](../electron-runtime/FULLSCREEN.md),
+[WINDOW_STATE.md](../electron-runtime/WINDOW_STATE.md) and
+[MENUBAR.md](../electron-runtime/MENUBAR.md). Both VS Code diagnostics now report
+`Error: Weber has not implemented webRequest.onBeforeSendHeaders`.
+The next step is the outgoing-header hook with real mutation/cancellation and
+regression checks for redirects, request framing, aborts and custom protocols.
 Workbench readiness remains unverified.
 
 [ACCEPTANCE.md](ACCEPTANCE.md) records the project success criterion: the same

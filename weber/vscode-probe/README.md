@@ -1,26 +1,29 @@
 # VS Code startup diagnostic
 
-## Latest native fullscreen milestone (`64d48d6`)
+## Latest native window and menu milestone (`ae00460`)
 
-[CI run 34664504876](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34664504876)
-passed all **19 runtime gates**. Node/Bun full-runtime tests with Openbox verify
-actual fullscreen state, transition event ordering, screen-sized content,
-restored dimensions/title-bar controls, external window-manager changes,
-hidden creation, independent windows and destruction in fullscreen. Existing
-title-bar and shutdown regressions also pass. See the
-[validation record](../packaging/results/64d48d6.json) and [fullscreen scope](../electron-runtime/FULLSCREEN.md).
+[CI run 34673770600](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34673770600)
+passed all **21 runtime gates**. Node/Bun tests with Openbox verify Linux simple
+fullscreen aliases, actual maximize/minimize/restore state and events, and native
+menu visibility with content resizing. Menu checks cover replacement, hidden
+accelerators, Alt toggling, Escape, independent windows and frameless policy.
+Existing title-bar, shutdown and runtime regressions also pass. See the
+[validation record](../packaging/results/ae00460.json), [window-state scope](../electron-runtime/WINDOW_STATE.md)
+and [menu-bar scope](../electron-runtime/MENUBAR.md).
 
-The strict original-layout VS Code 1.136.2 run passes the previous `isFullScreen`
-failure and now reports `TypeError: e?.isSimpleFullScreen is not a function`.
+The strict original-layout VS Code 1.136.2 run passes the previous fullscreen,
+window-state and menu-visibility failures and now reports
+`Error: Weber has not implemented webRequest.onBeforeSendHeaders`.
 The expanded-dependency comparison reports the same error. Both retain
 `ready: false` and `timed_out: true`; exit code 0 follows diagnostic termination
 and is **not** successful workbench startup.
 
 CommonJS/Node ESM loaders and shutdown implementation are unchanged. The next
-smallest observed contract is `isSimpleFullScreen`: inspect its original Linux
-behavior before implementing the platform-specific query. HTML fullscreen,
-browser-side Window Controls Overlay geometry/CSS integration and standalone
-Monaco worker semantics remain separate gaps.
+smallest observed contract is `webRequest.onBeforeSendHeaders`: implement actual
+outgoing-header modification and cancellation, preserving request framing,
+redirect credential stripping and abort behavior, then rerun original VS Code.
+HTML fullscreen, browser-side Window Controls Overlay geometry/CSS integration
+and standalone Monaco worker semantics remain separate gaps.
 
 This downloads the pinned official Linux x64 VS Code 1.136.2 distribution,
 extracts only its `resources/app` directory and runs its unmodified application
