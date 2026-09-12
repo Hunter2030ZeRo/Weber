@@ -47,6 +47,8 @@ jobs:
         run: |
           c++ -std=c++17 -O2 -Wall -Wextra -Werror weber/tests/titlebar-overlay.cc $(pkg-config --cflags --libs gtk+-3.0) -o "$RUNNER_TEMP/titlebar-overlay"
           xvfb-run -a "$RUNNER_TEMP/titlebar-overlay"
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror weber/tests/menubar-accelerator.cc $(pkg-config --cflags --libs gtk+-3.0) -o "$RUNNER_TEMP/menubar-accelerator"
+          xvfb-run -a "$RUNNER_TEMP/menubar-accelerator"
       - name: Test shutdown delay descriptors and original listener lifecycle without the engine
         run: |
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -pthread weber/tests/power-monitor-host.cc shell/browser/obscura/desktop/{platform_sync,display,notification,power,power_save_blocker,clipboard}.cc $(pkg-config --cflags --libs gtk+-3.0 x11 xscrnsaver) -o "$RUNNER_TEMP/power-monitor-host"

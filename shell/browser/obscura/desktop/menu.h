@@ -239,8 +239,14 @@ class MenuView {
         })), activation, +[](gpointer data, GClosure*) { delete static_cast<Activation*>(data); }, GConnectFlags(0));
       }
       const auto [key, modifiers] = Accelerator(item.value("accelerator", ""));
-      if (key && (item.at("visible").get<bool>() || item.value("acceleratorWorksWhenHidden", true)))
+      if (key && (item.at("visible").get<bool>() || item.value("acceleratorWorksWhenHidden", true))) {
+        // GTK normally rejects accelerators when an ancestor menu bar is unmapped.
+        // Electron keeps them active; the JS owner revalidates command/ancestor policy.
+        g_signal_connect(widget, "can-activate-accel", G_CALLBACK(+[](GtkWidget* target, guint, gpointer) -> gboolean {
+          return gtk_widget_is_sensitive(target);
+        }), nullptr);
         gtk_widget_add_accelerator(widget, "activate", accel_, key, modifiers, GTK_ACCEL_VISIBLE);
+      }
     }
   }
   void Apply(GtkWidget* widget, const Json& item) {
