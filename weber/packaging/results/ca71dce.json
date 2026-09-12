@@ -1,0 +1,117 @@
+{
+  "kind": "validated-native-window-state-milestone",
+  "commit": "ca71dceff0623154b6847d4d8d10c3fbccb3d873",
+  "workflowRun": 34671931756,
+  "runtimeGates": 20,
+  "allRuntimeGatesPassed": true,
+  "evidenceSource": "Completed CI job logs; exact printed summaries, not full artifact reports",
+  "sourceEvidenceArtifact": 10291266531,
+  "developmentBundleArtifact": 10291061872,
+  "moduleLoadersModified": false,
+  "shutdownImplementationModified": false,
+  "fullscreen": [
+    {
+      "kind": "fullscreen-runtime-acceptance",
+      "backend": "node",
+      "passed": true,
+      "windowManager": "Openbox",
+      "checks": [
+        "original-BrowserWindow",
+        "Linux-simple-fullscreen-alias",
+        "native-state",
+        "event-order",
+        "screen-geometry",
+        "overlay-hide-restore",
+        "bounds-restore",
+        "duplicate-request",
+        "external-WM-change",
+        "hidden-creation",
+        "independent-windows",
+        "argument-validation",
+        "destroy-in-fullscreen"
+      ]
+    },
+    {
+      "kind": "fullscreen-runtime-acceptance",
+      "backend": "bun",
+      "passed": true,
+      "windowManager": "Openbox",
+      "checks": [
+        "original-BrowserWindow",
+        "Linux-simple-fullscreen-alias",
+        "native-state",
+        "event-order",
+        "screen-geometry",
+        "overlay-hide-restore",
+        "bounds-restore",
+        "duplicate-request",
+        "external-WM-change",
+        "hidden-creation",
+        "independent-windows",
+        "argument-validation",
+        "destroy-in-fullscreen"
+      ]
+    }
+  ],
+  "windowState": [
+    {
+      "kind": "window-state-runtime-acceptance",
+      "backend": "node",
+      "passed": true,
+      "windowManager": "Openbox",
+      "checks": [
+        "native-state",
+        "event-order",
+        "maximize-geometry",
+        "restore-geometry",
+        "minimize-restore",
+        "external-WM-change",
+        "native-titlebar-buttons",
+        "duplicate-request",
+        "hidden-maximize",
+        "independent-windows",
+        "destroyed-window"
+      ]
+    },
+    {
+      "kind": "window-state-runtime-acceptance",
+      "backend": "bun",
+      "passed": true,
+      "windowManager": "Openbox",
+      "checks": [
+        "native-state",
+        "event-order",
+        "maximize-geometry",
+        "restore-geometry",
+        "minimize-restore",
+        "external-WM-change",
+        "native-titlebar-buttons",
+        "duplicate-request",
+        "hidden-maximize",
+        "independent-windows",
+        "destroyed-window"
+      ]
+    }
+  ],
+  "vscode": {
+    "kind": "vscode-startup-diagnostic",
+    "diagnostic_completed": true,
+    "ready": false,
+    "version": "1.136.2",
+    "stage": "complete",
+    "error": "TypeError: this._win.setMenuBarVisibility is not a function",
+    "exit_code": 0,
+    "timed_out": true
+  },
+  "vscodeExpandedDependencies": {
+    "kind": "vscode-expanded-dependency-diagnostic",
+    "diagnostic_completed": true,
+    "ready": false,
+    "version": "1.136.2",
+    "stage": "complete",
+    "error": "TypeError: this._win.setMenuBarVisibility is not a function",
+    "exit_code": 0,
+    "timed_out": true
+  },
+  "wholeVscodeVerified": false
+}

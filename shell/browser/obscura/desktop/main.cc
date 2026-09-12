@@ -334,7 +334,7 @@ void Create(const Json& request) {
       });
     } catch (...) { gtk_widget_destroy(window->window); throw; }
   }
-  window->menu = std::make_unique<weber::desktop::MenuView>(window->window, window->box, id, Emit);
+  window->menu = std::make_unique<weber::desktop::MenuView>(window->window, window->box, id, Emit, options.value("frame", true) && !hidden, options.value("autoHideMenuBar", false));
   gtk_widget_set_can_focus(window->area, TRUE);
   gtk_widget_add_events(window->area, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
       GDK_POINTER_MOTION_MASK | GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK |
@@ -392,7 +392,7 @@ void Create(const Json& request) {
         w->click_count = event->type == GDK_2BUTTON_PRESS ? 2 : 3; return TRUE;
       }
       const bool released = event->type == GDK_BUTTON_RELEASE;
-      if (!released) w->click_count = 1;
+      if (!released) { w->click_count = 1; w->menu->HideAuto(); }
       const auto bit = ButtonBit(event->button);
       if (!bit) return FALSE;
       const auto buttons = released ? MouseButtons(event->state) & ~bit : MouseButtons(event->state) | bit;
@@ -466,13 +466,19 @@ void Dispatch(const Json& request) {
       Reply(request, native && (gdk_window_get_state(native) & GDK_WINDOW_STATE_FULLSCREEN) != 0);
       return;
     }
-    if (method == "window.getMenuState") { Reply(request, window->menu->Describe()); return; }
+    if (method == "window.getMenuState") {
+      Json state = window->menu->Describe();
+      state["content"] = {{"width", gtk_widget_get_allocated_width(window->area)}, {"height", gtk_widget_get_allocated_height(window->area)}};
+      Reply(request, state); return;
+    }
     if (method == "window.getTitleBarOverlayState") {
       Json state = window->titlebar ? window->titlebar->Describe() : Json(nullptr);
       if (!state.is_null()) state["content"] = {{"width", gtk_widget_get_allocated_width(window->area)}, {"height", gtk_widget_get_allocated_height(window->area)}};
       Reply(request, state); return;
     }
     if (method == "window.close") Close(window);
+    else if (method == "window.setMenuBarVisibility") window->menu->SetVisible(request.at("visible").get<bool>());
+    else if (method == "window.setAutoHideMenuBar") window->menu->SetAutoHide(request.at("autoHide").get<bool>());
     else if (method == "window.setMenu") window->menu->Set(request.at("menu"));
     else if (method == "window.updateMenu") window->menu->Update(request.at("menu"));
     else if (method == "window.show") gtk_widget_show_all(window->window);

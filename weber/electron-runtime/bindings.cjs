@@ -92,12 +92,15 @@ function createBindings(host, appPath, loadInternal) {
   function startWindow(self, options) {
     if (!ready) throw new Error('Cannot create BrowserWindow before app is ready');
     const titlebar = require('./titlebar-options.cjs').windowTitleBarOptions(options);
+    if (options.autoHideMenuBar !== undefined && typeof options.autoHideMenuBar !== 'boolean') throw new TypeError('autoHideMenuBar must be a boolean');
     if (options.fullscreen !== undefined && typeof options.fullscreen !== 'boolean') throw new TypeError('fullscreen must be a boolean');
     EventEmitter.call(self);
     self.id = ++nextId;
     self._destroyed = false;
     self._visible = options.show !== false;
     self._focused = false;
+    self._menuBarVisible = false;
+    self._autoHideMenuBar = options.autoHideMenuBar === true;
     self._maximized = false;
     self._minimized = false;
     self._fullScreen = false; // Confirmed native state, never the requested state.
@@ -108,7 +111,7 @@ function createBindings(host, appPath, loadInternal) {
     self._titleBarOverlayEnabled = titlebar.titleBarOverlay !== false;
     self._parent = options.parent ?? null;
     self._ready = host.request('window.create', { windowId: self.id,
-      options: { ...self._bounds, ...titlebar, title: self._title, show: self._visible, fullscreen: options.fullscreen === true,
+      options: { ...self._bounds, ...titlebar, title: self._title, show: self._visible, fullscreen: options.fullscreen === true, autoHideMenuBar: self._autoHideMenuBar,
         closable: options.closable !== false, minimizable: options.minimizable !== false, maximizable: options.maximizable !== false } });
     self._ready.catch(error => { self.emit('creation-failed', error); app.emit('weber-error', error); });
     windows.set(self.id, self);
@@ -197,6 +200,25 @@ function createBindings(host, appPath, loadInternal) {
     destroy() {
       if (this._destroyed) return;
       this._host('window.close').then(() => finishWindow(this)).catch(error => app.emit('weber-error', error));
+    },
+    isMenuBarVisible() {
+      if (this._destroyed) throw new Error('Object has been destroyed');
+      return this._menuBarVisible;
+    },
+    isMenuBarAutoHide() {
+      if (this._destroyed) throw new Error('Object has been destroyed');
+      return this._autoHideMenuBar;
+    },
+    setMenuBarVisibility(visible) {
+      if (this._destroyed) throw new Error('Object has been destroyed');
+      if (typeof visible !== 'boolean') throw new TypeError('visible must be a boolean');
+      this._host('window.setMenuBarVisibility', { visible }).catch(error => app.emit('weber-error', error));
+    },
+    setAutoHideMenuBar(autoHide) {
+      if (this._destroyed) throw new Error('Object has been destroyed');
+      if (typeof autoHide !== 'boolean') throw new TypeError('autoHide must be a boolean');
+      this._autoHideMenuBar = autoHide;
+      this._host('window.setAutoHideMenuBar', { autoHide }).catch(error => app.emit('weber-error', error));
     },
     setMenu(menu) { menuBinding.setWindowMenu(this, menu); },
   });
@@ -537,6 +559,9 @@ function createBindings(host, appPath, loadInternal) {
     else if (type === 'focus' || type === 'blur') {
       win._focused = type === 'focus';
       win.emit(type, event(win));
+    } else if (type === 'menu-bar-state') {
+      if (typeof message.visible === 'boolean') win._menuBarVisible = message.visible;
+      if (typeof message.autoHide === 'boolean') win._autoHideMenuBar = message.autoHide;
     } else if (type === 'window-state-changed') {
       if (typeof message.maximized !== 'boolean' || typeof message.minimized !== 'boolean') return;
       const maximizedChanged = win._maximized !== message.maximized;

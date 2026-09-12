@@ -19,14 +19,56 @@ class MenuView {
  public:
   using Json = nlohmann::json;
   using Emit = std::function<void(Json)>;
-  MenuView(GtkWidget* window, GtkWidget* box, int window_id, Emit emit)
-      : window_(window), box_(box), window_id_(window_id), emit_(std::move(emit)) {}
-  ~MenuView() { Clear(); }
+  MenuView(GtkWidget* window, GtkWidget* box, int window_id, Emit emit,
+           bool allowed = true, bool auto_hide = false)
+      : window_(window), box_(box), window_id_(window_id), emit_(std::move(emit)),
+        allowed_(allowed), auto_hide_(auto_hide) {
+    for (const auto* signal : {"key-press-event", "key-release-event"})
+      g_signal_connect(window_, signal, G_CALLBACK(+[](GtkWidget*, GdkEventKey* event, gpointer data) -> gboolean {
+        return static_cast<MenuView*>(data)->Key(event);
+      }), this);
+    g_signal_connect(window_, "focus-out-event", G_CALLBACK(+[](GtkWidget*, GdkEventFocus*, gpointer data) -> gboolean {
+      auto* self = static_cast<MenuView*>(data);
+      self->alt_pressed_ = false;
+      self->HideAuto();
+      return FALSE;
+    }), this);
+  }
+  ~MenuView() { g_signal_handlers_disconnect_by_data(window_, this); Clear(); }
+
+  void SetVisible(bool visible) {
+    if (!bar_ || !allowed_) return;
+    visible_ = visible;
+    gtk_widget_set_no_show_all(bar_, !visible);
+    gtk_widget_set_visible(bar_, visible);
+    Notify();
+  }
+  void SetAutoHide(bool auto_hide) { auto_hide_ = auto_hide; alt_pressed_ = false; Notify(); }
+  void HideAuto() { if (auto_hide_ && visible_) SetVisible(false); }
+  bool Key(GdkEventKey* event) {
+    if (!bar_ || !allowed_) return false;
+    const bool alt = event->keyval == GDK_KEY_Alt_L || event->keyval == GDK_KEY_Alt_R;
+    if (alt && event->type == GDK_KEY_PRESS) {
+      alt_pressed_ = !(event->state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK | GDK_SUPER_MASK));
+      return auto_hide_;
+    }
+    if (alt && event->type == GDK_KEY_RELEASE) {
+      const bool toggle = alt_pressed_ && auto_hide_;
+      alt_pressed_ = false;
+      if (toggle) { SetVisible(!visible_); return true; }
+    } else if (event->type == GDK_KEY_PRESS) {
+      alt_pressed_ = false;
+      if (event->keyval == GDK_KEY_Escape && auto_hide_ && visible_) { SetVisible(false); return true; }
+    }
+    return false;
+  }
 
   void Set(const Json& menu) {
     Validate(menu);
+    const bool had_menu = bar_ != nullptr;
+    const bool was_visible = visible_;
     Clear();
-    if (menu.is_null()) return;
+    if (menu.is_null()) { visible_ = false; Notify(); return; }
     root_menu_id_ = menu.at("menuId").get<int>();
     accel_ = gtk_accel_group_new();
     gtk_window_add_accel_group(GTK_WINDOW(window_), accel_);
@@ -34,7 +76,13 @@ class MenuView {
     gtk_box_pack_start(GTK_BOX(box_), bar_, FALSE, FALSE, 0);
     gtk_box_reorder_child(GTK_BOX(box_), bar_, 0);
     Build(bar_, menu.at("items"));
-    gtk_widget_show(bar_);
+    visible_ = allowed_ && (had_menu ? was_visible : !auto_hide_);
+    gtk_widget_set_no_show_all(bar_, !visible_);
+    gtk_widget_set_visible(bar_, visible_);
+    g_signal_connect(bar_, "deactivate", G_CALLBACK(+[](GtkWidget*, gpointer data) {
+      static_cast<MenuView*>(data)->HideAuto();
+    }), this);
+    Notify();
   }
 
   void Update(const Json& menu) {
@@ -61,10 +109,14 @@ class MenuView {
         {"enabled", bool(gtk_widget_get_sensitive(widget))}, {"translated", translated},
         {"x", origin_x + x}, {"y", origin_y + y}, {"width", allocation.width}, {"height", allocation.height}});
     }
-    return {{"menuId", root_menu_id_}, {"opens", opens_}, {"activations", activations_}, {"items", items}};
+    return {{"menuId", root_menu_id_}, {"barVisible", visible_}, {"autoHide", auto_hide_}, {"barMapped", bar_ && gtk_widget_get_mapped(bar_)}, {"opens", opens_}, {"activations", activations_}, {"items", items}};
   }
 
  private:
+  void Notify() {
+    emit_({{"event", "menu-bar-state"}, {"windowId", window_id_},
+      {"visible", visible_}, {"autoHide", auto_hide_}});
+  }
   struct Activation {
     MenuView* owner;
     int menu_id;
@@ -220,6 +272,7 @@ class MenuView {
   GtkAccelGroup* accel_ = nullptr;
   int root_menu_id_ = 0;
   bool syncing_ = false;
+  bool allowed_ = true, auto_hide_ = false, visible_ = false, alt_pressed_ = false;
   unsigned opens_ = 0;
   unsigned activations_ = 0;
   std::map<std::pair<int, int>, GtkWidget*> widgets_;
@@ -227,3 +280,4 @@ class MenuView {
 
 }  // namespace weber::desktop
 #endif  // WEBER_DESKTOP_MENU_H_
+
