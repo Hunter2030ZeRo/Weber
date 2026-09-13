@@ -1,29 +1,31 @@
 # VS Code startup diagnostic
 
-## Latest outgoing request header milestone (`8d426f7`)
+## Latest HTTP protocol milestone (`f3c16b8`)
 
-[CI run 34728571287](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34728571287)
+[CI run 34729324103](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34729324103)
 passed all **21 runtime gates**, including existing window, menu and shutdown
-regressions. The webRequest suite passes **15 tests on Node and 15 on Bun**.
-`onBeforeSendHeaders` now modifies or cancels actual HTTP/HTTPS requests and
-custom protocol dispatch. Tests cover real received headers, case-insensitive
-replacement, cross-origin credential stripping, buffered/streaming upload
-framing, timeout, abort and late replies. See the
-[validation record](../packaging/results/8d426f7.json) and [request-header scope](../electron-runtime/REQUEST_HEADERS.md).
+regressions. The new HTTP protocol suite passes **6 tests on Node and 6 on Bun**.
+`registerHttpProtocol` and custom-scheme `interceptHttpProtocol` now forward real
+HTTP/HTTPS responses, with session policy, replacement uploads, decoded content,
+redirect handling and lifecycle cancellation. See the
+[validation record](../packaging/results/f3c16b8.json) and [HTTP protocol scope](../electron-runtime/HTTP_PROTOCOL.md).
+Uploads and decoded responses are bounded to 512 KiB; shared cookies and native
+response streaming remain unsupported.
 
-The strict original-layout VS Code 1.136.2 run passes the previous
-`webRequest.onBeforeSendHeaders` registration failure and now reports
-`Error: Weber has not implemented protocol.registerHttpProtocol`.
-The expanded-dependency comparison reports the same error. Both retain
-`ready: false` and `timed_out: true`; exit code 0 follows diagnostic termination
-and is **not** successful workbench startup.
+The strict original-layout VS Code 1.136.2 run no longer reports the
+`protocol.registerHttpProtocol` registration failure. Both it and the
+expanded-dependency comparison now report
+`Error: Platform socket closed during frame`, with `ready: false` and
+`timed_out: true`. Exit code 0 follows diagnostic termination and is **not**
+successful workbench startup. The printed summary does not establish whether
+socket closure caused the timeout or followed diagnostic termination.
 
 CommonJS/Node ESM loaders and shutdown implementation are unchanged. The next
-observed contract is `protocol.registerHttpProtocol`: route custom-scheme
-requests to real HTTP responses while preserving session selection, headers,
-body data and cancellation. Direct Obscura HTTP interception, shared cookies,
-HTML fullscreen, browser-side Window Controls Overlay geometry/CSS integration
-and standalone Monaco worker semantics remain separate gaps.
+investigation is host/renderer exit timing and platform-frame transport logs.
+Do not infer a loader regression or a specific missing API from this message.
+Direct Obscura HTTP interception, shared cookies, HTML fullscreen, browser-side
+Window Controls Overlay geometry/CSS integration and standalone Monaco worker
+semantics remain separate gaps.
 
 This downloads the pinned official Linux x64 VS Code 1.136.2 distribution,
 extracts only its `resources/app` directory and runs its unmodified application

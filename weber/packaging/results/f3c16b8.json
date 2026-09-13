@@ -1,0 +1,44 @@
+{
+  "kind": "validated-http-protocol-milestone",
+  "commit": "f3c16b8ff161f7a2a55a7165d31c90fd330bb472",
+  "workflowRun": 34729324103,
+  "runtimeGates": 21,
+  "allRuntimeGatesPassed": true,
+  "httpProtocolTests": {
+    "node": {
+      "passed": 6,
+      "failed": 0
+    },
+    "bun": {
+      "passed": 6,
+      "failed": 0
+    }
+  },
+  "evidenceSource": "Completed CI job logs; exact printed summaries, not full artifact reports",
+  "sourceEvidenceArtifact": 10308868459,
+  "developmentBundleArtifact": 10309107976,
+  "moduleLoadersModified": false,
+  "shutdownImplementationModified": false,
+  "vscode": {
+    "kind": "vscode-startup-diagnostic",
+    "diagnostic_completed": true,
+    "ready": false,
+    "version": "1.136.2",
+    "stage": "complete",
+    "error": "Error: Platform socket closed during frame",
+    "exit_code": 0,
+    "timed_out": true
+  },
+  "vscodeExpandedDependencies": {
+    "kind": "vscode-expanded-dependency-diagnostic",
+    "diagnostic_completed": true,
+    "ready": false,
+    "version": "1.136.2",
+    "stage": "complete",
+    "error": "Error: Platform socket closed during frame",
+    "exit_code": 0,
+    "timed_out": true
+  },
+  "nextInvestigation": "Determine whether platform socket closure precedes diagnostic termination; inspect host/renderer exit and frame transport logs. No root cause inferred from summary.",
+  "wholeVscodeVerified": false
+}
