@@ -124,6 +124,12 @@ function createProtocolBinding({ app, host, windows, unsupported }) {
       live();
       if(before.cancel)throw new Error('net::ERR_BLOCKED_BY_CLIENT');
       if(before.redirectURL&&before.redirectURL!==request.url)throw new Error('Weber has not implemented custom-protocol webRequest redirects');
+      const outgoing=await owner.webRequest._dispatch('onBeforeSendHeaders',{
+        ...details,requestHeaders:{...request.headers},
+      },abort.signal);
+      live();
+      if(outgoing.cancel)throw new Error('net::ERR_BLOCKED_BY_CLIENT');
+      if(outgoing.requestHeaders)request.headers=outgoing.requestHeaders;
       const result=await new Promise((resolve,reject)=>{
         let completed=false;
         const finish=(error,value)=>{if(completed)return;completed=true;abort.signal.removeEventListener('abort',stop);if(error)reject(error);else resolve(value);};

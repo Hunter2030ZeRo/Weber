@@ -64,9 +64,11 @@ function createURLLoader(options, context = {}) {
   let body = options.body;
   if (body != null && typeof body !== 'function' && !ArrayBuffer.isView(body)) throw new TypeError('Invalid network request body');
   if (body && typeof body !== 'function' && body.byteLength > MAX_BODY) throw new RangeError('Network request body exceeds 64 MiB');
-  if (headers['content-length'] && headers['transfer-encoding']) throw new TypeError('Content-Length and Transfer-Encoding cannot be combined');
-  if (headers['transfer-encoding'] && headers['transfer-encoding'].toLowerCase() !== 'chunked') throw unsupported('Unsupported request transfer encoding');
   let expectedBytes;
+  function validateFraming() {
+  if (Object.hasOwn(headers, 'content-length') && Object.hasOwn(headers, 'transfer-encoding')) throw new TypeError('Content-Length and Transfer-Encoding cannot be combined');
+  if (Object.hasOwn(headers, 'transfer-encoding') && headers['transfer-encoding'].toLowerCase() !== 'chunked') throw unsupported('Unsupported request transfer encoding');
+  expectedBytes = undefined;
   if (Object.hasOwn(headers, 'content-length')) {
     if (!/^(0|[1-9][0-9]*)$/.test(headers['content-length'])) throw new TypeError('Invalid Content-Length');
     expectedBytes = Number(headers['content-length']);
@@ -74,6 +76,8 @@ function createURLLoader(options, context = {}) {
     if (typeof body !== 'function' && expectedBytes !== (body?.byteLength || 0)) throw new TypeError('Content-Length does not match the request body');
   }
   if (typeof body === 'function' && expectedBytes === undefined) headers['transfer-encoding'] = 'chunked';
+  }
+  validateFraming();
 
   const loader = new EventEmitter();
   let done = false;
@@ -275,6 +279,13 @@ function createURLLoader(options, context = {}) {
         currentURL = target;
         return start();
       }
+      const outgoingPolicy = await context.webRequest?._dispatch('onBeforeSendHeaders', {
+        ...policyDetails, url: currentURL.href, method, requestHeaders: { ...headers },
+      }, policyAbort.signal);
+      if (done || serial !== sequence) return;
+      if (outgoingPolicy?.cancel) return fail(new Error('net::ERR_BLOCKED_BY_CLIENT'));
+      if (outgoingPolicy?.requestHeaders) headers = outgoingPolicy.requestHeaders;
+      validateFraming();
       const transport = currentURL.protocol === 'https:' ? https : http;
       request = transport.request(currentURL, {
         method, headers, agent: context.agentFor?.(currentURL.protocol) || agents[currentURL.protocol],

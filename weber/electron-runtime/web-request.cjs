@@ -44,6 +44,22 @@ function responseHeaders(value) {
   }
   return result;
 }
+function requestHeaders(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Invalid requestHeaders');
+  const result = Object.create(null);
+  let bytes = 0;
+  for (const [name, entry] of Object.entries(value)) {
+    http.validateHeaderName(name);
+    if (typeof entry !== 'string') throw new TypeError('requestHeaders values must be strings');
+    http.validateHeaderValue(name, entry);
+    const key = name.toLowerCase();
+    if (Object.hasOwn(result, key)) throw new TypeError('Duplicate request header name');
+    bytes += Buffer.byteLength(name) + Buffer.byteLength(entry);
+    if (bytes > 64 * 1024) throw new RangeError('Request headers exceed 64 KiB');
+    result[key] = entry;
+  }
+  return result;
+}
 class WebRequest {
   constructor({ timeoutMs = 10000 } = {}) { this.listeners = new Map(); this.timeoutMs = timeoutMs; }
   _register(name, filter, listener) {
@@ -54,6 +70,7 @@ class WebRequest {
     else this.listeners.set(name, { matches, listener });
   }
   onBeforeRequest(...args) { this._register('onBeforeRequest', ...args); }
+  onBeforeSendHeaders(...args) { this._register('onBeforeSendHeaders', ...args); }
   onHeadersReceived(...args) { this._register('onHeadersReceived', ...args); }
   async _dispatch(name, details, signal) {
     const entry = this.listeners.get(name);
@@ -75,7 +92,7 @@ class WebRequest {
         if (settled) return;
         try {
           if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Invalid webRequest callback response');
-          const allowed = name === 'onBeforeRequest' ? ['cancel', 'redirectURL'] : ['cancel', 'responseHeaders', 'statusLine'];
+          const allowed = name === 'onBeforeRequest' ? ['cancel', 'redirectURL'] : name === 'onBeforeSendHeaders' ? ['cancel', 'requestHeaders'] : ['cancel', 'responseHeaders', 'statusLine'];
           if (Object.keys(value).some(key => !allowed.includes(key))) throw new TypeError('Unsupported webRequest response field');
           const result = {};
           if (value.cancel !== undefined) {
@@ -86,6 +103,7 @@ class WebRequest {
             if (typeof value.redirectURL !== 'string') throw new TypeError('redirectURL must be a URL string');
             result.redirectURL = new URL(value.redirectURL).href;
           }
+          if (value.requestHeaders !== undefined) result.requestHeaders = requestHeaders(value.requestHeaders);
           if (value.responseHeaders !== undefined) result.responseHeaders = responseHeaders(value.responseHeaders);
           if (value.statusLine !== undefined) {
             if (typeof value.statusLine !== 'string' || !/^HTTP\/\d\.\d [1-5]\d\d(?: [^\r\n]*)?$/.test(value.statusLine)) throw new TypeError('Invalid statusLine');
@@ -99,7 +117,7 @@ class WebRequest {
     });
   }
 }
-for (const method of ['onBeforeSendHeaders', 'onSendHeaders', 'onResponseStarted', 'onBeforeRedirect', 'onCompleted', 'onErrorOccurred']) {
+for (const method of ['onSendHeaders', 'onResponseStarted', 'onBeforeRedirect', 'onCompleted', 'onErrorOccurred']) {
   WebRequest.prototype[method] = () => { throw Object.assign(new Error(`Weber has not implemented webRequest.${method}`), { code: 'ERR_WEBER_UNSUPPORTED' }); };
 }
 function requestDetails(values) {

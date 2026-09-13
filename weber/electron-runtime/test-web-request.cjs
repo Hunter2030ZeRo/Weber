@@ -173,3 +173,70 @@ test('custom protocol cancellation precedes handler execution and headers are ap
   assert.equal(Buffer.from(received.data, 'base64').toString(), 'bytes'); assert.equal(received.headers['x-policy'], 'active'); assert.equal(calls, 1);
   await new Promise(resolve => setImmediate(resolve)); assert.equal(app.listenerCount('quit'), 1); assert.equal(wc.listenerCount('destroyed'), 0);
 });
+
+test('outgoing headers reach the server, replace old values, and are rechecked after redirects', limit, async t => {
+  const { api, session } = runtime(t); const seen = [];
+  const target = await endpoint(t, (req, res) => { seen.push(req.headers); res.end('done'); });
+  const source = await endpoint(t, (req, res) => { seen.push(req.headers); res.writeHead(302, { Location: target }); res.end(); });
+  const ids = [];
+  session.defaultSession.webRequest.onBeforeSendHeaders((d, cb) => {
+    ids.push(d.id);
+    const headers = { ...d.requestHeaders, 'X-Added': 'yes' };
+    delete headers['x-remove'];
+    if (d.url.startsWith(source)) headers.Authorization = 'Basic private';
+    cb({ requestHeaders: headers });
+  });
+  assert.equal((await collect(api, { url: source, headers: { 'X-Remove': 'old' } })).body, 'done');
+  assert.equal(seen.length, 2); assert.equal(ids[0], ids[1]);
+  assert.equal(seen[0].authorization, 'Basic private'); assert.equal(seen[1].authorization, undefined);
+  for (const h of seen) { assert.equal(h['x-added'], 'yes'); assert.equal(h['x-remove'], undefined); }
+});
+
+test('outgoing policy rejects invalid headers and framing before any server request', limit, async t => {
+  const { api, session } = runtime(t); let hits = 0;
+  const url = await endpoint(t, (_req, res) => { hits++; res.end(); });
+  const policy = session.defaultSession.webRequest;
+  for (const headers of [
+    { 'X-Bad': 'one\r\ntwo' }, { 'X-Array': ['one'] }, { A: '1', a: '2' },
+    { 'Content-Length': '1' }, { 'Content-Length': '0', 'Transfer-Encoding': 'chunked' },
+    { 'Transfer-Encoding': '' }, { 'X-Large': 'a'.repeat(65537) },
+  ]) {
+    policy.onBeforeSendHeaders((_d, cb) => cb({ requestHeaders: headers }));
+    await assert.rejects(collect(api, url));
+  }
+  policy.onBeforeSendHeaders((_d, cb) => cb({ cancel: true }));
+  await assert.rejects(collect(api, url), /ERR_BLOCKED_BY_CLIENT/);
+  policy.timeoutMs = 20;
+  let late; policy.onBeforeSendHeaders((_d, cb) => { late = cb; });
+  await assert.rejects(collect(api, url), /timed out/); late({});
+  assert.equal(hits, 0);
+  policy.onBeforeSendHeaders(null); await collect(api, url); assert.equal(hits, 1);
+});
+
+test('outgoing policy abort ignores a late header grant', limit, async t => {
+  const { api, session } = runtime(t); let hits = 0, callback, begin;
+  const started = new Promise(resolve => { begin = resolve; });
+  const url = await endpoint(t, (_req, res) => { hits++; res.end(); });
+  session.defaultSession.webRequest.onBeforeSendHeaders((_d, cb) => { callback = cb; begin(); });
+  const req = api.request(url), aborted = once(req, 'abort'); req.end();
+  await started; req.abort(); await aborted; callback({ requestHeaders: { 'X-Late': 'no' } });
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(hits, 0);
+});
+
+test('custom protocol handler receives outgoing header changes and is skipped on cancellation', limit, async t => {
+  const { host, windows, session } = runtime(t);
+  const owner = session.fromPartition('outgoing'), wc = Object.assign(new EventEmitter(), { id: 1, session: owner, _navigation: 1, _command: async () => null });
+  windows.set(1, { webContents: wc, isDestroyed: () => false });
+  let calls = 0;
+  owner.protocol.registerStringProtocol('owned', (request, cb) => {
+    calls++; assert.equal(request.headers['x-added'], 'yes'); assert.equal(request.headers.old, undefined); cb('ok');
+  });
+  const request = () => new Promise(resolve => {
+    host.request = async (_method, value) => resolve(value.response);
+    host.emit('event', { event: 'resource-request', windowId: 1, resourceId: 1, request: { url: 'owned://app/file', headers: { old: 'remove' } } });
+  });
+  owner.webRequest.onBeforeSendHeaders((d, cb) => { assert.equal(d.webContents, wc); cb({ requestHeaders: { 'X-Added': 'yes' } }); });
+  assert.equal(Buffer.from((await request()).data, 'base64').toString(), 'ok');
+  owner.webRequest.onBeforeSendHeaders((_d, cb) => cb({ cancel: true }));
+  assert.match((await request()).error, /ERR_BLOCKED_BY_CLIENT/); assert.equal(calls, 1);
+});
