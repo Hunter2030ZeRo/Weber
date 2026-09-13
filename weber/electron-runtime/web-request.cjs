@@ -53,7 +53,6 @@ function requestHeaders(value) {
     if (typeof entry !== 'string') throw new TypeError('requestHeaders values must be strings');
     http.validateHeaderValue(name, entry);
     const key = name.toLowerCase();
-    if (Object.hasOwn(result, key)) throw new TypeError('Duplicate request header name');
     bytes += Buffer.byteLength(name) + Buffer.byteLength(entry);
     if (bytes > 64 * 1024) throw new RangeError('Request headers exceed 64 KiB');
     result[key] = entry;

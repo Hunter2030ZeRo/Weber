@@ -197,7 +197,7 @@ test('outgoing policy rejects invalid headers and framing before any server requ
   const url = await endpoint(t, (_req, res) => { hits++; res.end(); });
   const policy = session.defaultSession.webRequest;
   for (const headers of [
-    { 'X-Bad': 'one\r\ntwo' }, { 'X-Array': ['one'] }, { A: '1', a: '2' },
+    { 'X-Bad': 'one\r\ntwo' }, { 'X-Array': ['one'] },
     { 'Content-Length': '1' }, { 'Content-Length': '0', 'Transfer-Encoding': 'chunked' },
     { 'Transfer-Encoding': '' }, { 'X-Large': 'a'.repeat(65537) },
   ]) {
@@ -261,4 +261,12 @@ test('outgoing policy recomputes streaming lengths and preserves buffered upload
   await assert.rejects(run(pipe => { pipe.write(Buffer.from('four')).then(() => pipe.done()).catch(() => {}); }), /Content-Length/);
   await assert.rejects(run(pipe => { pipe.write(Buffer.from('a')).then(() => pipe.done()).catch(() => {}); }), /Content-Length/);
   assert.deepEqual(received, ['abc', 'xyz']);
+});
+
+
+test('outgoing header names replace case-insensitively in property order', limit, async () => {
+  const policy = new WebRequest();
+  policy.onBeforeSendHeaders((_d, cb) => cb({ requestHeaders: { 'X-Added': 'old', 'x-added': 'new' } }));
+  const result = await policy._dispatch('onBeforeSendHeaders', { url: 'http://example.test/', resourceType: 'xhr' });
+  assert.deepEqual(Object.entries(result.requestHeaders), [['x-added', 'new']]);
 });
