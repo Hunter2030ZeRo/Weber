@@ -66,16 +66,16 @@ function createURLLoader(options, context = {}) {
   if (body && typeof body !== 'function' && body.byteLength > MAX_BODY) throw new RangeError('Network request body exceeds 64 MiB');
   let expectedBytes;
   function validateFraming() {
-  if (Object.hasOwn(headers, 'content-length') && Object.hasOwn(headers, 'transfer-encoding')) throw new TypeError('Content-Length and Transfer-Encoding cannot be combined');
-  if (Object.hasOwn(headers, 'transfer-encoding') && headers['transfer-encoding'].toLowerCase() !== 'chunked') throw unsupported('Unsupported request transfer encoding');
-  expectedBytes = undefined;
-  if (Object.hasOwn(headers, 'content-length')) {
-    if (!/^(0|[1-9][0-9]*)$/.test(headers['content-length'])) throw new TypeError('Invalid Content-Length');
-    expectedBytes = Number(headers['content-length']);
-    if (!Number.isSafeInteger(expectedBytes)) throw new RangeError('Content-Length is too large');
-    if (typeof body !== 'function' && expectedBytes !== (body?.byteLength || 0)) throw new TypeError('Content-Length does not match the request body');
-  }
-  if (typeof body === 'function' && expectedBytes === undefined) headers['transfer-encoding'] = 'chunked';
+    if (Object.hasOwn(headers, 'content-length') && Object.hasOwn(headers, 'transfer-encoding')) throw new TypeError('Content-Length and Transfer-Encoding cannot be combined');
+    if (Object.hasOwn(headers, 'transfer-encoding') && headers['transfer-encoding'].toLowerCase() !== 'chunked') throw unsupported('Unsupported request transfer encoding');
+    expectedBytes = undefined;
+    if (Object.hasOwn(headers, 'content-length')) {
+      if (!/^(0|[1-9][0-9]*)$/.test(headers['content-length'])) throw new TypeError('Invalid Content-Length');
+      expectedBytes = Number(headers['content-length']);
+      if (!Number.isSafeInteger(expectedBytes)) throw new RangeError('Content-Length is too large');
+      if (typeof body !== 'function' && expectedBytes !== (body?.byteLength || 0)) throw new TypeError('Content-Length does not match the request body');
+    }
+    if (typeof body === 'function' && expectedBytes === undefined) headers['transfer-encoding'] = 'chunked';
   }
   validateFraming();
 

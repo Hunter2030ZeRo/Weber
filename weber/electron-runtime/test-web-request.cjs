@@ -240,3 +240,25 @@ test('custom protocol handler receives outgoing header changes and is skipped on
   owner.webRequest.onBeforeSendHeaders((_d, cb) => cb({ cancel: true }));
   assert.match((await request()).error, /ERR_BLOCKED_BY_CLIENT/); assert.equal(calls, 1);
 });
+
+test('outgoing policy recomputes streaming lengths and preserves buffered upload bytes', limit, async t => {
+  const { createURLLoader } = require('./net-url-loader.cjs');
+  const received = [];
+  const url = await endpoint(t, (req, res) => {
+    const chunks = []; req.on('data', c => chunks.push(c));
+    req.on('end', () => { received.push(Buffer.concat(chunks).toString()); res.end('ok'); });
+  });
+  const policy = new WebRequest();
+  policy.onBeforeSendHeaders((_d, cb) => cb({ requestHeaders: { 'Content-Length': '3' } }));
+  const run = body => new Promise((resolve, reject) => {
+    const loader = createURLLoader({ url, method: 'POST', body }, { webRequest: policy });
+    loader.on('error', (_e, message) => reject(new Error(message)));
+    loader.on('data', (_e, _bytes, resume) => resume()); loader.on('complete', resolve);
+  });
+  await run(Buffer.from('abc'));
+  await run(pipe => { pipe.write(Buffer.from('xyz')).then(() => pipe.done()).catch(() => {}); });
+  assert.deepEqual(received, ['abc', 'xyz']);
+  await assert.rejects(run(pipe => { pipe.write(Buffer.from('four')).then(() => pipe.done()).catch(() => {}); }), /Content-Length/);
+  await assert.rejects(run(pipe => { pipe.write(Buffer.from('a')).then(() => pipe.done()).catch(() => {}); }), /Content-Length/);
+  assert.deepEqual(received, ['abc', 'xyz']);
+});
