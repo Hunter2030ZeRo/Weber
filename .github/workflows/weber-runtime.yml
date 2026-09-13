@@ -77,6 +77,8 @@ jobs:
           bun test ./weber/electron-runtime/test-asar.cjs
           node --test weber/electron-runtime/test-web-request.cjs
           bun test ./weber/electron-runtime/test-web-request.cjs
+          node --test weber/electron-runtime/test-protocol-http.cjs
+          bun test ./weber/electron-runtime/test-protocol-http.cjs
           node --test weber/electron-runtime/test-session-permissions.cjs
           bun test ./weber/electron-runtime/test-session-permissions.cjs
           node --test weber/electron-runtime/test-browser-permission-bridge.cjs

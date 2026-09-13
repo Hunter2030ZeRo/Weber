@@ -37,11 +37,10 @@ function createProtocolBinding({ app, host, windows, unsupported }) {
     isProtocolRegistered(name) { const entry=this.handlers.get(scheme(name)); return !!entry && !entry.intercepted; }
     isProtocolIntercepted(name) { return !!this.handlers.get(scheme(name))?.intercepted; }
   }
-  for(const [suffix,kind] of [['File','file'],['String','string'],['Buffer','buffer'],['Stream','stream'],['','stream']]) {
+  for(const [suffix,kind] of [['Http','http'],['File','file'],['String','string'],['Buffer','buffer'],['Stream','stream'],['','stream']]) {
     Protocol.prototype[`register${suffix}Protocol`] = function(name, handler, callback) { return this._register(name,handler,kind,false,callback); };
     Protocol.prototype[`intercept${suffix}Protocol`] = function(name, handler, callback) { return this._register(name,handler,kind,true,callback); };
   }
-  for (const method of ['registerHttpProtocol','interceptHttpProtocol']) Protocol.prototype[method]=()=>unsupported(`protocol.${method}`);
   function registerSchemesAsPrivileged(values) {
     if (app.isReady()) throw new Error('Schemes must be registered before app is ready');
     if (!Array.isArray(values) || values.length > 128) throw new TypeError('Invalid scheme declarations');
@@ -141,7 +140,9 @@ function createProtocolBinding({ app, host, windows, unsupported }) {
         catch(error){finish(error);}
       });
       live();
-      const response=await normalize(result,entry.kind,abort.signal);
+      const response=entry.kind==='http' && typeof result!=='number' && result?.error===undefined
+        ? await require('./protocol-http.cjs').forwardHttp(result,request,result?.session ?? owner,Session,abort.signal)
+        : await normalize(result,entry.kind,abort.signal);
       if(response.error!==undefined)return response;
       const headers=await owner.webRequest._dispatch('onHeadersReceived',{...details,statusCode:response.statusCode,
         statusLine:`HTTP/1.1 ${response.statusCode}`,responseHeaders:Object.fromEntries(Object.entries(response.headers).map(([key,value])=>[key,[value]])),fromCache:false},abort.signal);
