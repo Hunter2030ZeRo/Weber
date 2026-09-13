@@ -1,30 +1,35 @@
 # VS Code startup diagnostic
 
-## Latest HTTP protocol milestone (`f3c16b8`)
+## Latest native-view query and diagnostic milestone (`3e1fb44`)
 
-[CI run 34729324103](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34729324103)
-passed all **21 runtime gates**, including existing window, menu and shutdown
-regressions. The new HTTP protocol suite passes **6 tests on Node and 6 on Bun**.
-`registerHttpProtocol` and custom-scheme `interceptHttpProtocol` now forward real
-HTTP/HTTPS responses, with session policy, replacement uploads, decoded content,
-redirect handling and lifecycle cancellation. See the
-[validation record](../packaging/results/f3c16b8.json) and [HTTP protocol scope](../electron-runtime/HTTP_PROTOCOL.md).
-Uploads and decoded responses are bounded to 512 KiB; shared cookies and native
-response streaming remain unsupported.
+[CI run 34767550882](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34767550882)
+passed all **21 runtime gates**. Node/Bun original BrowserWindow tests verify
+`webContents.isOffscreen()` returns false for native views and unsupported
+true/object offscreen options fail before allocating a window. This implements
+a query, not offscreen rendering. See the [validation record](../packaging/results/3e1fb44.json).
 
-The strict original-layout VS Code 1.136.2 run no longer reports the
-`protocol.registerHttpProtocol` registration failure. Both it and the
-expanded-dependency comparison now report
-`Error: Platform socket closed during frame`, with `ready: false` and
-`timed_out: true`. Exit code 0 follows diagnostic termination and is **not**
-successful workbench startup. The printed summary does not establish whether
-socket closure caused the timeout or followed diagnostic termination.
+The improved startup diagnostic reads short log writes promptly and preserves
+output captured before its termination signal separately from combined output.
+Six diagnostic tests pass. The [preceding run](../packaging/results/bd112a9.json) established
+that `Platform socket closed during frame` was observed only after termination,
+with a stack through bootstrap signal handling and power-monitor quit cleanup.
+The actual pre-termination resource failure was a missing `isOffscreen` method.
+This corrects the earlier socket-error interpretation without changing loaders
+or shutdown implementation.
 
-CommonJS/Node ESM loaders and shutdown implementation are unchanged. The next
-investigation is host/renderer exit timing and platform-frame transport logs.
-Do not infer a loader regression or a specific missing API from this message.
-Direct Obscura HTTP interception, shared cookies, HTML fullscreen, browser-side
-Window Controls Overlay geometry/CSS integration and standalone Monaco worker
+Both strict original-layout VS Code 1.136.2 and expanded-dependency diagnostics
+now omit that `isOffscreen` resource-blocked failure. Both still time out with
+`ready: false`; neither is a workbench pass. Their pre-termination logs retain
+`Error getting native window handle: TypeError: this._win.getNativeWindowHandle is not a function`.
+This is a caught error, and its relationship to the readiness timeout is not
+established. The socket exception remains visible in combined output after
+termination and is not promoted to the startup-error summary.
+
+The next bounded compatibility target is the real native window handle, together
+with load/preload/renderer readiness evidence to explain the remaining timeout.
+The diagnostic's exception field matches standalone exceptions; contextual
+VS Code log messages must also be read in the preserved output. HTML fullscreen,
+shared browser networking, native response streaming and standalone Monaco worker
 semantics remain separate gaps.
 
 This downloads the pinned official Linux x64 VS Code 1.136.2 distribution,

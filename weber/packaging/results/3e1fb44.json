@@ -1,0 +1,81 @@
+{
+  "kind": "validated-native-view-offscreen-query",
+  "commit": "3e1fb446e478e8ffab78cca98c7385dfa83e44b3",
+  "workflowRun": 34767550882,
+  "runtimeGates": 21,
+  "allRuntimeGatesPassed": true,
+  "evidenceSource": "Completed CI logs including pre-termination output",
+  "sourceEvidenceArtifact": 10320029718,
+  "developmentBundleArtifact": 10320947775,
+  "moduleLoadersModified": false,
+  "shutdownImplementationModified": false,
+  "checks": [
+    "Node/Bun original BrowserWindow isOffscreen false",
+    "unsupported offscreen boolean/object rejected before window allocation",
+    "previous VS Code isOffscreen resource-blocked message absent in both runs"
+  ],
+  "observations": [
+    {
+      "diagnostic_completed": true,
+      "error": "Startup exceeded the diagnostic deadline; readiness was not established",
+      "exit_code": 0,
+      "kind": "vscode-startup-diagnostic",
+      "ready": false,
+      "stage": "complete",
+      "timed_out": true,
+      "version": "1.136.2"
+    },
+    {
+      "combined_output_exception": "Error: Platform socket closed during frame",
+      "combined_output_stack": [
+        "at HostClient.requestSync (/home/runner/work/Weber/Weber/weber/electron-runtime/host-client.cjs:90:49)",
+        "at EventEmitter.<anonymous> (/home/runner/work/Weber/Weber/weber/electron-runtime/power-binding.cjs:51:10)",
+        "at EventEmitter.wrapper (node:events:639:12)",
+        "at EventEmitter.emit (node:events:526:24)",
+        "at EventEmitter.exit (/home/runner/work/Weber/Weber/weber/electron-runtime/bindings.cjs:55:11)",
+        "at process.<anonymous> (/home/runner/work/Weber/Weber/weber/electron-runtime/bootstrap.cjs:126:82)",
+        "at process.wrapper (node:events:639:12)",
+        "at process.emit (node:events:514:28)"
+      ],
+      "kind": "vscode-startup-output",
+      "pre_termination_exception": null,
+      "pre_termination_stderr_tail": "\n(weber-desktop-host:12671): dbind-WARNING **: 16:16:05.166: AT-SPI: Error retrieving accessibility bus address: org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files\n(node:12662) [WEBER_ENGINE_OPTION] Warning: Chromium option --enable-features is stored but has no Obscura effect\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:12662) [WEBER_ENGINE_OPTION] Warning: Chromium option --disable-features is stored but has no Obscura effect\n(node:12662) [WEBER_ENGINE_OPTION] Warning: Chromium option --disable-blink-features is stored but has no Obscura effect\n(node:12662) [WEBER_ENGINE_OPTION] Warning: Chromium option --xdg-portal-required-version is stored but has no Obscura effect\n(node:12662) [WEBER_ENGINE_OPTION] Warning: Chromium option --max-active-webgl-contexts is stored but has no Obscura effect\n\u001b[91m[main 2026-09-13T16:16:05.431Z]\u001b[0m Error getting native window handle: TypeError: this._win.getNativeWindowHandle is not a function\n",
+      "pre_termination_stdout_tail": "\u001b[90m[main 2026-09-13T16:16:05.404Z]\u001b[0m StorageMainService: creating application shared storage\n\u001b[90m[main 2026-09-13T16:16:05.451Z]\u001b[0m [shared storage] Creating shared storage database at '/home/runner/.vscode-shared/sharedStorage/state.vscdb' (wasCreated: true)\n\u001b[90m[main 2026-09-13T16:16:05.453Z]\u001b[0m [shared storage] Initializing fallback application storage (path: /tmp/weber-vscode-probe-91mgu_xq/user-data/User/globalStorage/state.vscdb)\n\u001b[90m[main 2026-09-13T16:16:05.459Z]\u001b[0m [shared storage] Fallback application storage initialized with 3 items\n",
+      "stack": [],
+      "stderr_tail": "\n(weber-desktop-host:12671): dbind-WARNING **: 16:16:05.166: AT-SPI: Error retrieving accessibility bus address: org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files\n(node:12662) [WEBER_ENGINE_OPTION] Warning: Chromium option --enable-features is stored but has no Obscura effect\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:12662) [WEBER_ENGINE_OPTION] Warning: Chromium option --disable-features is stored but has no Obscura effect\n(node:12662) [WEBER_ENGINE_OPTION] Warning: Chromium option --disable-blink-features is stored but has no Obscura effect\n(node:12662) [WEBER_ENGINE_OPTION] Warning: Chromium option --xdg-portal-required-version is stored but has no Obscura effect\n(node:12662) [WEBER_ENGINE_OPTION] Warning: Chromium option --max-active-webgl-contexts is stored but has no Obscura effect\n\u001b[91m[main 2026-09-13T16:16:05.431Z]\u001b[0m Error getting native window handle: TypeError: this._win.getNativeWindowHandle is not a function\n\u001b[91m[main 2026-09-13T16:16:35.081Z]\u001b[0m [uncaught exception in main]: Error: Platform socket closed during frame\n\u001b[91m[main 2026-09-13T16:16:35.081Z]\u001b[0m Error: Platform socket closed during frame\n    at HostClient.requestSync (/home/runner/work/Weber/Weber/weber/electron-runtime/host-client.cjs:90:49)\n    at EventEmitter.<anonymous> (/home/runner/work/Weber/Weber/weber/electron-runtime/power-binding.cjs:51:10)\n    at EventEmitter.wrapper (node:events:639:12)\n    at EventEmitter.emit (node:events:526:24)\n    at EventEmitter.exit (/home/runner/work/Weber/Weber/weber/electron-runtime/bindings.cjs:55:11)\n    at process.<anonymous> (/home/runner/work/Weber/Weber/weber/electron-runtime/bootstrap.cjs:126:82)\n    at process.wrapper (node:events:639:12)\n    at process.emit (node:events:514:28)\n",
+      "stdout_tail": "\u001b[90m[main 2026-09-13T16:16:05.404Z]\u001b[0m StorageMainService: creating application shared storage\n\u001b[90m[main 2026-09-13T16:16:05.451Z]\u001b[0m [shared storage] Creating shared storage database at '/home/runner/.vscode-shared/sharedStorage/state.vscdb' (wasCreated: true)\n\u001b[90m[main 2026-09-13T16:16:05.453Z]\u001b[0m [shared storage] Initializing fallback application storage (path: /tmp/weber-vscode-probe-91mgu_xq/user-data/User/globalStorage/state.vscdb)\n\u001b[90m[main 2026-09-13T16:16:05.459Z]\u001b[0m [shared storage] Fallback application storage initialized with 3 items\n"
+    },
+    {
+      "diagnostic_completed": true,
+      "error": "Startup exceeded the diagnostic deadline; readiness was not established",
+      "exit_code": 0,
+      "kind": "vscode-expanded-dependency-diagnostic",
+      "ready": false,
+      "stage": "complete",
+      "timed_out": true,
+      "version": "1.136.2"
+    },
+    {
+      "combined_output_exception": "Error: Platform socket closed during frame",
+      "combined_output_stack": [
+        "at HostClient.requestSync (/home/runner/work/Weber/Weber/weber/electron-runtime/host-client.cjs:90:49)",
+        "at EventEmitter.<anonymous> (/home/runner/work/Weber/Weber/weber/electron-runtime/power-binding.cjs:51:10)",
+        "at EventEmitter.wrapper (node:events:639:12)",
+        "at EventEmitter.emit (node:events:526:24)",
+        "at EventEmitter.exit (/home/runner/work/Weber/Weber/weber/electron-runtime/bindings.cjs:55:11)",
+        "at process.<anonymous> (/home/runner/work/Weber/Weber/weber/electron-runtime/bootstrap.cjs:126:82)",
+        "at process.wrapper (node:events:639:12)",
+        "at process.emit (node:events:514:28)"
+      ],
+      "kind": "vscode-startup-output",
+      "pre_termination_exception": null,
+      "pre_termination_stderr_tail": "\n(weber-desktop-host:12874): dbind-WARNING **: 16:16:56.265: AT-SPI: Error retrieving accessibility bus address: org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files\n(node:12865) [WEBER_ENGINE_OPTION] Warning: Chromium option --enable-features is stored but has no Obscura effect\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:12865) [WEBER_ENGINE_OPTION] Warning: Chromium option --disable-features is stored but has no Obscura effect\n(node:12865) [WEBER_ENGINE_OPTION] Warning: Chromium option --disable-blink-features is stored but has no Obscura effect\n(node:12865) [WEBER_ENGINE_OPTION] Warning: Chromium option --xdg-portal-required-version is stored but has no Obscura effect\n(node:12865) [WEBER_ENGINE_OPTION] Warning: Chromium option --max-active-webgl-contexts is stored but has no Obscura effect\n\u001b[91m[main 2026-09-13T16:16:56.489Z]\u001b[0m Error getting native window handle: TypeError: this._win.getNativeWindowHandle is not a function\n",
+      "pre_termination_stdout_tail": "\u001b[90m[main 2026-09-13T16:16:56.462Z]\u001b[0m StorageMainService: creating application shared storage\n\u001b[90m[main 2026-09-13T16:16:56.506Z]\u001b[0m [shared storage] Creating shared storage database at '/home/runner/.vscode-shared/sharedStorage/state.vscdb' (wasCreated: false)\n\u001b[90m[main 2026-09-13T16:16:56.506Z]\u001b[0m [shared storage] Initializing fallback application storage (path: /tmp/weber-vscode-probe-s_g8roa5/user-data/User/globalStorage/state.vscdb)\n\u001b[90m[main 2026-09-13T16:16:56.514Z]\u001b[0m [shared storage] Fallback application storage initialized with 3 items\n",
+      "stack": [],
+      "stderr_tail": "\n(weber-desktop-host:12874): dbind-WARNING **: 16:16:56.265: AT-SPI: Error retrieving accessibility bus address: org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files\n(node:12865) [WEBER_ENGINE_OPTION] Warning: Chromium option --enable-features is stored but has no Obscura effect\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:12865) [WEBER_ENGINE_OPTION] Warning: Chromium option --disable-features is stored but has no Obscura effect\n(node:12865) [WEBER_ENGINE_OPTION] Warning: Chromium option --disable-blink-features is stored but has no Obscura effect\n(node:12865) [WEBER_ENGINE_OPTION] Warning: Chromium option --xdg-portal-required-version is stored but has no Obscura effect\n(node:12865) [WEBER_ENGINE_OPTION] Warning: Chromium option --max-active-webgl-contexts is stored but has no Obscura effect\n\u001b[91m[main 2026-09-13T16:16:56.489Z]\u001b[0m Error getting native window handle: TypeError: this._win.getNativeWindowHandle is not a function\n\u001b[91m[main 2026-09-13T16:17:26.190Z]\u001b[0m [uncaught exception in main]: Error: Platform socket closed during frame\n\u001b[91m[main 2026-09-13T16:17:26.191Z]\u001b[0m Error: Platform socket closed during frame\n    at HostClient.requestSync (/home/runner/work/Weber/Weber/weber/electron-runtime/host-client.cjs:90:49)\n    at EventEmitter.<anonymous> (/home/runner/work/Weber/Weber/weber/electron-runtime/power-binding.cjs:51:10)\n    at EventEmitter.wrapper (node:events:639:12)\n    at EventEmitter.emit (node:events:526:24)\n    at EventEmitter.exit (/home/runner/work/Weber/Weber/weber/electron-runtime/bindings.cjs:55:11)\n    at process.<anonymous> (/home/runner/work/Weber/Weber/weber/electron-runtime/bootstrap.cjs:126:82)\n    at process.wrapper (node:events:639:12)\n    at process.emit (node:events:514:28)\n",
+      "stdout_tail": "\u001b[90m[main 2026-09-13T16:16:56.462Z]\u001b[0m StorageMainService: creating application shared storage\n\u001b[90m[main 2026-09-13T16:16:56.506Z]\u001b[0m [shared storage] Creating shared storage database at '/home/runner/.vscode-shared/sharedStorage/state.vscdb' (wasCreated: false)\n\u001b[90m[main 2026-09-13T16:16:56.506Z]\u001b[0m [shared storage] Initializing fallback application storage (path: /tmp/weber-vscode-probe-s_g8roa5/user-data/User/globalStorage/state.vscdb)\n\u001b[90m[main 2026-09-13T16:16:56.514Z]\u001b[0m [shared storage] Fallback application storage initialized with 3 items\n"
+    }
+  ],
+  "remaining": "Caught getNativeWindowHandle missing API message before timeout; causal relation to readiness timeout not established. Socket exception occurs after diagnostic termination.",
+  "wholeVscodeVerified": false
+}
