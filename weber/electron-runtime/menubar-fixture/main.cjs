@@ -14,6 +14,11 @@ app.on('window-all-closed', () => {});
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   const win = new BrowserWindow({ title: 'weber-menubar-test', width: 500, height: 300 });
+  assert.equal(win.webContents.isOffscreen(), false);
+  const windowCount = BrowserWindow.getAllWindows().length;
+  assert.throws(() => new BrowserWindow({ webPreferences: { offscreen: true } }), /offscreen/);
+  assert.throws(() => new BrowserWindow({ webPreferences: { offscreen: { useSharedTexture: true } } }), /offscreen/);
+  assert.equal(BrowserWindow.getAllWindows().length, windowCount);
   let clicked = 0;
   const menu = () => Menu.buildFromTemplate([{ label: '&File', submenu: [
     { label: 'Count', accelerator: 'Ctrl+K', click: () => clicked++ }

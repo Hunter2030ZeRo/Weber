@@ -449,6 +449,10 @@ function createBindings(host, appPath, loadInternal) {
     getTitle() { return this._title; }
     isLoading() { return this._loading; }
     isLoadingMainFrame() { return this._loading; }
+    isOffscreen() {
+      if (this._destroyed) throw new Error('Object has been destroyed');
+      return false; // This binding owns an on-screen native view.
+    }
     isDestroyed() { return this._destroyed; }
     getLastWebPreferences() { return { ...this._prefs }; }
     getType() { return 'window'; }
@@ -493,6 +497,7 @@ function createBindings(host, appPath, loadInternal) {
 
   function BrowserWindow(options = {}) {
     const preferences = options.webPreferences || {};
+    if (preferences.offscreen !== undefined && preferences.offscreen !== false) return unsupported('offscreen rendering');
     if (preferences.nodeIntegration) return unsupported('Node integration inside the Obscura renderer');
     if (preferences.preload && preferences.contextIsolation === false) return unsupported('non-isolated preload execution');
     let preloadSource;
