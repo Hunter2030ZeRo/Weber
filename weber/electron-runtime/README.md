@@ -1,27 +1,27 @@
 # Electron source runtime on Obscura
 
-## Latest native window and menu milestone (`ae00460`)
+## Latest outgoing request header milestone (`8d426f7`)
 
-[CI run 34673770600](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34673770600)
-passed all **21 runtime gates**. Node/Bun tests with Openbox verify Linux simple
-fullscreen aliases, actual maximize/minimize/restore state and events, and native
-menu visibility with content resizing. Menu checks cover replacement, hidden
-accelerators, Alt toggling, Escape, independent windows and frameless policy.
-Existing title-bar, shutdown and runtime regressions also pass. See the
-[validation record](../packaging/results/ae00460.json), [window-state scope](WINDOW_STATE.md)
-and [menu-bar scope](MENUBAR.md).
+[CI run 34728571287](https://github.com/Hunter2030ZeRo/Weber/actions/runs/34728571287)
+passed all **21 runtime gates**, including existing window, menu and shutdown
+regressions. The webRequest suite passes **15 tests on Node and 15 on Bun**.
+`onBeforeSendHeaders` now modifies or cancels actual HTTP/HTTPS requests and
+custom protocol dispatch. Tests cover real received headers, case-insensitive
+replacement, cross-origin credential stripping, buffered/streaming upload
+framing, timeout, abort and late replies. See the
+[validation record](../packaging/results/8d426f7.json) and [request-header scope](REQUEST_HEADERS.md).
 
-The strict original-layout VS Code 1.136.2 run passes the previous fullscreen,
-window-state and menu-visibility failures and now reports
-`Error: Weber has not implemented webRequest.onBeforeSendHeaders`.
+The strict original-layout VS Code 1.136.2 run passes the previous
+`webRequest.onBeforeSendHeaders` registration failure and now reports
+`Error: Weber has not implemented protocol.registerHttpProtocol`.
 The expanded-dependency comparison reports the same error. Both retain
 `ready: false` and `timed_out: true`; exit code 0 follows diagnostic termination
 and is **not** successful workbench startup.
 
 CommonJS/Node ESM loaders and shutdown implementation are unchanged. The next
-smallest observed contract is `webRequest.onBeforeSendHeaders`: implement actual
-outgoing-header modification and cancellation, preserving request framing,
-redirect credential stripping and abort behavior, then rerun original VS Code.
+observed contract is `protocol.registerHttpProtocol`: route custom-scheme
+requests to real HTTP responses while preserving session selection, headers,
+body data and cancellation. Direct Obscura HTTP interception, shared cookies,
 HTML fullscreen, browser-side Window Controls Overlay geometry/CSS integration
 and standalone Monaco worker semantics remain separate gaps.
 
@@ -168,7 +168,9 @@ original Request/Response adapter. Persistent cookies/storage, HTTP protocol
 handlers, full redirects, service workers and CSP bypass remain unsupported.
 Declaring a scheme privilege does not implement all associated browser features.
 
-Each session now owns `onBeforeRequest` and `onHeadersReceived` policies.
+Each session owns `onBeforeRequest`, `onBeforeSendHeaders` and
+`onHeadersReceived` policies. See [REQUEST_HEADERS.md](REQUEST_HEADERS.md) for
+outgoing-header replacement, upload framing and cancellation boundaries.
 Main `net.request`/`session.fetch` HTTP/HTTPS requests and renderer custom/file
 resources enforce cancellation and header/status changes. Main HTTP/HTTPS
 redirects re-enter policy; custom-protocol policy redirects fail explicitly.

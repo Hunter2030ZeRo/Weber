@@ -1,0 +1,43 @@
+{
+  "kind": "validated-outgoing-request-header-milestone",
+  "commit": "8d426f77547387d0e583d277e515ddac67861e0e",
+  "workflowRun": 34728571287,
+  "runtimeGates": 21,
+  "allRuntimeGatesPassed": true,
+  "webRequestTests": {
+    "node": {
+      "passed": 15,
+      "failed": 0
+    },
+    "bun": {
+      "passed": 15,
+      "failed": 0
+    }
+  },
+  "evidenceSource": "Completed CI job logs; exact printed summaries, not full artifact reports",
+  "sourceEvidenceArtifact": 10308747475,
+  "developmentBundleArtifact": 10308647941,
+  "moduleLoadersModified": false,
+  "shutdownImplementationModified": false,
+  "vscode": {
+    "kind": "vscode-startup-diagnostic",
+    "diagnostic_completed": true,
+    "ready": false,
+    "version": "1.136.2",
+    "stage": "complete",
+    "error": "Error: Weber has not implemented protocol.registerHttpProtocol",
+    "exit_code": 0,
+    "timed_out": true
+  },
+  "vscodeExpandedDependencies": {
+    "kind": "vscode-expanded-dependency-diagnostic",
+    "diagnostic_completed": true,
+    "ready": false,
+    "version": "1.136.2",
+    "stage": "complete",
+    "error": "Error: Weber has not implemented protocol.registerHttpProtocol",
+    "exit_code": 0,
+    "timed_out": true
+  },
+  "wholeVscodeVerified": false
+}
