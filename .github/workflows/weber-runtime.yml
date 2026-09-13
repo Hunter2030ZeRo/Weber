@@ -75,6 +75,7 @@ jobs:
         run: |
           node --test weber/electron-runtime/test-asar.cjs
           bun test ./weber/electron-runtime/test-asar.cjs
+          python3 -m unittest discover -s weber/vscode-probe -p test_diagnostic.py
           node --test weber/electron-runtime/test-web-request.cjs
           bun test ./weber/electron-runtime/test-web-request.cjs
           node --test weber/electron-runtime/test-protocol-http.cjs

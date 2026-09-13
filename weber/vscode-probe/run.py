@@ -159,17 +159,29 @@ def startup(command: list[str], app: Path, temporary: Path, timeout: float) -> d
     captured = {"stdout": bytearray(), "stderr": bytearray()}
     counts = {"stdout": 0, "stderr": 0}
     overflow = threading.Event()
+    capture_lock = threading.Lock()
+    termination_started = False
+    before_stop = None
+
+    def mark_termination():
+        nonlocal termination_started, before_stop
+        with capture_lock:
+            if not termination_started:
+                before_stop = {name: bytes(value) for name, value in captured.items()}
+                termination_started = True
+
 
     def consume(name, pipe):
-        while chunk := pipe.read(8192):
+        while chunk := os.read(pipe.fileno(), 8192):
             counts[name] += len(chunk)
-            captured[name].extend(chunk)
-            # Keep a bounded tail: Node may print a long minified source line
-            # before the useful exception message and stack trace.
-            if len(captured[name]) > KEEP_LOG:
-                del captured[name][:-KEEP_LOG]
+            with capture_lock:
+                captured[name].extend(chunk)
+                # Keep a bounded tail, including long minified source output.
+                if len(captured[name]) > KEEP_LOG:
+                    del captured[name][:-KEEP_LOG]
             if counts[name] > MAX_LOG:
                 overflow.set()
+                mark_termination()
                 stop_group(process, signal.SIGKILL)
         pipe.close()
 
@@ -183,6 +195,7 @@ def startup(command: list[str], app: Path, temporary: Path, timeout: float) -> d
         process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         timed_out = True
+        mark_termination()
         stop_group(process, signal.SIGTERM)
         try:
             process.wait(timeout=2)
@@ -196,7 +209,10 @@ def startup(command: list[str], app: Path, temporary: Path, timeout: float) -> d
         for reader in readers:
             reader.join(timeout=5)
     text = {name: bytes(value).decode("utf-8", errors="replace") for name, value in captured.items()}
-    error, stack = extract_exception(text["stderr"], text["stdout"])
+    pre = text if before_stop is None else {name: value.decode("utf-8", errors="replace") for name, value in before_stop.items()}
+    error, stack = extract_exception(pre["stderr"], pre["stdout"])
+    all_error, all_stack = extract_exception(text["stderr"], text["stdout"])
+
     if error is None:
         error = ("Startup exceeded the diagnostic deadline; readiness was not established" if timed_out else
                  "Startup output exceeded the diagnostic limit" if overflow.is_set() else
@@ -204,6 +220,11 @@ def startup(command: list[str], app: Path, temporary: Path, timeout: float) -> d
     return {"exit_code": process.returncode, "timed_out": timed_out,
             "duration_seconds": round(time.monotonic() - started, 3),
             "output_limit_exceeded": overflow.is_set(), "error": error, "stack": stack,
+            "pre_termination_exception": extract_exception(pre["stderr"], pre["stdout"])[0],
+            "combined_output_exception": all_error, "combined_output_stack": all_stack,
+            "capture_boundary": "Bytes observed by log readers before diagnostic termination signal; not a causal classification",
+            "pre_termination_stdout_tail": pre["stdout"][-12000:],
+            "pre_termination_stderr_tail": pre["stderr"][-12000:],
             "stdout_tail": text["stdout"][-12000:], "stderr_tail": text["stderr"][-12000:],
             "output_bytes": counts, "command": command}
 
@@ -275,6 +296,9 @@ def main() -> int:
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({key: report.get(key) for key in
                      ["kind", "diagnostic_completed", "ready", "version", "stage", "error", "exit_code", "timed_out"]}))
+    print(json.dumps({"kind": "vscode-startup-output", **{key: report.get(key) for key in
+                     ["pre_termination_exception", "combined_output_exception", "stack", "combined_output_stack",
+                      "pre_termination_stdout_tail", "pre_termination_stderr_tail", "stdout_tail", "stderr_tail"]}}))
     return 0 if report["diagnostic_completed"] else 2
 
 
