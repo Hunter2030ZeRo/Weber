@@ -57,6 +57,7 @@ async function runClipboard(){
   const ids=Array.from({length:16},()=>nativeRequest({op:'clipboard.start',action:'read'}).id);
   let limited=false;try{nativeRequest({op:'clipboard.start',action:'read'});}catch{limited=true;}
   check(limited,'native pending limit');for(const requestId of ids)nativeRequest({op:'clipboard.cancel',requestId});
+  await writeText('intermediate write using the same input serial');
   await writeText('\n'.repeat(8192));
   report({stage:'clipboard-limits',passed:true,rejected,limited});return;
  }
@@ -66,7 +67,7 @@ async function runClipboard(){
  }
 }
 function runOnce(){if(inFlight)return;inFlight=true;void runClipboard().catch(error=>report({stage:'failure',message:String(error),stack:error?.stack})).finally(()=>{inFlight=false;});}
-window.addEventListener('keydown',event=>{if(event.key==='F6')runOnce();if(event.key==='F8')void import('@weber/sdk/window').then(({closeWindow})=>closeWindow());});
+window.addEventListener('keydown',event=>{if(event.key==='F6')runOnce();if(event.key==='F8')void import('@weber/sdk/window').then(({closeWindow})=>{closeWindow();setTimeout(()=>document.getElementById('discard')?.click(),100);});});
 window.addEventListener('blur',()=>{void readText().then(()=>report({stage:'failure',message:'Unfocused read accepted'}),()=>report({stage:'clipboard-unfocused',passed:true}));});`);
 try { await run('probe-build', process.execPath, [cli, 'build', project, join(project, 'dist-native')], project); }
 finally { await writeFile(entry, original); }

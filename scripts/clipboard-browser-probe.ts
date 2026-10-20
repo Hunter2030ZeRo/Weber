@@ -57,11 +57,17 @@ async function advance() {
     check(single.value === 'Read only', 'Readonly cut/paste preserve value: ' + single.value);
     check(events.some(e => e.type === 'input' && e.inputType === 'insertFromPaste'), 'Paste input event');
     check(events.some(e => e.type === 'input' && e.inputType === 'deleteByCut'), 'Cut input event');
+    single.readOnly = false; single.value = '한'.repeat(2731); single.focus();
+  } else if (phase === 9) {
+    check(single.value === '한'.repeat(2731), 'Oversized default cut preserves the original text');
+    single.value = 'Cut recovered 한글 😀'; single.focus();
+  } else if (phase === 10) {
+    check(single.value === '', 'Default cut recovers after rejected oversized cut');
   }
-  report({ stage: 'browser-phase', phase: phase++, passed: true, ...(phase === 9 ? { events, navigatorClipboardExposed: !!navigator.clipboard } : {}) });
+  report({ stage: 'browser-phase', phase: phase++, passed: true, ...(phase === 11 ? { events, navigatorClipboardExposed: !!navigator.clipboard } : {}) });
 }
 window.addEventListener('keydown', event => {
-  if (event.key === 'F8') void import('@weber/sdk/window').then(({ closeWindow }) => closeWindow());
+  if (event.key === 'F8') void import('@weber/sdk/window').then(({ closeWindow }) => { closeWindow(); setTimeout(() => document.getElementById('discard')?.click(), 100); });
   if (event.key !== 'F6' || busy) return;
   busy = true;
   void advance().catch(error => report({ stage: 'failure', message: String(error), stack: error?.stack })).finally(() => { busy = false; });

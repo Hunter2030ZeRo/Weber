@@ -89,6 +89,7 @@ void(async()=>{
  for(let i=0;i<200&&document.getElementById('status')?.textContent!=='Saved';i++)await wait(20);
  check(document.getElementById('status')?.textContent==='Saved','save button');
  type('unsaved edit');document.getElementById('reload')!.click();
+ await wait(30);check(!!document.getElementById('discard'),'reload asks before discarding changes');document.getElementById('discard')!.click();
  for(let i=0;i<200&&document.getElementById('status')?.textContent!=='Loaded';i++)await wait(20);
  check(input.value===expected,'reload button');document.getElementById('open')!.click();
  for(let i=0;i<150&&await getValue('npm-child-loaded')!==true;i++)await wait(20);

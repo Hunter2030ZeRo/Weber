@@ -10,7 +10,7 @@ if [[ "$actual" != "$revision" ]]; then
   printf 'Servo revision mismatch: %s\n' "$actual" >&2
   exit 1
 fi
-for patch_name in servo-transient-observers servo-sync-host servo-time-origin servo-keyboard-click servo-binary-host servo-small-dom-scheduling; do
+for patch_name in servo-transient-observers servo-sync-host servo-time-origin servo-keyboard-click servo-binary-host servo-small-dom-scheduling servo-safe-cut; do
   patch_path="$PWD/patches/$patch_name.patch"
   # The binary extension modifies the same generated binding/trait contexts.
   # Its successful reverse check establishes that the preceding sync patch is

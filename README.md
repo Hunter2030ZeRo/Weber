@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Developer preview</strong> · Linux / Wayland · SDK 0.3.2
+  <strong>Developer preview</strong> · Linux / Wayland · SDK 0.4.0
 </p>
 
 <p align="center">
@@ -39,6 +39,8 @@ Linux foundation, web compatibility, responsiveness and resource use.
 | Windows | Multiple windows for the same app, titles, resizing, maximize, fullscreen and state subscriptions |
 | Storage | App-scoped directories and asynchronous persistent JSON storage shared across app windows |
 | Clipboard | System text clipboard through the SDK and Servo's standard copy/cut/paste in textarea/input controls on focused Wayland windows |
+| Text files | Desktop file chooser, UTF-8 open/save and cancellation through `@weber/sdk/files` |
+| App lifecycle | Visible script errors and async close decisions for unsaved changes |
 | Backend | Optional Bun process with named calls, subscriptions, cancellation and bounded IPC |
 | Distribution | Local npm SDK/runtime packages and relocatable Linux application bundles |
 
@@ -46,8 +48,10 @@ Linux foundation, web compatibility, responsiveness and resource use.
 Windows and macOS are planned. Weber is a developer preview, not a released beta;
 the SDK and runtime packages are not published to npm.
 
-Native file dialogs, accessibility and broader platform integration
-remain on the [beta roadmap](docs/beta-plan.md). Browser compatibility is measured
+Parented dialogs, contenteditable editing, accessibility and broader platform
+integration remain on the [beta roadmap](docs/beta-plan.md). The text clipboard
+and app-store value limit is 8 KiB; file open/save supports 256 KiB UTF-8 text.
+See the [Linux preview milestone](docs/linux-preview-milestone.md). Browser compatibility is measured
 against a [selected, locked test profile](docs/compatibility-target.md), rather
 than assumed to cover every web API or arbitrary Electron applications.
 
@@ -171,6 +175,8 @@ memory or startup advantage over Electron or native GUI frameworks is claimed.
 | Native windows | [Runtime and ownership](docs/native-runtime.md) · [Window controls and validation](docs/platform-validation.md) |
 | Persistent data | [Storage API and Notes example](docs/app-storage.md) |
 | Clipboard | [Native text clipboard API and validation](docs/clipboard.md) |
+| Files and lifecycle | [Text files, close decisions and diagnostics](docs/files-and-lifecycle.md) |
+| Linux preview | [Acceptance criteria and results](docs/linux-preview-milestone.md) |
 | Optional backend | [Bun integration](docs/bun-backend.md) · [Backend validation](docs/bun-backend-validation.md) |
 | Web compatibility | [Locked test profile](docs/compatibility-target.md) · [Profile validation](docs/profile-validation.md) |
 | Performance | [JIT foundation results](docs/foundation-validation.md) · [CPU investigation](docs/jit-cpu-analysis.md) |

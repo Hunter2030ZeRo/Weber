@@ -106,6 +106,7 @@ impl State {
         &mut self,
         task: &Task,
         qh: &QueueHandle<Self>,
+        connection: &Connection,
     ) -> Result<Option<serde_json::Value>> {
         let seat = self
             .active
@@ -116,13 +117,16 @@ impl State {
             // Clear selection ownership, rather than offering an empty source.
             // Servo sends Clear then Set for custom copy data. Some compositors
             // reject two non-null sources using the same input serial.
+            // Destroy our preceding source first. Older Mutter rejects replacing
+            // two non-null sources using one input serial; destroying it after
+            // an ignored replacement would otherwise empty the clipboard.
+            if let Some(old) = self.source.take() {
+                old.destroy();
+            }
             seat.device
                 .as_ref()
                 .ok_or_else(|| anyhow!("Clipboard device unavailable"))?
                 .set_selection(None, seat.serial);
-            if let Some(old) = self.source.take() {
-                old.destroy();
-            }
             return Ok(Some(serde_json::Value::Null));
         }
         if let Operation::Write(text) = &task.operation {
@@ -134,13 +138,17 @@ impl State {
             for mime in MIME {
                 source.offer(mime.into());
             }
+            if let Some(old) = self.source.take() {
+                old.destroy();
+            }
             seat.device
                 .as_ref()
                 .ok_or_else(|| anyhow!("Clipboard device unavailable"))?
                 .set_selection(Some(&source), seat.serial);
-            if let Some(old) = self.source.replace(source) {
-                old.destroy();
-            }
+            self.source = Some(source);
+            // A cut may delete its selection only after protocol submission.
+            // There is still no compositor acknowledgment or future-paste ack.
+            connection.flush()?;
             // Completion means the request has been sent to the compositor, not
             // that a future paste succeeded. Wayland has no selection-set ack.
             Ok(Some(serde_json::Value::Null))
@@ -292,7 +300,7 @@ pub(super) fn run(
             let result = if Instant::now() >= deadline {
                 Err(anyhow!("Clipboard initialization or focus timed out"))
             } else {
-                state.operate(&task, &qh)
+                state.operate(&task, &qh, &connection)
             };
             match result {
                 Ok(None) => {}

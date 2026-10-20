@@ -20,6 +20,24 @@ module does not polyfill `navigator.clipboard`; full web Clipboard API permissio
 semantics and contenteditable default paste remain outside the verified scope.
 See the source repository's `docs/clipboard.md`.
 
+`@weber/sdk/files` exports `openTextFile(options?)` and
+`saveTextFile(text, suggestedName?, options?)`. Both ask the desktop file chooser;
+cancel returns `null`. Open returns `{ name, text }`, save returns `{ name }`.
+The Linux host requires `fileDialogProtocol: 1` and a working FileChooser portal.
+UTF-8 files are limited to 256 KiB. `options.signal` cancels a pending request.
+The host performs file I/O and atomic replacement, without a Node/Bun runtime.
+
+`onCloseRequested(async () => boolean)` from `@weber/sdk/window` intercepts native
+and SDK close requests. Return `true` to close or `false` to keep editing; thrown
+errors preserve the window. Keep one handler per window and call its returned
+unsubscribe function on component cleanup. No handler means normal immediate
+close. Packaged and Vite apps display uncaught JavaScript errors and unhandled
+promise rejections in a dismissible diagnostic panel.
+
+See `docs/linux-preview-milestone.md` for acceptance criteria and verification
+boundaries. Contenteditable, cross-platform backends and Hermes-only DOM are
+not included in this Linux preview target.
+
 Project commands: `npm run dev`, `npm run check`, `npm run build`,
 `npm start`, and `npm run package`. The final command produces `package/weber`,
 private libraries, notices and `application/`. Launch `./weber --app ./application`

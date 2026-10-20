@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -17,7 +17,8 @@ export async function dev(project) {
   let server;
   try {
     const { vite, config } = await withTarget(project, 'web', () => viteConfig(project, 'serve'));
-    server = await vite.createServer(vite.mergeConfig(config, { server: { host: '127.0.0.1', open: false }, plugins: [{ name: 'weber:native-capability', transformIndexHtml: () => [...(backend ? [{ tag: 'meta', attrs: { name: 'weber-backend', content: capability }, injectTo: 'head' }] : []), { tag: 'meta', attrs: { name: 'weber-native', content: capability }, injectTo: 'head' }] }] }));
+    const diagnostics = await readFile(new URL('./diagnostics.mjs', import.meta.url), 'utf8');
+    server = await vite.createServer(vite.mergeConfig(config, { server: { host: '127.0.0.1', open: false }, plugins: [{ name: 'weber:native-capability', transformIndexHtml: () => [{ tag:'script',children:diagnostics,injectTo:'head-prepend' }, ...(backend ? [{ tag: 'meta', attrs: { name: 'weber-backend', content: capability }, injectTo: 'head' }] : []), { tag: 'meta', attrs: { name: 'weber-native', content: capability }, injectTo: 'head' }] }] }));
   }
   catch (error) { if (temporary) await rm(temporary, { recursive: true, force: true }); throw error; }
   let child, stopping, finished = false;

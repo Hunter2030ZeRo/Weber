@@ -22,6 +22,10 @@ log = "0.4"
 libc = "0.2"
 rustix = { version = "1.1.5", features = ["event", "fs", "pipe"] }
 directories-next = "2"
+zbus = "5.19.0"
+async-io = "2"
+async-channel = "2"
+futures-lite = "2"
 http = "1"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 servo = { path = "vendor/servo/components/servo", default-features = false, features = ["bundled", "js_jit"] }

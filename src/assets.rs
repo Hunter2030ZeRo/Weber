@@ -219,10 +219,11 @@ fn application_asset(path: &str) -> Option<(String, Vec<u8>)> {
             let entry = if web { "<script src=\"/web.js\"></script>" } else { "<script src=\"/adapter.js\"></script>" };
             let native = crate::native::capability().map(|token| format!("<meta name=\"weber-native\" content=\"{token}\">" )).unwrap_or_default();
             let capability = crate::backend::capability().map(|token| format!("<meta name=\"weber-backend\" content=\"{token}\">" )).unwrap_or_default();
-            Some(("text/html; charset=utf-8".to_owned(), format!("<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{native}{capability}<title>{title}</title>{styles}<div id=\"aot-dom-root\"></div><script src=\"/config.js\"></script>{entry}<script src=\"/bootstrap.js\"></script>").into_bytes()))
+            Some(("text/html; charset=utf-8".to_owned(), format!("<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{native}{capability}<title>{title}</title>{styles}<div id=\"aot-dom-root\"></div><script src=\"/config.js\"></script><script src=\"/diagnostics.js\"></script>{entry}<script src=\"/bootstrap.js\"></script>").into_bytes()))
         }
         "/adapter.js" => Some((javascript, [include_bytes!("wire.js").as_slice(), include_bytes!("dom_adapter.js").as_slice()].concat())),
         "/bootstrap.js" => Some((javascript, include_bytes!("application_bootstrap.js").to_vec())),
+        "/diagnostics.js" => Some((javascript, include_bytes!("../sdk/diagnostics.mjs").to_vec())),
         "/config.js" => Some((javascript, format!("window.__weberApplication = {};", serde_json::json!({ "id": app.manifest.id, "test": std::env::var("WEBER_APP_TEST").as_deref() == Ok("1") })).into_bytes())),
         _ => app.assets.get(path).cloned(),
     }

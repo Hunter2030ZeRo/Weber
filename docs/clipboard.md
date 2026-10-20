@@ -75,17 +75,25 @@ second of two non-null selections with the same serial; this was observed in
 protocol traces and corrected for the clear-then-write path. Compare the serial
 checks in [Mutter 50.0](https://github.com/GNOME/mutter/blob/50.0/src/wayland/meta-wayland-data-device.c)
 and [current Mutter](https://github.com/GNOME/mutter/blob/main/src/wayland/meta-wayland-data-device.c).
-Repeated standalone writes without a fresh input serial remain compositor
-dependent; Wayland offers no success acknowledgment.
+The 0.4.0 path also destroys Weber's preceding source before submitting its
+replacement. This prevents an ignored same-serial replacement followed by
+destruction of the active source from emptying the clipboard. Consecutive SDK
+writes are part of the preview regression suite. Wayland still offers no
+selection-set success acknowledgment.
 
 Browser access requires a focused native window whose top-level WebView URL is
 `weber-app:`. This is a trusted packaged-app boundary, not a complete browser
 permission model for arbitrary untrusted pages or frames. `navigator.clipboard`
 is not polyfilled or given new permissions. Its complete permission, activation
 and write-error behavior has not been validated. Servo's write delegate has no
-completion result: copy/cut failures are logged, and a cut is **not rolled back**
-if publishing fails (including the 8192-byte limit). Apps requiring confirmed
-large transfers must not rely on this provisional cut path.
+completion result in upstream Servo. Weber 0.4.0 adds a separately maintained
+`servo-safe-cut.patch`: default cuts use an explicit write-result callback and
+preserve the selection if validation or native submission fails, including the
+8192-byte limit. Hosts advertise `safeCutProtocol: 1`. This is a Weber extension,
+not an existing upstream API or an acknowledgment of a future paste. Custom
+JavaScript cut handlers remain responsible for edits they perform themselves.
+The script thread waits for the bounded worker reply; the host event loop keeps
+running. Copy remains fire-and-forget with logged errors.
 
 Servo's pinned `EditingContext::Document::pasting_enabled` returns false, and its
 document insertion/removal paths contain contenteditable TODOs. An explicit

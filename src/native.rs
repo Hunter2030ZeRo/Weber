@@ -55,6 +55,7 @@ pub enum Command {
         options: Options,
     },
     Close(u64),
+    CloseConfirmed(u64),
     Title(u64, String),
     Resize(u64, u32, u32),
     Maximize(u64, bool),
@@ -67,6 +68,10 @@ struct Watch {
     delivered: Option<u64>,
     in_flight: bool,
 }
+struct CloseWatch {
+    generation: u64,
+    pending: Option<u64>,
+}
 #[derive(Default)]
 pub struct Control {
     pub wake: Option<winit::event_loop::EventLoopProxy<crate::host::Wake>>,
@@ -76,6 +81,8 @@ pub struct Control {
     revision: u64,
     watch_generation: u64,
     watches: BTreeMap<u64, Watch>,
+    close_watches: BTreeMap<u64, CloseWatch>,
+    close_serial: u64,
     wake_queued: bool,
 }
 pub type Shared = Rc<RefCell<Control>>;
@@ -98,6 +105,7 @@ impl Control {
     }
     pub fn remove(&mut self, id: u64) {
         self.watches.remove(&id);
+        self.close_watches.remove(&id);
         if self.windows.remove(&id).is_some() {
             self.revision += 1;
         }
@@ -146,6 +154,18 @@ impl Control {
     }
     pub fn detach(&mut self, id: u64) {
         self.watches.remove(&id);
+        self.close_watches.remove(&id);
+    }
+    /// None closes immediately; null coalesces repeated requests; an object
+    /// requests a fresh JS decision. No window closes on a stale reply.
+    pub fn request_close(&mut self, id: u64) -> Option<Value> {
+        let watch = self.close_watches.get_mut(&id)?;
+        if watch.pending.is_some() {
+            return Some(Value::Null);
+        }
+        self.close_serial += 1;
+        watch.pending = Some(self.close_serial);
+        Some(json!({"generation":watch.generation,"token":self.close_serial}))
     }
 }
 thread_local! { static ACTIVE: RefCell<Option<(Shared, u64)>> = const { RefCell::new(None) }; }
@@ -195,11 +215,17 @@ pub fn exchange_active(payload: &str) -> String {
 pub fn exchange(control: &Shared, source: u64, payload: &str) -> String {
     let mut watch_started = false;
     let result = (|| -> Result<Value> {
-        ensure!(payload.len() <= 65_536, "Native request too large");
+        ensure!(
+            payload.len() <= crate::files::MAX_PAYLOAD,
+            "Native request too large"
+        );
         let request: Value = serde_json::from_str(payload)?;
+        if request["op"] != "files.start" {
+            ensure!(payload.len() <= 65_536, "Native request too large");
+        }
         if !request["op"]
             .as_str()
-            .is_some_and(|op| op.starts_with("clipboard."))
+            .is_some_and(|op| op.starts_with("clipboard.") || op.starts_with("files."))
         {
             ensure!(payload.len() <= 16_000, "Native request too large");
         }
@@ -220,6 +246,68 @@ pub fn exchange(control: &Shared, source: u64, payload: &str) -> String {
                 .ok_or_else(|| anyhow!("Window id must be a positive integer"))?,
         };
         match request["op"].as_str() {
+            Some("close.watch") => {
+                ensure!(
+                    !control.close_watches.contains_key(&source),
+                    "Close handler already registered"
+                );
+                control.watch_generation += 1;
+                let generation = control.watch_generation;
+                control.close_watches.insert(
+                    source,
+                    CloseWatch {
+                        generation,
+                        pending: None,
+                    },
+                );
+                Ok(json!({"generation":generation}))
+            }
+            Some("close.unwatch") => {
+                if control
+                    .close_watches
+                    .get(&source)
+                    .is_some_and(|w| Some(w.generation) == request["generation"].as_u64())
+                {
+                    control.close_watches.remove(&source);
+                }
+                Ok(Value::Null)
+            }
+            Some("close.reply") => {
+                ensure!(control.commands.len() < 64, "Native command queue full");
+                let allow = request["allow"]
+                    .as_bool()
+                    .ok_or_else(|| anyhow!("Close decision required"))?;
+                let watch = control
+                    .close_watches
+                    .get_mut(&source)
+                    .ok_or_else(|| anyhow!("Close handler unavailable"))?;
+                ensure!(
+                    Some(watch.generation) == request["generation"].as_u64()
+                        && watch.pending.is_some()
+                        && watch.pending == request["token"].as_u64(),
+                    "Stale close decision"
+                );
+                watch.pending = None;
+                if allow {
+                    control.commands.push_back(Command::CloseConfirmed(source));
+                }
+                Ok(Value::Null)
+            }
+            Some("files.start") => {
+                ensure!(
+                    control
+                        .windows
+                        .get(&source)
+                        .is_some_and(|window| window["focused"] == true),
+                    "File chooser requires the calling window to have focus"
+                );
+                crate::files::submit(source, &request)
+            }
+            Some("files.poll") => crate::files::poll(source, &request),
+            Some("files.cancel") => {
+                crate::files::cancel(source, &request)?;
+                Ok(Value::Null)
+            }
             Some("clipboard.start") => {
                 ensure!(
                     control
@@ -362,6 +450,50 @@ pub fn exchange(control: &Shared, source: u64, payload: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn close_decisions_coalesce_and_stale_or_foreign_replies_cannot_close() {
+        let control = shared();
+        control
+            .borrow_mut()
+            .update(2, json!({"id":2,"state":"ready"}));
+        let generation =
+            call(&control, json!({"op":"close.watch"}))["result"]["generation"].clone();
+        let event = control.borrow_mut().request_close(1).unwrap_or(Value::Null);
+        assert_eq!(control.borrow_mut().request_close(1), Some(Value::Null));
+        let reply =
+            json!({"op":"close.reply","generation":generation,"token":event["token"],"allow":true});
+        let foreign: Value =
+            serde_json::from_str(&exchange(&control, 2, &reply.to_string())).unwrap_or(Value::Null);
+        assert_eq!(foreign["ok"], false);
+        call(
+            &control,
+            json!({"op":"close.unwatch","generation":generation}),
+        );
+        call(&control, json!({"op":"close.watch"}));
+        assert_eq!(call(&control, reply)["ok"], false);
+        let fresh = control.borrow_mut().request_close(1).unwrap_or(Value::Null);
+        assert_eq!(
+            call(
+                &control,
+                json!({"op":"close.reply","generation":fresh["generation"],"token":fresh["token"],"allow":false})
+            )["ok"],
+            true
+        );
+        assert!(control.borrow().commands.is_empty());
+        let next = control.borrow_mut().request_close(1).unwrap_or(Value::Null);
+        assert_eq!(
+            call(
+                &control,
+                json!({"op":"close.reply","generation":next["generation"],"token":next["token"],"allow":true})
+            )["ok"],
+            true
+        );
+        assert!(matches!(
+            control.borrow().commands.front(),
+            Some(Command::CloseConfirmed(1))
+        ));
+    }
 
     fn shared() -> Shared {
         let mut control = Control {

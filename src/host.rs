@@ -59,10 +59,18 @@ struct Delegate {
 struct Clipboard {
     window: Arc<Window>,
     id: u64,
+    development_origin: Option<String>,
 }
 impl Clipboard {
     fn allowed(&self, webview: &WebView) -> bool {
-        self.window.has_focus() && webview.url().is_some_and(|url| url.scheme() == "weber-app")
+        self.window.has_focus()
+            && webview.url().is_some_and(|url| {
+                url.scheme() == "weber-app"
+                    || self
+                        .development_origin
+                        .as_ref()
+                        .is_some_and(|origin| url.origin().ascii_serialization() == *origin)
+            })
     }
 }
 impl servo::ClipboardDelegate for Clipboard {
@@ -83,6 +91,18 @@ impl servo::ClipboardDelegate for Clipboard {
             crate::clipboard::browser(self.id, Some(contents), None);
         } else {
             log::warn!("Clipboard requires a focused Weber application window");
+        }
+    }
+    fn set_text_with_result(
+        &self,
+        webview: WebView,
+        contents: String,
+        request: servo::StringRequest,
+    ) {
+        if self.allowed(&webview) {
+            crate::clipboard::browser(self.id, Some(contents), Some(request));
+        } else {
+            request.failure("Clipboard requires a focused Weber application window".into());
         }
     }
 }
@@ -140,7 +160,7 @@ impl Delegate {
         binary: bool,
     ) -> Option<Vec<u8>> {
         let _native_scope = crate::native::Scope::enter(&self.control, self.id);
-        if payload.len() > 65536 {
+        if payload.len() > crate::files::MAX_PAYLOAD {
             return None;
         }
         let mut message: serde_json::Value = if binary {
@@ -155,6 +175,11 @@ impl Delegate {
         } else {
             serde_json::from_slice(payload).ok()?
         };
+        if payload.len() > 65536
+            && !(message["action"] == "native" && message["request"]["op"] == "files.start")
+        {
+            return None;
+        }
         if message["action"] == "native" {
             if binary
                 || crate::native::capability() != message["capability"].as_str()
@@ -304,6 +329,7 @@ impl WebViewDelegate for Delegate {
             crate::backend::close_window(self.id);
             crate::storage::close_window(self.id);
             crate::clipboard::close_window(self.id);
+            crate::files::close_window(self.id);
             self.control.borrow_mut().detach(self.id);
             #[cfg(feature = "aot")]
             if self.active.replace(false)
@@ -460,11 +486,16 @@ impl Running {
             .map_err(|e| anyhow!("make current: {e:?}"))?;
         control.borrow_mut().update(id, window_info(id, &window));
         let ime_visible = Rc::new(Cell::new(false));
+        let development_origin = (url.scheme() == "http"
+            && url.host_str() == Some("127.0.0.1")
+            && std::env::var_os("WEBER_NATIVE_CAPABILITY").is_some())
+        .then(|| url.origin().ascii_serialization());
         let webview = WebViewBuilder::new(servo, context.clone())
             .url(url)
             .clipboard_delegate(Rc::new(Clipboard {
                 window: Arc::clone(&window),
                 id,
+                development_origin,
             }))
             .delegate(Rc::new(Delegate {
                 window: Arc::clone(&window),
@@ -630,6 +661,7 @@ impl App {
             crate::backend::close_window(id);
             crate::storage::close_window(id);
             crate::clipboard::close_window(id);
+            crate::files::close_window(id);
             self.control.borrow_mut().remove(id);
             self.telemetry
                 .emit(serde_json::json!({ "stage": "window-closed", "id": id }));
@@ -640,6 +672,30 @@ impl App {
             event_loop.exit();
         } else {
             self.reclaimer.schedule();
+        }
+    }
+    fn request_close(&mut self, id: u64, event_loop: &ActiveEventLoop) {
+        let decision = self.control.borrow_mut().request_close(id);
+        if let Some(event) = decision {
+            if event != serde_json::Value::Null
+                && let Some((_, running)) = self
+                    .running
+                    .values()
+                    .find(|(candidate, _)| *candidate == id)
+            {
+                running.webview.evaluate_javascript(
+                    format!("globalThis.weberCloseRequested?.({event})"),
+                    |result| {
+                        if let Err(error) = result {
+                            log::warn!(
+                                "Close handler delivery failed; preserving window: {error:?}"
+                            );
+                        }
+                    },
+                );
+            }
+        } else {
+            self.close(id, event_loop);
         }
     }
     fn commands(&mut self, event_loop: &ActiveEventLoop) {
@@ -664,7 +720,8 @@ impl App {
                         self.control.borrow_mut().update(id, serde_json::json!({ "id": id, "state": "failed", "error": error.to_string() }));
                     }
                 }
-                crate::native::Command::Close(id) => self.close(id, event_loop),
+                crate::native::Command::Close(id) => self.request_close(id, event_loop),
+                crate::native::Command::CloseConfirmed(id) => self.close(id, event_loop),
                 command => {
                     let id = match &command {
                         crate::native::Command::Title(id, _)
@@ -728,6 +785,7 @@ impl Drop for App {
         self.running.clear();
         crate::storage::shutdown();
         crate::clipboard::shutdown();
+        crate::files::shutdown();
         self.servo.take();
     }
 }
@@ -821,7 +879,7 @@ impl ApplicationHandler<Wake> for App {
         if let Some((id, running)) = self.running.get_mut(&window) {
             let id = *id;
             if matches!(event, WindowEvent::CloseRequested) {
-                self.close(id, event_loop);
+                self.request_close(id, event_loop);
             } else {
                 let changed = matches!(
                     event,

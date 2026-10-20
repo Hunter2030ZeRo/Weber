@@ -38,10 +38,12 @@ own build and native evidence before being marked complete.
 
 Small-DOM scheduling, app paths/persistent JSON stores and a Vite/Solid Notes
 template are implemented. See [foundation validation](foundation-validation.md)
-for the final binary, native tests and performance evidence. File dialogs,
-browser clipboard integration, broader platform APIs and recovery remain subsequent work.
-The [SDK 0.3.2 text clipboard](clipboard.md) provides the first native clipboard
-increment; standard browser shortcuts and richer formats remain separate work.
+for its binary, native tests and performance evidence. The [clipboard](clipboard.md)
+now connects the SDK and normal textarea/input shortcuts to Wayland, with a
+separate Servo safe-cut extension. SDK 0.4.0 adds [text file selection and
+lifecycle APIs](files-and-lifecycle.md). The [Linux preview milestone](linux-preview-milestone.md)
+records the current acceptance scope. Richer clipboard formats, contenteditable,
+broader platform APIs and process/renderer recovery remain subsequent work.
 
 ## Subsequent beta requirements
 
@@ -51,8 +53,8 @@ measures larger DOMs, multiple windows and repeated close/reopen lifetimes on
 both engines, alongside the preceding JIT-only host. See
 [the bundle's validation record](platform-validation.md) for what actually ran.
 
-- Browser clipboard integration, native file dialogs, remaining window
-  controls and real keyboard/IME/shortcut verification.
+- Rich clipboard formats, contenteditable editing, Wayland-parented file
+  dialogs, remaining window controls and physical keyboard/IME verification.
 - General platform event API, renderer navigation/disposal handling, recovery
   policy, dependency-specific Node compatibility and native app trust boundaries.
 - A downstream panel/launcher integrated with actual Hyprland sockets; output

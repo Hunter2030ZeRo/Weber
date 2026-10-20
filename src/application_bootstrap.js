@@ -20,7 +20,7 @@
       await new Promise(resolve => setTimeout(resolve, 100)); location.href = "weber://close";
     }
   } catch (error) {
-    report({ stage: "failure", message: String(error) });
-    location.href = "weber://close";
+    window.weberShowError?.(error);
+    if (config.test) { report({ stage: "failure", message: String(error) }); location.href = "weber://close"; }
   }
 })();

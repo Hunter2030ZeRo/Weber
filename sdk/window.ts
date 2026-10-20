@@ -31,6 +31,23 @@ export async function openWindow(options: WindowOptions = {}): Promise<WindowInf
 }
 /** Enqueues a close; other windows remain running. Closing the last window exits the app. */
 export function closeWindow(id?: number): void { request({ op: 'close', id: id ?? currentWindow().id }); }
+let closeHandler: (() => boolean | Promise<boolean>) | undefined, closeGeneration: number | undefined;
+Object.assign(globalThis, { async weberCloseRequested(event: { generation: number; token: number }) {
+  if (!closeHandler || event.generation !== closeGeneration) return;
+  let allow = false;
+  try { allow = await closeHandler() === true; }
+  catch (error) { console.error('Close handler:', error); (globalThis as any).weberShowError?.(error); }
+  if (event.generation === closeGeneration) request({ op: 'close.reply', ...event, allow });
+} });
+/** Intercept native and SDK close requests. Return true to close, false to keep
+ * the window; async decisions are supported. Only one handler per window. */
+export function onCloseRequested(handler: () => boolean | Promise<boolean>): () => void {
+  if (typeof handler !== 'function') throw new TypeError('Close handler required');
+  if (closeHandler) throw new Error('Close handler already registered');
+  const generation = request({ op: 'close.watch' }).generation;
+  closeHandler = handler; closeGeneration = generation;
+  return () => { if (closeGeneration !== generation) return; closeHandler = undefined; closeGeneration = undefined; request({ op: 'close.unwatch', generation }); };
+}
 export function setWindowTitle(title: string, id?: number): void { request({ op: 'title', title, id: id ?? currentWindow().id }); }
 /** Requests logical pixels. The compositor may constrain the result; observe snapshots for actual physical size. */
 export function resizeWindow(width: number, height: number, id?: number): void { request({ op: 'resize', width, height, id: id ?? currentWindow().id }); }

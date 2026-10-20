@@ -1,1 +1,2 @@
 body{margin:0;font:16px sans-serif;background:#f6f5f2;color:#242424}main{max-width:800px;margin:auto;padding:24px}h1{margin:0 0 12px}textarea{box-sizing:border-box;width:100%;height:330px;resize:vertical;padding:12px;font:inherit;line-height:1.5}button{font:inherit;padding:8px 14px;margin:12px 8px 12px 0}output{display:block}
+#discard-dialog{position:fixed;inset:20% 12%;padding:24px;border:2px solid #242424;background:#fff;box-shadow:0 0 0 100vmax #0005;z-index:1000}#discard-dialog button{min-width:140px}#dirty{font-size:14px;color:#555}

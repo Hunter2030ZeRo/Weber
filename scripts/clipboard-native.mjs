@@ -11,7 +11,7 @@ const build = JSON.parse((await execute(binary, ['--build-info'])).stdout); asse
 const fixture = JSON.parse(await readFile('artifacts/clipboard-workflow.json', 'utf8'));
 const browser = process.argv.includes('--browser');
 const resultPath = browser ? 'artifacts/clipboard-browser-native.json' : 'artifacts/clipboard-native.json';
-if (browser) assert.equal(build.browserClipboardProtocol, 1);
+if (browser) { assert.equal(build.browserClipboardProtocol, 1); assert.equal(build.safeCutProtocol, 1); }
 await writeFile(resultPath, JSON.stringify({passed:false,build,sdkVersion:fixture.sdkVersion,installedSdk:fixture.installed,scope:'Native test started; completion not yet confirmed'},null,2));
 const log = openSync(resolve('artifacts/clipboard-peer.log'), 'w');
 const peer = spawn('/usr/bin/python3', [resolve('scripts/clipboard-peer.py')], { stdio: ['pipe', 'pipe', log], env: { ...process.env, GDK_BACKEND: 'wayland', GSK_RENDERER: 'cairo', GTK_A11Y: 'none', GTK_IM_MODULE: 'gtk-im-context-simple' } }); closeSync(log);
@@ -84,8 +84,11 @@ try {
     await focusWeber(); await paste(); await advance(7);
     const editable = await app.waitEvent(e => e.data.stage === 'browser-contenteditable', 'contenteditable capability observation');
     await select(); await cut(); await paste(); await advance(8);
+    await select(); await cut(); await advance(9);
+    await select(); await cut(); await advance(10);
+    await focusPeer(); assert.equal((await command('read')).text, 'Cut recovered 한글 😀'); await focusWeber();
     await keys.key(66); const exit = await app.waitExit(); assert.equal(exit.code, 0, JSON.stringify(exit));
-    await writeFile(resultPath, JSON.stringify({ passed: true, build, binary, sdkVersion: fixture.sdkVersion, installedSdk: fixture.installed, display: process.env.WEBER_TEST_DISPLAY, scope: 'Native virtual Ctrl+C/X/V in isolated Wayland: textarea multiline/Unicode paste and copy with GTK4, input cut to GTK4 and paste, trusted clipboard events/data, custom copy data, prevented paste, readonly input preservation, input events, clean exit. No SDK clipboard calls or synthetic clipboard events; no physical keyboard, full Clipboard API, Windows/macOS or AOT validation.', limitations: editable.data.supported ? [] : ['Servo contenteditable default paste is unimplemented; event/data arrive but content remains unchanged.'], contenteditable: editable.data, peerEvents, trace: app.path }, null, 2));
+    await writeFile(resultPath, JSON.stringify({ passed: true, build, binary, sdkVersion: fixture.sdkVersion, installedSdk: fixture.installed, display: process.env.WEBER_TEST_DISPLAY, scope: 'Native virtual Ctrl+C/X/V in isolated Wayland: textarea multiline/Unicode paste and copy with GTK4, input cut to GTK4 and paste, trusted clipboard events/data, custom copy data, prevented paste, readonly input preservation, oversized default cut preserves text and later cut recovers, input events, clean exit. No SDK clipboard calls or synthetic clipboard events; no physical keyboard, full Clipboard API, Windows/macOS or AOT validation.', limitations: editable.data.supported ? [] : ['Servo contenteditable default paste is unimplemented; event/data arrive but content remains unchanged.'], contenteditable: editable.data, peerEvents, trace: app.path }, null, 2));
     console.log('Browser copy/cut/paste native gates passed');
   } else {
   await app.waitEvent(e => e.data.stage === 'clipboard-offered', 'GTK to Weber paste and copy', 20000);

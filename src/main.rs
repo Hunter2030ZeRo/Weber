@@ -9,6 +9,7 @@ mod backend;
 mod clipboard;
 #[cfg(feature = "aot")]
 mod dom;
+mod files;
 mod host;
 mod input;
 #[cfg(feature = "layer-shell")]
@@ -37,8 +38,8 @@ fn main() -> Result<()> {
         } else {
             serde_json::Value::Null
         };
-        info["frameworkVersion"] = "0.2.0".into();
-        info["sdkWorkflowVersion"] = "0.3.0".into();
+        info["frameworkVersion"] = "0.4.0".into();
+        info["sdkWorkflowVersion"] = "0.4.0".into();
         info["bunBackendProtocol"] = 1.into();
         info["aotAvailable"] = cfg!(feature = "aot").into();
         info["layerShellProbe"] = cfg!(feature = "layer-shell").into();
@@ -46,6 +47,10 @@ fn main() -> Result<()> {
         info["storageProtocol"] = 1.into();
         info["clipboardProtocol"] = 1.into();
         info["browserClipboardProtocol"] = 1.into();
+        info["fileDialogProtocol"] = 1.into();
+        info["safeCutProtocol"] = 1.into();
+        info["closeRequestProtocol"] = 1.into();
+        info["diagnosticsProtocol"] = 1.into();
         info["layoutPolicy"] = "serial-small-dom-v1".into();
         info["memoryReclaimPolicy"] = if cfg!(all(target_os = "linux", target_env = "gnu")) {
             "glibc-window-close"
