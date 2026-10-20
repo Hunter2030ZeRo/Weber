@@ -28,6 +28,7 @@ async-channel = "2"
 futures-lite = "2"
 http = "1"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+servo-base = { path = "vendor/servo/components/shared/base" }
 servo = { path = "vendor/servo/components/servo", default-features = false, features = ["bundled", "js_jit"] }
 url = "2"
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen", "wayland-csd-adwaita"] }
@@ -71,3 +72,9 @@ unimplemented = "deny"
 [build-dependencies]
 cxx-build = { version = "1", optional = true }
 
+
+[dev-dependencies]
+atomic_refcell = "0.1.14"
+
+[patch.crates-io]
+stylo = { path = "vendor/stylo" }

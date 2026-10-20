@@ -55,6 +55,12 @@ notices.mkdir(exist_ok=True)
 for name, source in {"Servo-MPL-2.0": root / "vendor/servo/LICENSE", "Hermes-MIT": root / "vendor/hermes/LICENSE"}.items():
     if source.is_file():
         shutil.copy2(source, notices / name)
+stylo = json.loads((root / "patches/stylo-source.json").read_text())
+(notices / "Stylo.txt").write_text(
+    f"Stylo {stylo['version']} (MPL-2.0; see Servo-MPL-2.0).\n"
+    f"Registry archive SHA-256: {stylo['checksum']}\n"
+    "Weber TLS cache changes, including their helper source: patches/stylo-reusable-tls.patch.\n"
+    "Pinned source preparation: https://github.com/Hunter2030ZeRo/Weber/blob/main/scripts/prepare-stylo.py\n")
 for package in ["icu", "fontconfig", "freetype2", "zlib", "bzip2", "libpng", "expat", "brotli", "gcc-libs"]:
     source = pathlib.Path("/usr/share/licenses") / package
     if source.is_dir():

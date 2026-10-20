@@ -27,6 +27,7 @@ for patch_name in servo-transient-observers servo-sync-host servo-time-origin se
     git -C vendor/servo apply "$patch_path"
   fi
 done
+python3 scripts/prepare-stylo.py
 pnpm --dir app install --frozen-lockfile
 pnpm --dir app run build
 if [[ "${1:-}" == "--aot" ]]; then

@@ -113,3 +113,88 @@ mod platform {
     }
 }
 pub use platform::Reclaimer;
+
+/// Opt-in diagnostics through Servo's existing asynchronous memory-report API.
+/// No periodic timer, GC request or public JavaScript capability is installed.
+pub struct Profiler {
+    path: std::path::PathBuf,
+    started: std::time::Instant,
+    pending: bool,
+    send: std::sync::mpsc::SyncSender<ProfileReply>,
+    receive: std::sync::mpsc::Receiver<ProfileReply>,
+}
+type ProfileReply = (
+    String,
+    std::time::Instant,
+    Result<servo::profile_traits::mem::MemoryReportResult, String>,
+);
+impl Profiler {
+    pub fn new(started: std::time::Instant) -> Option<Self> {
+        if std::env::var("WEBER_MEMORY_PROFILE").as_deref() != Ok("1") {
+            return None;
+        }
+        let path = std::env::var_os("WEBER_TELEMETRY")?.into();
+        let (send, receive) = std::sync::mpsc::sync_channel(1);
+        Some(Self {
+            path,
+            started,
+            pending: false,
+            send,
+            receive,
+        })
+    }
+    pub fn request(
+        &mut self,
+        servo: &servo::Servo,
+        proxy: &winit::event_loop::EventLoopProxy<crate::host::Wake>,
+        label: String,
+    ) {
+        if self.pending {
+            return;
+        }
+        let send = self.send.clone();
+        let wake = proxy.clone();
+        let requested = std::time::Instant::now();
+        let callback = servo_base::generic_channel::GenericCallback::new(
+            move |result: Result<servo::profile_traits::mem::MemoryReportResult, _>| {
+                // The engine callback only queues owned data and a wakeup. Formatting
+                // and file I/O happen later, outside the profiler/router callback.
+                if send
+                    .try_send((
+                        label.clone(),
+                        requested,
+                        result.map_err(|error| error.to_string()),
+                    ))
+                    .is_ok()
+                {
+                    let _ = wake.send_event(crate::host::Wake::MemoryReady);
+                }
+            },
+        );
+        match callback {
+            Ok(callback) => {
+                self.pending = true;
+                servo.create_memory_report(callback);
+            }
+            Err(error) => crate::telemetry::write_event(
+                &self.path,
+                self.started,
+                serde_json::json!({"stage":"memory-report-error", "message":error.to_string()}),
+            ),
+        }
+    }
+    pub fn deliver(&mut self) {
+        if let Ok((label, requested, result)) = self.receive.try_recv() {
+            self.pending = false;
+            let data = match result {
+                Ok(report) => {
+                    serde_json::json!({"stage":"memory-report", "label":label, "durationMs":requested.elapsed().as_secs_f64()*1000.0, "report":report})
+                }
+                Err(error) => {
+                    serde_json::json!({"stage":"memory-report-error", "label":label, "message":error})
+                }
+            };
+            crate::telemetry::write_event(&self.path, self.started, data);
+        }
+    }
+}

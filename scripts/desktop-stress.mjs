@@ -8,7 +8,7 @@ assert.match(prefix, /^[a-zA-Z0-9-]*$/);
 const binary = process.argv[2] ?? 'target/debug/weber-servo';
 const build = JSON.parse((await execute(resolve(binary), ['--build-info'])).stdout);
 const results = [];
-for (const engine of ['aot', 'web']) {
+for (const engine of build.aotAvailable ? ['aot', 'web'] : ['web']) {
   const app = await launch({ binary, engine, mode: 'stress', name: `${prefix}desktop-stress-${engine}`, benchmark: true });
   const points = [];
   let sampling = true;

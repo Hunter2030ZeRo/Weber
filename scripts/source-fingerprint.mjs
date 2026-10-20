@@ -13,7 +13,7 @@ export async function fingerprint() {
   const hash = createHash('sha256');
   const files = ['Cargo.toml', 'Cargo.lock', 'build.rs', 'app/package.json', 'app/pnpm-lock.yaml'];
   const walk = async path => { for (const entry of await readdir(path, { withFileTypes: true })) { if (entry.isDirectory() && ['dist', 'node_modules', '.git', 'target'].includes(entry.name)) continue; const file = `${path}/${entry.name}`; if (entry.isDirectory()) await walk(file); else files.push(file); } };
-  for (const path of ['aot', 'src', 'native', 'patches', 'compatibility', 'app/src', 'scripts', 'sdk', 'examples']) await walk(path);
+  for (const path of ['vendor/stylo', 'aot', 'src', 'native', 'patches', 'compatibility', 'app/src', 'scripts', 'sdk', 'examples']) await walk(path);
   for (const entry of await readdir('app')) if (entry.endsWith('.mjs') || entry.startsWith('tsconfig') || entry.startsWith('vite.config')) files.push(`app/${entry}`);
   for (const file of files.sort()) hash.update(file).update('\0').update(await readFile(file)).update('\0');
   const revisions = {};
@@ -22,6 +22,7 @@ export async function fingerprint() {
     revisions[engine] = (await git(['-C', `vendor/${engine}`, 'rev-parse', 'HEAD'])).toString().trim();
     hash.update(engine).update(revisions[engine]).update(await git(['-C', `vendor/${engine}`, 'diff', '--binary']));
   }
+  revisions.stylo = '0.22.0';
   return { sourceHash: hash.digest('hex'), revisions };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) console.log(JSON.stringify(await fingerprint()));

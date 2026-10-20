@@ -75,6 +75,7 @@ struct CloseWatch {
 #[derive(Default)]
 pub struct Control {
     pub wake: Option<winit::event_loop::EventLoopProxy<crate::host::Wake>>,
+    pub memory_profile_label: Option<String>,
     pub commands: VecDeque<Command>,
     pub windows: BTreeMap<u64, Value>,
     pub portal_parents: BTreeMap<u64, String>,

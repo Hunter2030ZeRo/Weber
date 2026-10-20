@@ -27,10 +27,15 @@ pub enum Wake {
     Native,
     Backend,
     Clipboard,
+    MemoryReady,
 }
 
 #[derive(Clone)]
 struct Waker(EventLoopProxy<Wake>);
+
+// Wake travels through the hot native event queue. Diagnostic text belongs in
+// its bounded side channel/control slot, keeping messages small and drop-free.
+const _: () = assert!(std::mem::size_of::<Wake>() <= 16);
 
 impl servo::EventLoopWaker for Waker {
     fn clone_box(&self) -> Box<dyn servo::EventLoopWaker> {
@@ -211,6 +216,17 @@ impl Delegate {
                     serde_json::Value::Bool(self.hermes_initialized()),
                 );
                 message["data"]["windowId"] = self.id.into();
+                if message["data"]["stage"] == "memory-profile"
+                    && self.id == 1
+                    && std::env::var("WEBER_MEMORY_PROFILE").as_deref() == Ok("1")
+                    && let Some(label) = message["data"]["label"]
+                        .as_str()
+                        .filter(|label| !label.is_empty() && label.len() <= 64)
+                {
+                    let mut control = self.control.borrow_mut();
+                    control.memory_profile_label = Some(label.to_owned());
+                    control.wake();
+                }
                 self.telemetry.report(message["data"].clone());
                 return Some(b"{}".to_vec());
             }
@@ -618,6 +634,7 @@ pub struct App {
     failure: Option<anyhow::Error>,
     telemetry: Rc<crate::telemetry::Telemetry>,
     reclaimer: crate::memory::Reclaimer,
+    memory_profiler: Option<crate::memory::Profiler>,
 }
 impl App {
     pub fn new(
@@ -639,6 +656,7 @@ impl App {
             failure: None,
             telemetry: Rc::new(crate::telemetry::Telemetry::new(started)),
             reclaimer: crate::memory::Reclaimer::new(started),
+            memory_profiler: crate::memory::Profiler::new(started),
         }
     }
     pub fn result(mut self) -> Result<()> {
@@ -901,6 +919,12 @@ impl ApplicationHandler<Wake> for App {
             Wake::Native => {
                 self.control.borrow_mut().received_wake();
                 self.commands(event_loop);
+                let label = self.control.borrow_mut().memory_profile_label.take();
+                if let (Some(label), Some(profiler), Some(servo)) =
+                    (label, &mut self.memory_profiler, &self.servo)
+                {
+                    profiler.request(servo, &self.proxy, label);
+                }
             }
             Wake::Backend => {
                 for (owner, event) in crate::backend::take_events() {
@@ -910,6 +934,11 @@ impl ApplicationHandler<Wake> for App {
                 }
             }
             Wake::Clipboard => crate::clipboard::deliver_browser(),
+            Wake::MemoryReady => {
+                if let Some(profiler) = &mut self.memory_profiler {
+                    profiler.deliver();
+                }
+            }
             _ => {}
         }
         if let Some(servo) = &self.servo {

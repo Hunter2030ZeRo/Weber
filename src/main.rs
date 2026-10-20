@@ -218,3 +218,7 @@ fn aot_self_test() -> Result<()> {
     }
     anyhow::bail!("Unknown AOT self-test")
 }
+
+#[cfg(test)]
+#[path = "../native/stylo_cache_pool.rs"]
+mod stylo_cache_pool;

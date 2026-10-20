@@ -9,6 +9,7 @@ const hash=async path=>createHash('sha256').update(await readFile(path)).digest(
 const source=await fingerprint(),release=await read('target/npm/release.json');
 assert.equal(release.sdkVersion,'0.5.0');assert.equal(release.runtime.sourceHash,source.sourceHash);
 for(const name of ['fileDialogProtocol','closeRequestProtocol','safeCutProtocol','diagnosticsProtocol','fileDialogParentProtocol'])assert.equal(release.runtime[name],1);
+const stylo=await read('artifacts/stylo-patches.json');assert.equal(stylo.passed,true);assert.equal(stylo.preparedSourceMatches,true);assert.equal(release.runtime.revisions.stylo,stylo.version);
 assert.equal(release.runtime.aotAvailable,false);assert.equal(release.runtime.uiEngine,'spidermonkey');
 for(const [name,limit] of Object.entries({clipboardMaxTextBytes:262144,storageMaxValueBytes:1048576,storageAreaQuotaBytes:16777216,storageQueuedBytes:4194304}))assert.equal(release.runtime[name],limit);
 const gates=['artifacts/preview-native.json','artifacts/clipboard-browser-native.json','artifacts/clipboard-native.json','artifacts/npm-distribution.json','artifacts/npm-distribution-native.json','artifacts/lifecycle-native.json','artifacts/lifecycle-200-native.json'];
@@ -32,7 +33,7 @@ const app=await read(join(bundle,'application/app.json'));
 for(const value of Object.values(app.assets))assert.equal(await hash(join(bundle,'application',value.file)),value.sha256);
 const code=await readFile(join(bundle,'application/web.js'),'utf8');
 for(const probe of ['preview-state','browser-phase','clipboard-offered'])assert.ok(!code.includes(probe),'No test probe in normal Notes');
-const tests=await readFile('artifacts/preview-rust-tests.log','utf8');assert.match(tests,/test result: ok\. 17 passed; 0 failed/);
+const tests=await readFile('artifacts/preview-rust-tests.log','utf8');assert.match(tests,/test result: ok\. 19 passed; 0 failed/);
 assert.match(await readFile('artifacts/preview-clippy.log','utf8'),/Finished .* profile/);
-const result={passed:true,sourceHash:source.sourceHash,gates,sdkVersion:release.sdkVersion,installedSdkMatchesSource:true,tarballHashes:true,packagedExecutableLibrariesAndAssets:true,productionHasNoProbe:true,rustTests:17,limitations:['Linux Wayland with GTK portal test backend; v1 and unsupported-compositor fallback not native-tested','Clipboard/text files 256 KiB; JSON values 1 MiB; area quota 16 MiB','No contenteditable default editing, physical IME, Windows/macOS, AOT, clean-machine or performance validation']};
+const result={passed:true,sourceHash:source.sourceHash,gates,sdkVersion:release.sdkVersion,installedSdkMatchesSource:true,tarballHashes:true,packagedExecutableLibrariesAndAssets:true,productionHasNoProbe:true,rustTests:19,styloPreparedSourceMatches:true,limitations:['Linux Wayland with GTK portal test backend; v1 and unsupported-compositor fallback not native-tested','Clipboard/text files 256 KiB; JSON values 1 MiB; area quota 16 MiB','No contenteditable default editing, physical IME, Windows/macOS, AOT, clean-machine or performance validation']};
 await writeFile('artifacts/preview-audit.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));

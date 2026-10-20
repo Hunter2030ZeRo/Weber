@@ -7291,8 +7291,6 @@ dependencies = [
 [[package]]
 name = "stylo"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a255e46af2478628c48daab3774090caabd7812b1dd3ca98801c2b9c53491ed"
 dependencies = [
  "app_units",
  "arrayvec",
@@ -8594,6 +8592,7 @@ dependencies = [
  "anyhow",
  "async-channel",
  "async-io",
+ "atomic_refcell",
  "calloop 0.14.5",
  "calloop-wayland-source 0.4.1",
  "cxx",
@@ -8609,6 +8608,7 @@ dependencies = [
  "serde",
  "serde_json",
  "servo",
+ "servo-base",
  "sha2",
  "url",
  "wayland-client",

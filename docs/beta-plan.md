@@ -46,6 +46,18 @@ records the 0.4.0 acceptance scope. The [0.5.0 foundation increment](linux-found
 extends document limits, portal parenting and repeated lifecycle validation. Richer clipboard formats, contenteditable,
 broader platform APIs and process/renderer recovery remain subsequent work.
 
+## Active resource and Linux usability sequence
+
+The [window resource increment](window-resource-optimization.md) reuses completed
+Stylo TLS caches and adds a 1000-window regression budget. This reduces the main
+observed growth without adding an application API or changing the JIT choice.
+The next resource target is system-font service caches for removed painters.
+The animation screen showed no CPU/startup win, so include CPU attribution and
+representative-app startup/idle/input regression measurements, followed
+by physical Korean IME, focus/output scaling and clean-environment packaging.
+These are Linux beta gates; they do not certify a cross-platform beta or a
+downstream desktop environment.
+
 ## Subsequent beta requirements
 
 The next window/resource bundle adds bounded, coalesced app-wide window snapshots,
