@@ -46,6 +46,7 @@ fn main() -> Result<()> {
         info["aotAvailable"] = cfg!(feature = "aot").into();
         info["layerShellProbe"] = cfg!(feature = "layer-shell").into();
         info["windowProtocol"] = 2.into();
+        info["activationProtocol"] = 1.into();
         info["storageProtocol"] = 1.into();
         info["clipboardProtocol"] = 1.into();
         info["browserClipboardProtocol"] = 1.into();
@@ -125,6 +126,12 @@ fn main() -> Result<()> {
     } else {
         &argument
     })?;
+    // Capture once for the initial window. Never mutate the process environment
+    // after threads start; child backends explicitly exclude these one-shot IDs.
+    let activation = std::env::var("XDG_ACTIVATION_TOKEN")
+        .ok()
+        .filter(|token| !token.is_empty())
+        .map(winit::window::ActivationToken::from_raw);
     let _backend = if application {
         assets::application()
             .and_then(|app| app.backend_path.as_ref())
@@ -161,7 +168,7 @@ fn main() -> Result<()> {
         .build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let control = native::initialize(std::env::var("WEBER_NATIVE_CAPABILITY").ok())?;
-    let mut app = App::new(url, event_loop.create_proxy(), started, control);
+    let mut app = App::new(url, event_loop.create_proxy(), started, control, activation);
     event_loop.run_app(&mut app)?;
     app.result()
 }

@@ -52,6 +52,7 @@ pub enum Command {
     Open {
         id: u64,
         source: u64,
+        generation: u64,
         options: Options,
     },
     Close(u64),
@@ -86,6 +87,7 @@ pub struct Control {
     close_watches: BTreeMap<u64, CloseWatch>,
     close_serial: u64,
     wake_queued: bool,
+    documents: BTreeMap<u64, u64>,
 }
 pub type Shared = Rc<RefCell<Control>>;
 impl Control {
@@ -100,12 +102,14 @@ impl Control {
         self.wake_queued = false;
     }
     pub fn update(&mut self, id: u64, info: Value) {
+        self.documents.entry(id).or_default();
         if self.windows.get(&id) != Some(&info) {
             self.windows.insert(id, info);
             self.revision += 1;
         }
     }
     pub fn remove(&mut self, id: u64) {
+        self.documents.remove(&id);
         self.portal_parents.remove(&id);
         self.watches.remove(&id);
         self.close_watches.remove(&id);
@@ -156,8 +160,16 @@ impl Control {
         }
     }
     pub fn detach(&mut self, id: u64) {
+        if let Some(generation) = self.documents.get_mut(&id) {
+            *generation = generation.wrapping_add(1);
+        }
         self.watches.remove(&id);
         self.close_watches.remove(&id);
+    }
+    pub fn document_generation(&self, id: u64) -> Option<u64> {
+        self.windows
+            .contains_key(&id)
+            .then(|| self.documents.get(&id).copied().unwrap_or(0))
     }
     /// None closes immediately; null coalesces repeated requests; an object
     /// requests a fresh JS decision. No window closes on a stale reply.
@@ -428,13 +440,22 @@ fn exchange_request(
                 options.validate()?;
                 let id = control.next;
                 control.next += 1;
-                control
+                let failed: Vec<_> = control
                     .windows
-                    .retain(|_, window| window["state"] != "failed");
+                    .iter()
+                    .filter_map(|(id, window)| (window["state"] == "failed").then_some(*id))
+                    .collect();
+                for id in failed {
+                    control.remove(id);
+                }
+                let generation = control
+                    .document_generation(source)
+                    .ok_or_else(|| anyhow!("Opening document closed"))?;
                 control.update(id, json!({ "id": id, "state": "opening" }));
                 control.commands.push_back(Command::Open {
                     id,
                     source,
+                    generation,
                     options,
                 });
                 Ok(json!({ "id": id }))
@@ -495,6 +516,43 @@ fn exchange_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn queued_opens_keep_document_generation_and_failed_documents_retire() {
+        let control = shared();
+        control
+            .borrow_mut()
+            .update(10000, json!({"id":10000,"state":"ready"}));
+        let first = call(&control, json!({"op":"open"}));
+        assert_eq!(first["ok"], true);
+        let old_generation = match control.borrow_mut().commands.pop_front() {
+            Some(Command::Open { generation, .. }) => generation,
+            _ => panic!("Expected open command"),
+        };
+        control.borrow_mut().detach(1);
+        assert_ne!(
+            control.borrow().document_generation(1),
+            Some(old_generation)
+        );
+        assert_eq!(control.borrow().document_generation(10000), Some(0));
+        for _ in 0..100 {
+            let result = call(&control, json!({"op":"open"}));
+            assert_eq!(result["ok"], true);
+            let id = result["result"]["id"].as_u64().unwrap_or(0);
+            let generation = match control.borrow_mut().commands.pop_front() {
+                Some(Command::Open { generation, .. }) => generation,
+                _ => panic!("Expected open command"),
+            };
+            assert_eq!(Some(generation), control.borrow().document_generation(1));
+            control
+                .borrow_mut()
+                .update(id, json!({"id":id,"state":"failed"}));
+            assert!(control.borrow().documents.len() <= 4);
+        }
+        control.borrow_mut().remove(1);
+        assert_eq!(control.borrow().document_generation(1), None);
+        assert!(!control.borrow().documents.contains_key(&1));
+    }
 
     #[test]
     fn close_decisions_coalesce_and_stale_or_foreign_replies_cannot_close() {

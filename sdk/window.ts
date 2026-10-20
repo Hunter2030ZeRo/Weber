@@ -17,7 +17,9 @@ function request(value: Record<string, unknown>) {
 export { request as nativeRequest };
 export function currentWindow(): WindowInfo { return request({ op: 'info' }); }
 export function listWindows(): WindowInfo[] { return request({ op: 'list' }); }
-/** Opens the same application in another native window. Resolution means created, not first paint. */
+/** Opens the same application in another native window. Resolution means created,
+ * not first paint or focus. Linux activation is best effort: the compositor owns
+ * focus policy; an unavailable token never prevents creating the window. */
 export async function openWindow(options: WindowOptions = {}): Promise<WindowInfo> {
   const { id } = request({ op: 'open', options });
   const deadline = performance.now() + 5000;

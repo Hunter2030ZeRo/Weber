@@ -14,8 +14,10 @@ use winit::{
     dpi::LogicalSize,
     event::WindowEvent,
     event_loop::{ActiveEventLoop, EventLoopProxy},
+    platform::startup_notify::{WindowAttributesExtStartupNotify, WindowExtStartupNotify},
+    platform::wayland::WindowAttributesExtWayland,
     raw_window_handle::{HasDisplayHandle, HasWindowHandle},
-    window::{Fullscreen, Window, WindowId},
+    window::{ActivationToken, Fullscreen, Window, WindowId},
 };
 
 use crate::input::Input;
@@ -468,6 +470,7 @@ impl WebViewDelegate for Delegate {
 }
 
 struct Running {
+    id: u64,
     webview: WebView,
     context: Rc<WindowRenderingContext>,
     // Drop the foreign export before the winit-owned surface.
@@ -489,16 +492,23 @@ impl Running {
             u64,
             crate::native::Options,
             Option<&mut crate::portal_parent::Exporter>,
+            Option<ActivationToken>,
         ),
     ) -> Result<Self> {
-        let (id, options, exporter) = spec;
-        let window = Arc::new(
-            event_loop.create_window(
-                Window::default_attributes()
-                    .with_title(&options.title)
-                    .with_inner_size(LogicalSize::new(options.width, options.height)),
-            )?,
-        );
+        let (id, options, exporter, activation) = spec;
+        let app_id = crate::assets::application().map_or("dev.weber.Preview", |app| app.id());
+        let mut attributes = Window::default_attributes()
+            .with_title(&options.title)
+            .with_name(app_id, app_id)
+            .with_inner_size(LogicalSize::new(options.width, options.height));
+        let activating = activation.is_some();
+        if let Some(token) = activation {
+            attributes = attributes.with_activation_token(token);
+        }
+        let window = Arc::new(event_loop.create_window(attributes)?);
+        if activating {
+            telemetry.emit(serde_json::json!({"stage":"activation-applied", "id":id}));
+        }
         let parent_started = std::time::Instant::now();
         let parent = exporter.and_then(|exporter| match exporter.export(&window) {
             Ok(parent) => parent,
@@ -556,6 +566,7 @@ impl Running {
         webview.set_focused(window.has_focus());
         servo.spin_event_loop();
         Ok(Self {
+            id,
             webview,
             context,
             _portal_parent: parent,
@@ -599,7 +610,7 @@ impl Running {
             }
             WindowEvent::Focused(focused) => {
                 self.telemetry
-                    .emit(serde_json::json!({ "stage": "window-focus", "focused": focused }));
+                    .emit(serde_json::json!({ "stage": "window-focus", "windowId":self.id, "focused": focused }));
                 self.webview.set_focused(focused);
             }
             other => self.input.forward(&self.webview, other),
@@ -635,6 +646,17 @@ pub struct App {
     telemetry: Rc<crate::telemetry::Telemetry>,
     reclaimer: crate::memory::Reclaimer,
     memory_profiler: Option<crate::memory::Profiler>,
+    startup_activation: Option<ActivationToken>,
+    pending_opens: Vec<PendingOpen>,
+}
+struct PendingOpen {
+    source_window: WindowId,
+    source: u64,
+    id: u64,
+    serial: winit::event_loop::AsyncRequestSerial,
+    options: crate::native::Options,
+    generation: u64,
+    deadline: std::time::Instant,
 }
 impl App {
     pub fn new(
@@ -642,6 +664,7 @@ impl App {
         proxy: EventLoopProxy<Wake>,
         started: std::time::Instant,
         control: crate::native::Shared,
+        startup_activation: Option<ActivationToken>,
     ) -> Self {
         control.borrow_mut().wake = Some(proxy.clone());
         crate::backend::set_waker(proxy.clone());
@@ -657,6 +680,8 @@ impl App {
             telemetry: Rc::new(crate::telemetry::Telemetry::new(started)),
             reclaimer: crate::memory::Reclaimer::new(started),
             memory_profiler: crate::memory::Profiler::new(started),
+            startup_activation,
+            pending_opens: Vec::new(),
         }
     }
     pub fn result(mut self) -> Result<()> {
@@ -673,6 +698,7 @@ impl App {
         event_loop: &ActiveEventLoop,
         id: u64,
         options: crate::native::Options,
+        activation: Option<ActivationToken>,
     ) -> Result<()> {
         let servo = self
             .servo
@@ -685,7 +711,7 @@ impl App {
             self.telemetry.clone(),
             servo,
             self.control.clone(),
-            (id, options, self.exporter.as_mut()),
+            (id, options, self.exporter.as_mut(), activation),
         )?;
         self.control
             .borrow_mut()
@@ -696,6 +722,10 @@ impl App {
         Ok(())
     }
     fn close(&mut self, id: u64, event_loop: &ActiveEventLoop) {
+        self.pending_opens.retain(|pending| pending.id != id);
+        // An opening window has no native handle yet. It must still be
+        // cancellable, including the SDK's creation-timeout close request.
+        self.control.borrow_mut().remove(id);
         if let Some(key) = self
             .running
             .iter()
@@ -751,14 +781,39 @@ impl App {
                 crate::native::Command::Open {
                     id,
                     source,
+                    generation,
                     options,
                 } => {
+                    if self.control.borrow().document_generation(source) != Some(generation) {
+                        self.control.borrow_mut().update(id, serde_json::json!({"id":id,"state":"failed","error":"Opening document closed or navigated"}));
+                        continue;
+                    }
+                    if let Some((_, running)) = self
+                        .running
+                        .values()
+                        .find(|(candidate, _)| *candidate == source)
+                        && running.window.has_focus()
+                        && let Ok(serial) = running.window.request_activation_token()
+                    {
+                        self.pending_opens.push(PendingOpen {
+                            source_window: running.window.id(),
+                            source,
+                            id,
+                            serial,
+                            options,
+                            generation,
+                            deadline: std::time::Instant::now()
+                                + std::time::Duration::from_millis(750),
+                        });
+                        self.telemetry.emit(serde_json::json!({"stage":"activation-requested", "id":id, "source":source}));
+                        continue;
+                    }
                     let result = if self
                         .running
                         .values()
                         .any(|(candidate, _)| *candidate == source)
                     {
-                        self.open(event_loop, id, options)
+                        self.open(event_loop, id, options, None)
                     } else {
                         Err(anyhow!("Opening window already closed"))
                     };
@@ -814,6 +869,30 @@ impl App {
             }
         }
     }
+    fn complete_open(
+        &mut self,
+        pending: PendingOpen,
+        event_loop: &ActiveEventLoop,
+        token: Option<ActivationToken>,
+    ) {
+        if !self.control.borrow().windows.contains_key(&pending.id) {
+            return;
+        }
+        let result = if self.control.borrow().document_generation(pending.source)
+            != Some(pending.generation)
+            || !self.running.values().any(|(id, _)| *id == pending.source)
+        {
+            Err(anyhow!("Opening document closed or navigated"))
+        } else {
+            self.open(event_loop, pending.id, pending.options, token)
+        };
+        if let Err(error) = result {
+            self.control.borrow_mut().update(
+                pending.id,
+                serde_json::json!({"id":pending.id,"state":"failed","error":error.to_string()}),
+            );
+        }
+    }
     fn deliver_window_state(&self) {
         let deliveries = self.control.borrow_mut().deliveries();
         for (owner, generation, snapshot) in deliveries {
@@ -837,6 +916,36 @@ impl Drop for App {
     }
 }
 impl ApplicationHandler<Wake> for App {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let now = std::time::Instant::now();
+        let mut index = 0;
+        while index < self.pending_opens.len() {
+            let pending = &self.pending_opens[index];
+            if pending.deadline <= now
+                || self.control.borrow().document_generation(pending.source)
+                    != Some(pending.generation)
+                || !self.running.values().any(|(id, _)| *id == pending.source)
+            {
+                let pending = self.pending_opens.remove(index);
+                self.complete_open(pending, event_loop, None);
+            } else {
+                index += 1;
+            }
+        }
+        // Only unresolved activation requests need a deadline; ordinary idle
+        // windows retain Wait with no housekeeping polling or extra worker.
+        event_loop.set_control_flow(
+            self.pending_opens
+                .iter()
+                .map(|pending| pending.deadline)
+                .min()
+                .map_or(
+                    winit::event_loop::ControlFlow::Wait,
+                    winit::event_loop::ControlFlow::WaitUntil,
+                ),
+        );
+        self.deliver_window_state();
+    }
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.servo.is_some() {
             return;
@@ -908,7 +1017,9 @@ impl ApplicationHandler<Wake> for App {
         });
         self.telemetry.emit(serde_json::json!({"stage":"portal-parent-initialized", "available":self.exporter.is_some(), "elapsedMs":parent_started.elapsed().as_secs_f64()*1000.0}));
         self.servo = Some(servo);
-        if let Err(error) = self.open(event_loop, 1, crate::native::Options::default()) {
+        let activation = self.startup_activation.take();
+        if let Err(error) = self.open(event_loop, 1, crate::native::Options::default(), activation)
+        {
             self.failure = Some(error);
             event_loop.exit();
         }
@@ -948,6 +1059,17 @@ impl ApplicationHandler<Wake> for App {
         self.deliver_window_state();
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, window: WindowId, event: WindowEvent) {
+        if let WindowEvent::ActivationTokenDone { serial, token } = event {
+            if let Some(index) = self
+                .pending_opens
+                .iter()
+                .position(|pending| pending.source_window == window && pending.serial == serial)
+            {
+                let pending = self.pending_opens.remove(index);
+                self.complete_open(pending, event_loop, Some(token));
+            }
+            return;
+        }
         if let Some((id, running)) = self.running.get_mut(&window) {
             let id = *id;
             if matches!(event, WindowEvent::CloseRequested) {

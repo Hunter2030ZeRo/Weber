@@ -1,5 +1,11 @@
 # Renderer font lifetime optimization
 
+Follow-up: the [executable-residency investigation](executable-residency.md)
+identified a file-identity/cache-history confound. Fresh byte-identical copies
+removed the earlier initial-PSS discrepancy in four interleaved runs per host.
+The historical observations below are preserved; do not attribute their initial
+file-residency difference solely to the font patch or claim a general RAM win.
+
 Linux Wayland, Servo/SpiderMonkey JIT, SDK 0.5.0 — 2026-10-20.
 Continuation of the [Stylo cache work](window-resource-optimization.md).
 No application API or SDK version changes; Static Hermes remains deferred.

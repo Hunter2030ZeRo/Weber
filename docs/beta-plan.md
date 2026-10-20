@@ -4,6 +4,10 @@ Linux developer beta first; Weber remains a general-purpose framework targeting
 Linux, Windows and macOS. A downstream desktop environment is an application of
 Weber. Its compositor integration must not become a common runtime dependency.
 
+Use the [Linux beta acceptance checklist](linux-beta-checklist.md) to distinguish
+implemented paths from remaining implementation and verification. Previous
+informal percentage estimates were not derived from a fixed weighted checklist.
+
 ## Current priority — 2026-10-20
 
 Prioritize Servo/SpiderMonkey JIT for beta compatibility, platform work and CPU /
@@ -54,23 +58,28 @@ observed growth without adding an application API or changing the JIT choice.
 The [font-lifetime increment](font-lifetime-optimization.md) now removes renderer
 font caches at last-WebView close and guards against late-request resurrection.
 The normal Notes screen showed higher initial PSS in executable mappings despite
-lower retained heap growth. Resolve this initial resident-file increase before
-claiming an overall memory win or promoting beta. CPU repeats disagree; no CPU
-improvement is established. Keep representative startup/idle/input gates, then
-physical Korean IME, activation/focus, output scaling and clean-environment
-packaging. Test-helper activation waits do not complete application activation.
+lower retained heap growth. The [residency investigation](executable-residency.md)
+identified file identity/cache history as a confound: fresh byte-identical copies
+removed the discrepancy in four interleaved runs per host. The precise kernel
+mechanism remains unisolated, and this is not a general memory-win claim. CPU
+repeats disagree; no CPU improvement is established. Keep representative
+startup/idle/input gates, physical Korean IME, output scaling and clean-environment
+packaging. [Native activation](window-activation.md) now handles startup and
+focused-source child tokens; physical input, more compositors, forced timeout
+and navigation races remain. Test-helper activation waits alone are not evidence.
 These are Linux beta gates; they do not certify a cross-platform beta or a
 downstream desktop environment.
 
 ## Subsequent beta requirements
 
-The next window/resource bundle adds bounded, coalesced app-wide window snapshots,
+The implemented window/resource bundle adds bounded, coalesced app-wide window snapshots,
 logical resizing, maximize, borderless fullscreen and resizable controls. It also
 measures larger DOMs, multiple windows and repeated close/reopen lifetimes on
 both engines, alongside the preceding JIT-only host. See
 [the bundle's validation record](platform-validation.md) for what actually ran.
 
-- Rich clipboard formats, contenteditable editing, activation-token integration and remaining window controls and physical keyboard/IME verification.
+- Rich clipboard formats, contenteditable editing, remaining window controls,
+  broader activation/focus coverage and physical keyboard/IME verification.
 - General platform event API, renderer navigation/disposal handling, recovery
   policy, dependency-specific Node compatibility and native app trust boundaries.
 - A downstream panel/launcher integrated with actual Hyprland sockets; output

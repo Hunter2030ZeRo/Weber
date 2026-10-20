@@ -33,7 +33,10 @@ async function portal(){
 }
 async function choose(path){
   assert.ok(path.startsWith(dirname(fixture.input)+'/'),'Only owned fixture files');
-  await portal();await rawKey(38,[29]);await rawKey(30,[29]); // Ctrl+L, then replace the full location/name including its extension.
+  await portal();await rawKey(38,[29]);
+  // GTK's save-name selection can exclude the suffix even after Ctrl+A.
+  // Select explicit entry boundaries so typing does not append a second .txt.
+  await rawKey(102);await rawKey(107,[42]); // Home, Shift+End.
   for(const char of path){await keys.command({keysym:char.codePointAt(0),pressed:true});await keys.command({keysym:char.codePointAt(0),pressed:false});}
   await rawKey(28);await delay(500);
   // Save choosers may need an accept/overwrite confirmation after location entry.

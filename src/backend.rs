@@ -211,6 +211,8 @@ pub fn start(path: &Path, cwd: &Path, supplied: Option<String>) -> Result<Guard>
     command
         .current_dir(cwd)
         .env("WEBER_APP_DIR", cwd)
+        .env_remove("XDG_ACTIVATION_TOKEN")
+        .env_remove("DESKTOP_STARTUP_ID")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
