@@ -114,8 +114,8 @@ fn validate(request: &Value) -> Result<()> {
     }
     Ok(())
 }
-pub fn submit(owner: u64, request: &Value, parent: String) -> Result<Value> {
-    validate(request)?;
+pub fn submit(owner: u64, request: Value, parent: String) -> Result<Value> {
+    validate(&request)?;
     let mut slot = WORKER
         .lock()
         .map_err(|_| anyhow!("File worker lock failed"))?;
@@ -137,7 +137,7 @@ pub fn submit(owner: u64, request: &Value, parent: String) -> Result<Value> {
         .send
         .try_send(Task {
             id,
-            request: request.clone(),
+            request,
             parent,
             cancel: receiver,
         })

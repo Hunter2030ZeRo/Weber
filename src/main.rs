@@ -12,6 +12,7 @@ mod dom;
 mod files;
 mod host;
 mod input;
+mod json;
 #[cfg(feature = "layer-shell")]
 mod layer;
 mod memory;

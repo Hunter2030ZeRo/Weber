@@ -4,6 +4,9 @@ This increment extends the Linux JIT developer preview. It is not a completed
 Linux beta, a desktop environment, or a Windows/macOS implementation. Static
 Hermes remains outside this increment and outside the default host.
 
+The subsequent host-only [native transfer optimization](native-transfer-optimization.md)
+records newer builds and resource comparisons without changing SDK 0.5.0.
+
 Status: implemented, compiled and accepted within the scope below on 2026-10-20.
 Retained memory after repeated windows remains an explicitly unresolved finding.
 

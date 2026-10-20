@@ -169,28 +169,28 @@ impl Service {
             .ok_or_else(|| anyhow!("Clipboard worker unavailable"))
     }
 }
-fn text(request: &Value) -> Result<Operation> {
+fn text(mut request: Value) -> Result<Operation> {
     match request["action"].as_str() {
         Some("read") => Ok(Operation::Read),
         Some("clear") => Ok(Operation::Clear),
         Some("write") => {
-            let text = request["text"]
-                .as_str()
-                .ok_or_else(|| anyhow!("Clipboard text must be a string"))?;
+            let Value::String(text) = request["text"].take() else {
+                return Err(anyhow!("Clipboard text must be a string"));
+            };
             ensure!(
                 text.len() <= MAX_TEXT,
                 "Clipboard text exceeds {MAX_TEXT} UTF-8 bytes"
             );
             ensure!(!text.contains('\0'), "Clipboard text must not contain NUL");
-            Ok(Operation::Write(text.into()))
+            Ok(Operation::Write(text))
         }
         _ => Err(anyhow!("Unknown clipboard action")),
     }
 }
-pub fn submit(owner: u64, request: &Value) -> Result<Value> {
+pub fn submit(owner: u64, request: Value) -> Result<Value> {
     Ok(json!({"id": submit_id(owner, request)?}))
 }
-fn submit_id(owner: u64, request: &Value) -> Result<u64> {
+fn submit_id(owner: u64, request: Value) -> Result<u64> {
     let operation = text(request)?;
     let mut service = SERVICE
         .lock()
@@ -299,12 +299,12 @@ pub fn browser(owner: u64, contents: Option<String>, request: Option<servo::Stri
         Some(text) => json!({"action":"write","text":text}),
         None => json!({"action":"read"}),
     };
-    browser_submit(owner, &payload, request);
+    browser_submit(owner, payload, request);
 }
 pub fn browser_clear(owner: u64) {
-    browser_submit(owner, &json!({"action":"clear"}), None);
+    browser_submit(owner, json!({"action":"clear"}), None);
 }
-fn browser_submit(owner: u64, payload: &Value, request: Option<servo::StringRequest>) {
+fn browser_submit(owner: u64, payload: Value, request: Option<servo::StringRequest>) {
     match submit_id(owner, payload) {
         Ok(id) => {
             BROWSER.with(|requests| {
@@ -421,11 +421,11 @@ mod tests {
     }
     #[test]
     fn text_and_native_payload_are_bounded() {
-        assert!(text(&json!({"action":"write","text":"한".repeat(MAX_TEXT / 3)})).is_ok());
-        assert!(text(&json!({"action":"write","text":"한".repeat(MAX_TEXT / 3 + 1)})).is_err());
-        assert!(text(&json!({"action":"write","text":"\0"})).is_err());
-        assert!(text(&json!({"action":"write","text":42})).is_err());
-        assert!(text(&json!({"action":"write","text":""})).is_ok());
+        assert!(text(json!({"action":"write","text":"한".repeat(MAX_TEXT / 3)})).is_ok());
+        assert!(text(json!({"action":"write","text":"한".repeat(MAX_TEXT / 3 + 1)})).is_err());
+        assert!(text(json!({"action":"write","text":"\0"})).is_err());
+        assert!(text(json!({"action":"write","text":42})).is_err());
+        assert!(text(json!({"action":"write","text":""})).is_ok());
     }
     #[test]
     fn replies_and_cancellation_belong_to_the_requesting_window() -> Result<()> {

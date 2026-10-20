@@ -214,24 +214,47 @@ pub fn exchange_active(payload: &str) -> String {
         }
     })
 }
+#[cfg(any(feature = "aot", test))]
 pub fn exchange(control: &Shared, source: u64, payload: &str) -> String {
+    let request = if payload.len() > crate::files::MAX_PAYLOAD {
+        Err(anyhow!("Native request too large"))
+    } else {
+        serde_json::from_str(payload).map_err(Into::into)
+    };
+    exchange_request(control, source, request, payload.len(), None)
+}
+/// The JIT host already parsed and authenticated this envelope. Transfer ownership
+/// directly; keep the same canonical JSON byte limits as the string entry point.
+pub fn exchange_value(control: &Shared, source: u64, request: Value) -> String {
+    match crate::json::encoded_len(&request) {
+        Ok(bytes) => exchange_request(control, source, Ok(request), bytes, Some(bytes)),
+        Err(error) => exchange_request(control, source, Err(error.into()), 0, None),
+    }
+}
+fn exchange_request(
+    control: &Shared,
+    source: u64,
+    request: Result<Value>,
+    bytes: usize,
+    canonical_bytes: Option<usize>,
+) -> String {
     let mut watch_started = false;
     let result = (|| -> Result<Value> {
         ensure!(
-            payload.len() <= crate::files::MAX_PAYLOAD,
+            bytes <= crate::files::MAX_PAYLOAD,
             "Native request too large"
         );
-        let request: Value = serde_json::from_str(payload)?;
+        let request = request?;
         if !matches!(
             request["op"].as_str(),
             Some("files.start" | "clipboard.start" | "storage.start")
         ) {
-            ensure!(payload.len() <= 65_536, "Native request too large");
+            ensure!(bytes <= 65_536, "Native request too large");
         }
         if !request["op"].as_str().is_some_and(|op| {
             op.starts_with("clipboard.") || op.starts_with("files.") || op == "storage.start"
         }) {
-            ensure!(payload.len() <= 16_000, "Native request too large");
+            ensure!(bytes <= 16_000, "Native request too large");
         }
         ensure!(request.is_object(), "Native request must be an object");
         let mut control = control.try_borrow_mut()?;
@@ -307,7 +330,7 @@ pub fn exchange(control: &Shared, source: u64, payload: &str) -> String {
                 );
                 crate::files::submit(
                     source,
-                    &request,
+                    request,
                     control
                         .portal_parents
                         .get(&source)
@@ -328,14 +351,23 @@ pub fn exchange(control: &Shared, source: u64, payload: &str) -> String {
                         .is_some_and(|window| window["focused"] == true),
                     "Clipboard requires the calling window to have focus"
                 );
-                crate::clipboard::submit(source, &request)
+                crate::clipboard::submit(source, request)
             }
             Some("clipboard.poll") => crate::clipboard::poll(source, &request),
             Some("clipboard.cancel") => {
                 crate::clipboard::cancel(source, &request)?;
                 Ok(Value::Null)
             }
-            Some("storage.start") => crate::storage::submit(source, &request),
+            Some("storage.start") => {
+                // The string/AOT entry retains its raw transport limit, but its
+                // numeric spelling can expand when serialized. Charge the queue
+                // for canonical JSON in both paths, as before this optimization.
+                let charge = match canonical_bytes {
+                    Some(bytes) => bytes,
+                    None => crate::json::encoded_len(&request)?,
+                };
+                crate::storage::submit(source, request, charge)
+            }
             Some("storage.poll") => crate::storage::poll(source, &request),
             Some("storage.cancel") => {
                 crate::storage::cancel(source, &request)?;
@@ -581,6 +613,21 @@ mod tests {
         assert_eq!(control.borrow().commands.len(), 64);
         control.borrow_mut().remove(1);
         assert_eq!(call(&control, json!({ "op": "list" }))["ok"], false);
+    }
+    #[test]
+    fn owned_requests_preserve_validation_and_encoded_byte_limits() {
+        for request in [
+            json!([]),
+            json!({"op":"list"}),
+            json!({"op":"title", "title":"한글"}),
+            json!({"op":"close", "id":99}),
+            json!({"op":"unknown", "padding":"\0".repeat(3000)}),
+            json!({"op":"clipboard.poll", "padding":"한".repeat(22000)}),
+            json!({"op":"storage.start", "padding":"x".repeat(crate::files::MAX_PAYLOAD)}),
+        ] {
+            let expected = exchange(&shared(), 1, &request.to_string());
+            assert_eq!(exchange_value(&shared(), 1, request), expected);
+        }
     }
     #[test]
     fn page_titles_fit_snapshot_budget_without_splitting_utf8() {

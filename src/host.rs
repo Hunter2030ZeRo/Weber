@@ -192,7 +192,7 @@ impl Delegate {
                 return Some(br#"{"ok":false,"error":{"name":"NativeAccessError","message":"Native capability rejected"}}"#.to_vec());
             }
             let reply =
-                crate::native::exchange(&self.control, self.id, &message["request"].to_string());
+                crate::native::exchange_value(&self.control, self.id, message["request"].take());
             return Some(reply.into_bytes());
         }
         if message["action"] == "backend" {

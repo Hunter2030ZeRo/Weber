@@ -125,7 +125,7 @@ impl Worker {
             .name("WeberStorage".into())
             .spawn(move || {
                 for task in tasks {
-                    let result = operate(&paths, &task.request).map_err(|error| error.to_string());
+                    let result = operate(&paths, task.request).map_err(|error| error.to_string());
                     if replies
                         .send(Reply {
                             id: task.id,
@@ -169,8 +169,8 @@ impl Worker {
         }
     }
 }
-pub fn submit(owner: u64, request: &Value) -> Result<Value> {
-    validate(request)?;
+pub fn submit(owner: u64, request: Value, bytes: usize) -> Result<Value> {
+    validate(&request)?;
     let mut slot = WORKER.lock().map_err(|_| anyhow!("Storage lock failed"))?;
     if slot.is_none() {
         *slot = Some(Worker::new()?);
@@ -184,13 +184,12 @@ pub fn submit(owner: u64, request: &Value) -> Result<Value> {
         "Storage request limit reached"
     );
     let id = worker.next;
-    let bytes = serde_json::to_vec(request)?.len();
     let reservation = Reservation::new(&worker.reserved, bytes)?;
     worker
         .send
         .try_send(Task {
             id,
-            request: request.clone(),
+            request,
             _reservation: reservation,
         })
         .map_err(|_| anyhow!("Storage queue full or stopped"))?;
@@ -303,7 +302,7 @@ fn validate(request: &Value) -> Result<()> {
     if action == "set" {
         ensure!(
             request.get("value").is_some()
-                && serde_json::to_vec(&request["value"])?.len() <= MAX_VALUE,
+                && crate::json::encoded_len(&request["value"])? <= MAX_VALUE,
             "Storage value exceeds 1048576 JSON bytes"
         );
     }
@@ -340,7 +339,7 @@ fn read_store(path: &Path) -> Result<BTreeMap<String, Value>> {
         store.len() <= 128
             && store
                 .values()
-                .all(|v| serde_json::to_vec(v).is_ok_and(|bytes| bytes.len() <= MAX_VALUE)),
+                .all(|v| crate::json::encoded_len(v).is_ok_and(|bytes| bytes <= MAX_VALUE)),
         "Invalid storage contents"
     );
     Ok(store)
@@ -382,8 +381,8 @@ fn write_store(directory: &Path, store: &BTreeMap<String, Value>) -> Result<()> 
     }
     result
 }
-fn operate(paths: &Paths, request: &Value) -> Result<Value> {
-    validate(request)?;
+fn operate(paths: &Paths, mut request: Value) -> Result<Value> {
+    validate(&request)?;
     if request["action"] == "paths" {
         return Ok(paths.json());
     }
@@ -391,10 +390,11 @@ fn operate(paths: &Paths, request: &Value) -> Result<Value> {
     let mut store = read_store(&directory.join("store.json"))?;
     let key = request["key"].as_str().unwrap_or("");
     match request["action"].as_str() {
-        Some("get") => Ok(store.get(key).cloned().unwrap_or(Value::Null)),
+        Some("get") => Ok(store.remove(key).unwrap_or(Value::Null)),
         Some("keys") => Ok(json!(store.keys().collect::<Vec<_>>())),
         Some("set") => {
-            store.insert(key.into(), request["value"].clone());
+            let key = key.to_owned();
+            store.insert(key, request["value"].take());
             write_store(directory, &store)?;
             Ok(Value::Null)
         }
@@ -486,33 +486,30 @@ mod tests {
             assert_eq!(
                 operate(
                     &paths,
-                    &json!({"action":"get","area":"config","key":"missing"})
+                    json!({"action":"get","area":"config","key":"missing"})
                 )?,
                 Value::Null
             );
             operate(
                 &paths,
-                &json!({"action":"set","area":"config","key":"note","value":{"text":"한글","count":2}}),
+                json!({"action":"set","area":"config","key":"note","value":{"text":"한글","count":2}}),
             )?;
             assert_eq!(
-                operate(
-                    &paths,
-                    &json!({"action":"get","area":"config","key":"note"})
-                )?["text"],
+                operate(&paths, json!({"action":"get","area":"config","key":"note"}))?["text"],
                 "한글"
             );
             assert_eq!(
-                operate(&paths, &json!({"action":"get","area":"data","key":"note"}))?,
+                operate(&paths, json!({"action":"get","area":"data","key":"note"}))?,
                 Value::Null
             );
             assert!(
                 operate(
                     &paths,
-                    &json!({"action":"set","area":"config","key":"../escape","value":0})
+                    json!({"action":"set","area":"config","key":"../escape","value":0})
                 )
                 .is_err()
             );
-            assert!(operate(&paths, &json!({"action":"set","area":"config","key":"large","value":"x".repeat(MAX_VALUE)})).is_err());
+            assert!(operate(&paths, json!({"action":"set","area":"config","key":"large","value":"x".repeat(MAX_VALUE)})).is_err());
             let too_many = (0..129)
                 .map(|index| (format!("key{index}"), Value::Null))
                 .collect();
@@ -530,7 +527,7 @@ mod tests {
             assert!(
                 operate(
                     &paths,
-                    &json!({"action":"set","area":"config","key":"note","value":0})
+                    json!({"action":"set","area":"config","key":"note","value":0})
                 )
                 .is_err()
             );
