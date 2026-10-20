@@ -46,9 +46,9 @@ async function runClipboard(){
   report({stage:'clipboard-offered',passed:true});return;
  }
  if(phase===1){phase=2;
-  let oversized=false,readSize=-1,readError='';try{readSize=(await readText()).length;}catch(error){readError=String(error);oversized=readError.includes('8192');}
+  let oversized=false,readSize=-1,readError='';try{readSize=(await readText()).length;}catch(error){readError=String(error);oversized=readError.includes('262144');}
   check(oversized,'external oversized read rejected: '+readSize+' '+readError);
-  let rejected=0;for(const value of ['한'.repeat(2731),'\0',42]){try{await writeText(value as string);}catch{rejected++;}}
+  let rejected=0;for(const value of ['한'.repeat(87382),'\0',42]){try{await writeText(value as string);}catch{rejected++;}}
   check(rejected===3,'SDK invalid writes');
   const {nativeRequest}=await import('@weber/sdk/window');
   const capability=document.querySelector('meta[name="weber-native"]')?.getAttribute('content');
@@ -58,7 +58,7 @@ async function runClipboard(){
   let limited=false;try{nativeRequest({op:'clipboard.start',action:'read'});}catch{limited=true;}
   check(limited,'native pending limit');for(const requestId of ids)nativeRequest({op:'clipboard.cancel',requestId});
   await writeText('intermediate write using the same input serial');
-  await writeText('\n'.repeat(8192));
+  await writeText('\u0001'.repeat(262144));
   report({stage:'clipboard-limits',passed:true,rejected,limited});return;
  }
  if(phase===2){phase=3;

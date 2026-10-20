@@ -1,5 +1,9 @@
 # Linux application preview milestone
 
+This is the SDK 0.4.0 validation snapshot. Current document limits, portal
+parenting and repeated lifecycle coverage are recorded in the
+[SDK 0.5.0 foundation increment](linux-foundation-05.md).
+
 Target: a Linux Wayland developer preview suitable for small notes, settings and
 list applications written in HTML/CSS/JS/TS. This is not a completed cross-platform
 beta or a claim of full browser/Electron compatibility.

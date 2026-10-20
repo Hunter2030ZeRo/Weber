@@ -94,10 +94,10 @@ try {
   await app.waitEvent(e => e.data.stage === 'clipboard-offered', 'GTK to Weber paste and copy', 20000);
   await focusPeer();
   const copied = await command('read'); assert.equal(copied.text, 'Weber에서 복사한 텍스트 😀\nThird line', JSON.stringify(copied));
-  await freshPeerInput();await command('write', 'x'.repeat(8193)); await focusWeber();await keys.key(64);
+  await freshPeerInput();await command('write', 'x'.repeat(262145)); await focusWeber();await keys.key(64);
   await app.waitEvent(e => e.data.stage === 'clipboard-limits', 'external oversize and native limits', 20000);
   await focusPeer();
-  const boundary = await command('read'); assert.equal(boundary.text, '\n'.repeat(8192));
+  const boundary = await command('read'); assert.equal(boundary.text, '\u0001'.repeat(262144));
   await freshPeerInput();await command('write', 'recovered 한글 😀'); await focusWeber();await keys.key(64);
   await app.waitEvent(e => e.data.stage === 'clipboard-pass', 'clipboard recovery', 15000);
   await app.waitEvent(e => e.data.stage === 'clipboard-unfocused', 'background request rejection');
@@ -112,7 +112,7 @@ try {
   await delay(500); const before = await threads(); await delay(2000); const after = await threads(); assert.equal(before.length, 1);
   const idleTicks = after[0].ticks - before[0].ticks;
   await keys.key(66);const exit=await app.waitExit();assert.equal(exit.code,0,JSON.stringify(exit));
-  await writeFile('artifacts/clipboard-native.json', JSON.stringify({ passed: true, build, binary, sdkVersion:fixture.sdkVersion, installedSdk:fixture.installed, display: process.env.WEBER_TEST_DISPLAY, scope: 'Independent GTK4 process and real Wayland clipboard, Unicode/multiline both directions via Notes buttons, 8192-byte escaped boundary, external oversize, native/SDK limits, bad capability, background denial, recovery and clean last-window shutdown. Input switching uses virtual keyboard in private compositor; no physical keyboard, browser clipboard shortcuts, Windows/macOS or AOT validation.', peerEvents, idleClipboardThread: { seconds: 2, ticks: idleTicks }, trace: app.path }, null, 2));
+  await writeFile('artifacts/clipboard-native.json', JSON.stringify({ passed: true, build, binary, sdkVersion:fixture.sdkVersion, installedSdk:fixture.installed, display: process.env.WEBER_TEST_DISPLAY, scope: 'Independent GTK4 process and real Wayland clipboard, Unicode/multiline both directions via Notes buttons, 262144-byte escaped boundary, external oversize, native/SDK limits, bad capability, background denial, recovery and clean last-window shutdown. Input switching uses virtual keyboard in private compositor; no physical keyboard, browser clipboard shortcuts, Windows/macOS or AOT validation.', peerEvents, idleClipboardThread: { seconds: 2, ticks: idleTicks }, trace: app.path }, null, 2));
   console.log('Native Wayland clipboard gates passed; idle clipboard thread ticks:', idleTicks);
   }
 } finally {

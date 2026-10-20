@@ -176,7 +176,11 @@ impl Delegate {
             serde_json::from_slice(payload).ok()?
         };
         if payload.len() > 65536
-            && !(message["action"] == "native" && message["request"]["op"] == "files.start")
+            && !(message["action"] == "native"
+                && matches!(
+                    message["request"]["op"].as_str(),
+                    Some("files.start" | "clipboard.start" | "storage.start")
+                ))
         {
             return None;
         }
@@ -450,6 +454,8 @@ impl WebViewDelegate for Delegate {
 struct Running {
     webview: WebView,
     context: Rc<WindowRenderingContext>,
+    // Drop the foreign export before the winit-owned surface.
+    _portal_parent: Option<crate::portal_parent::Parent>,
     window: Arc<Window>,
     input: Input,
     telemetry: Rc<crate::telemetry::Telemetry>,
@@ -463,9 +469,13 @@ impl Running {
         telemetry: Rc<crate::telemetry::Telemetry>,
         servo: &Servo,
         control: crate::native::Shared,
-        spec: (u64, crate::native::Options),
+        spec: (
+            u64,
+            crate::native::Options,
+            Option<&mut crate::portal_parent::Exporter>,
+        ),
     ) -> Result<Self> {
-        let (id, options) = spec;
+        let (id, options, exporter) = spec;
         let window = Arc::new(
             event_loop.create_window(
                 Window::default_attributes()
@@ -473,6 +483,15 @@ impl Running {
                     .with_inner_size(LogicalSize::new(options.width, options.height)),
             )?,
         );
+        let parent_started = std::time::Instant::now();
+        let parent = exporter.and_then(|exporter| match exporter.export(&window) {
+            Ok(parent) => parent,
+            Err(error) => {
+                log::warn!("Portal parent export unavailable: {error}");
+                None
+            }
+        });
+        telemetry.emit(serde_json::json!({"stage":"portal-parent", "windowId":id, "available":parent.is_some(), "elapsedMs":parent_started.elapsed().as_secs_f64()*1000.0}));
         let context = Rc::new(
             WindowRenderingContext::new(
                 event_loop.display_handle()?,
@@ -485,6 +504,12 @@ impl Running {
             .make_current()
             .map_err(|e| anyhow!("make current: {e:?}"))?;
         control.borrow_mut().update(id, window_info(id, &window));
+        if let Some(parent) = &parent {
+            control
+                .borrow_mut()
+                .portal_parents
+                .insert(id, parent.identifier.clone());
+        }
         let ime_visible = Rc::new(Cell::new(false));
         let development_origin = (url.scheme() == "http"
             && url.host_str() == Some("127.0.0.1")
@@ -517,6 +542,7 @@ impl Running {
         Ok(Self {
             webview,
             context,
+            _portal_parent: parent,
             window,
             input: Input::new(ime_visible),
             telemetry,
@@ -583,6 +609,7 @@ pub struct App {
     // run_app consumes EventLoop. Keep its Wayland display alive until the
     // clipboard worker and its foreign proxies are joined/dropped in App::drop.
     _display: Option<winit::event_loop::OwnedDisplayHandle>,
+    exporter: Option<crate::portal_parent::Exporter>,
     url: Url,
     proxy: EventLoopProxy<Wake>,
     servo: Option<Servo>,
@@ -603,6 +630,7 @@ impl App {
         crate::backend::set_waker(proxy.clone());
         Self {
             _display: None,
+            exporter: None,
             url,
             proxy,
             servo: None,
@@ -639,7 +667,7 @@ impl App {
             self.telemetry.clone(),
             servo,
             self.control.clone(),
-            (id, options),
+            (id, options, self.exporter.as_mut()),
         )?;
         self.control
             .borrow_mut()
@@ -655,13 +683,13 @@ impl App {
             .iter()
             .find_map(|(key, (candidate, _))| (*candidate == id).then_some(*key))
         {
+            crate::files::close_window(id);
             if let Some((_, running)) = self.running.remove(&key) {
                 drop(running);
             }
             crate::backend::close_window(id);
             crate::storage::close_window(id);
             crate::clipboard::close_window(id);
-            crate::files::close_window(id);
             self.control.borrow_mut().remove(id);
             self.telemetry
                 .emit(serde_json::json!({ "stage": "window-closed", "id": id }));
@@ -782,10 +810,11 @@ impl App {
 }
 impl Drop for App {
     fn drop(&mut self) {
+        crate::files::shutdown();
         self.running.clear();
         crate::storage::shutdown();
         crate::clipboard::shutdown();
-        crate::files::shutdown();
+        self.exporter.take();
         self.servo.take();
     }
 }
@@ -846,6 +875,20 @@ impl ApplicationHandler<Wake> for App {
             }
         };
         servo.setup_logging();
+        // Register after the clipboard queue has initialized and Servo logging
+        // is installed; an early failure must not silently disable all parents.
+        let parent_started = std::time::Instant::now();
+        self.exporter = event_loop.display_handle().ok().and_then(|display| {
+            match crate::portal_parent::Exporter::new(display) {
+                Ok(exporter) => Some(exporter),
+                Err(error) => {
+                    self.telemetry.emit(serde_json::json!({"stage":"portal-parent-initialization", "error":error.to_string()}));
+                    log::warn!("Portal parenting unavailable: {error}");
+                    None
+                }
+            }
+        });
+        self.telemetry.emit(serde_json::json!({"stage":"portal-parent-initialized", "available":self.exporter.is_some(), "elapsedMs":parent_started.elapsed().as_secs_f64()*1000.0}));
         self.servo = Some(servo);
         if let Err(error) = self.open(event_loop, 1, crate::native::Options::default()) {
             self.failure = Some(error);

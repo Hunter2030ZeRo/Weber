@@ -222,7 +222,7 @@ fn advance(transfer: &mut Transfer) -> Result<Option<serde_json::Value>> {
                 Ok(size) => {
                     ensure!(
                         bytes.len() + size <= MAX_TEXT,
-                        "Clipboard text exceeds 8192 UTF-8 bytes"
+                        "Clipboard text exceeds {MAX_TEXT} UTF-8 bytes"
                     );
                     bytes.extend_from_slice(&buffer[..size]);
                 }
@@ -644,8 +644,10 @@ mod tests {
             Some(serde_json::json!("한글 😀\n"))
         );
         let (mut transfer, mut writer) = read_transfer()?;
-        writer.write_all(&vec![b'x'; 8192])?;
-        assert!(advance(&mut transfer)?.is_none());
+        for _ in 0..MAX_TEXT / 4096 {
+            writer.write_all(&[b'x'; 4096])?;
+            assert!(advance(&mut transfer)?.is_none());
+        }
         writer.write_all(b"x")?;
         assert!(advance(&mut transfer).is_err());
         let (mut transfer, _writer) = read_transfer()?;

@@ -42,7 +42,8 @@ for its binary, native tests and performance evidence. The [clipboard](clipboard
 now connects the SDK and normal textarea/input shortcuts to Wayland, with a
 separate Servo safe-cut extension. SDK 0.4.0 adds [text file selection and
 lifecycle APIs](files-and-lifecycle.md). The [Linux preview milestone](linux-preview-milestone.md)
-records the current acceptance scope. Richer clipboard formats, contenteditable,
+records the 0.4.0 acceptance scope. The [0.5.0 foundation increment](linux-foundation-05.md)
+extends document limits, portal parenting and repeated lifecycle validation. Richer clipboard formats, contenteditable,
 broader platform APIs and process/renderer recovery remain subsequent work.
 
 ## Subsequent beta requirements
@@ -53,8 +54,7 @@ measures larger DOMs, multiple windows and repeated close/reopen lifetimes on
 both engines, alongside the preceding JIT-only host. See
 [the bundle's validation record](platform-validation.md) for what actually ran.
 
-- Rich clipboard formats, contenteditable editing, Wayland-parented file
-  dialogs, remaining window controls and physical keyboard/IME verification.
+- Rich clipboard formats, contenteditable editing, activation-token integration and remaining window controls and physical keyboard/IME verification.
 - General platform event API, renderer navigation/disposal handling, recovery
   policy, dependency-specific Node compatibility and native app trust boundaries.
 - A downstream panel/launcher integrated with actual Hyprland sockets; output

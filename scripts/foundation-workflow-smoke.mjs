@@ -79,7 +79,7 @@ function App(){onMount(()=>{void(async()=>{
  check(await removeValue('missing')===false,'missing removal');
  await setValue('temporary',true);check(await removeValue('temporary'),'removal');check(await getValue('temporary')===null,'removed value');
  let malformed=0;
- for(const work of [()=>setValue('../escape',0),()=>setValue('x','x'.repeat(8192)),()=>setValue('x',NaN),()=>setValue('x',{nested:undefined} as any),()=>setValue('x',1,'outside' as any)])if(await rejected(work))malformed++;
+ for(const work of [()=>setValue('../escape',0),()=>setValue('x','x'.repeat(1048576)),()=>setValue('x',NaN),()=>setValue('x',{nested:undefined} as any),()=>setValue('x',1,'outside' as any)])if(await rejected(work))malformed++;
  check(malformed===5,'invalid request rejection');
  const queued=Array.from({length:32},()=>getAppPaths());check(await rejected(()=>getAppPaths()),'pending request limit');await Promise.all(queued);
  await Promise.all(Array.from({length:32},(_,i)=>setValue('ordered',i)));check(await getValue('ordered')===31,'serialized writes');

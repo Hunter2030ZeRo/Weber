@@ -1,4 +1,4 @@
-# Text files and application lifecycle — SDK 0.4.0
+# Text files and application lifecycle — SDK 0.5.0
 
 ```ts
 import { openTextFile, saveTextFile } from '@weber/sdk/files';
@@ -40,14 +40,19 @@ without arbitrary path-based filesystem access. No Node/Bun process is needed.
 - D-Bus method calls have a 3-second timeout, initial connection a 5-second
   deadline, active chooser a 120-second deadline, and SDK request a 125-second
   outer deadline. Queued requests can time out/cancel before becoming active.
-- JSON requests are capped at the worst-case escaped 256 KiB text size. Other
-  native APIs retain their earlier lower limits. SDK polling runs only while a
+- JSON requests are capped at the worst-case escaped 256 KiB text size. Storage/clipboard starts have their own bounded data contracts; window and
+  backend control messages retain their smaller limits. SDK polling runs only while a
   request is pending; no file work runs while idle.
-- The initial portal integration uses an empty parent-window identifier.
-  Choosers are not yet attached to an exported Wayland parent surface, so strict
-  per-window modality/placement and activation-token integration remain work.
-  Portals and backend availability are desktop prerequisites. This API does not
-  implement arbitrary filesystem access or claim a complete app sandbox.
+- The host exports the actual calling toplevel through xdg-foreign v2 (v1
+  fallback) and passes `wayland:<handle>` as the portal parent. Exports last for
+  that window's lifetime and are destroyed before its native surface. No handle
+  supplied by application JavaScript is trusted. Compositors without xdg-foreign
+  keep the empty-parent fallback. A bounded handshake runs during window creation,
+  with no extra thread or idle timer. Explicit activation tokens and strict
+  modality across all portal backends remain unverified. See the official
+  [window identifier contract](https://flatpak.github.io/xdg-desktop-portal/docs/window-identifiers.html).
+  Portals/backend availability are desktop prerequisites; this API is not a
+  general filesystem API or a complete app sandbox.
 - Replacement is atomic for observers on the same filesystem. Directory sync,
   crash/power-loss durability, external-edit conflict detection and saving
   through final symlinks are not promised by this preview.
@@ -70,8 +75,8 @@ diagnostic, not recovery from a Rust panic, GPU crash or terminated Servo thread
 
 The Notes template includes file open/save, app-store save/reload, native text
 clipboard and a discard decision. Busy operations and open discard decisions
-disable editing. The app-store value limit remains 8 KiB; the text-file API
-supports 256 KiB. Saving a file does not replace the independent app-store note.
+disable editing. The app-store accepts 1 MiB of encoded JSON per value; the text-file API
+supports 256 KiB of UTF-8. Saving a file does not replace the independent app-store note.
 
 ## Verification
 

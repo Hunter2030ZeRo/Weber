@@ -10,7 +10,11 @@ if [[ "$actual" != "$revision" ]]; then
   printf 'Servo revision mismatch: %s\n' "$actual" >&2
   exit 1
 fi
-for patch_name in servo-transient-observers servo-sync-host servo-time-origin servo-keyboard-click servo-binary-host servo-small-dom-scheduling servo-safe-cut; do
+for patch_name in servo-transient-observers servo-sync-host servo-time-origin servo-keyboard-click servo-binary-host servo-small-dom-scheduling servo-safe-cut servo-document-envelope; do
+  # The envelope extension supersedes contexts in both host-call patches.
+  if [[ "$patch_name" == servo-sync-host || "$patch_name" == servo-binary-host ]] && git -C vendor/servo apply --reverse --check "$PWD/patches/servo-document-envelope.patch" 2>/dev/null; then
+    continue
+  fi
   patch_path="$PWD/patches/$patch_name.patch"
   # The binary extension modifies the same generated binding/trait contexts.
   # Its successful reverse check establishes that the preceding sync patch is

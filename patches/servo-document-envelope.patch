@@ -1,0 +1,14 @@
+--- a/components/script/dom/window/window.rs
++++ b/components/script/dom/window/window.rs
+@@ -1429,7 +1429,10 @@
+         query: Option<RootedCallback<WeberDOMQuery>>,
+     ) -> Option<DOMString> {
+         let payload = String::from(payload);
+-        if payload.len() > 1_048_576 {
++        // Native text/document envelopes include JSON escaping and metadata.
++        // The embedder applies the smaller operation-specific quotas; retain
++        // the separate 1 MiB binary/query limits above and below.
++        if payload.len() > 2_097_152 {
+             return None;
+         }
+         let (sender, receiver) =

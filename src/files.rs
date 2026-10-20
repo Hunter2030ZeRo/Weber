@@ -21,6 +21,7 @@ const PORTAL: &str = "org.freedesktop.portal.Desktop";
 struct Task {
     id: u64,
     request: Value,
+    parent: String,
     cancel: async_channel::Receiver<()>,
 }
 struct Pending {
@@ -113,7 +114,7 @@ fn validate(request: &Value) -> Result<()> {
     }
     Ok(())
 }
-pub fn submit(owner: u64, request: &Value) -> Result<Value> {
+pub fn submit(owner: u64, request: &Value, parent: String) -> Result<Value> {
     validate(request)?;
     let mut slot = WORKER
         .lock()
@@ -137,6 +138,7 @@ pub fn submit(owner: u64, request: &Value) -> Result<Value> {
         .try_send(Task {
             id,
             request: request.clone(),
+            parent,
             cancel: receiver,
         })
         .map_err(|_| anyhow!("File queue full or stopped"))?;
@@ -299,7 +301,7 @@ async fn operate(task: &Task) -> Result<Value> {
                 .call(
                     if save { "SaveFile" } else { "OpenFile" },
                     &(
-                        "",
+                        task.parent.as_str(),
                         if save {
                             "Save text file"
                         } else {

@@ -43,7 +43,12 @@ try {
   if (code !== 0) process.exitCode = code ?? 1;
 } finally {
   if (compositor.exitCode === null) compositor.kill();
-  await exit;
+  // A private compositor can hang while disposing portal/GPU resources after
+  // the app has already exited. Bound teardown of this exact spawned process.
+  const killTimer = setTimeout(() => {
+    if (compositor.exitCode === null && compositor.signalCode === null) compositor.kill('SIGKILL');
+  }, 3000);
+  try { await exit; } finally { clearTimeout(killTimer); }
   // Activated desktop helpers can daemonize and keep test pipes open. Reap only
   // processes whose environment names this exact newly created private runtime.
   const owned=async pid=>{try{return (await readFile(`/proc/${pid}/environ`,'utf8')).split('\0').includes(`XDG_RUNTIME_DIR=${runtime}`);}catch{return false;}};

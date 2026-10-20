@@ -8612,6 +8612,7 @@ dependencies = [
  "sha2",
  "url",
  "wayland-client",
+ "wayland-protocols",
  "wayland-protocols-wlr",
  "winit",
  "zbus",

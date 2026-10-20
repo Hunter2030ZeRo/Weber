@@ -13,7 +13,7 @@ const resultPath='artifacts/preview-native.json';
 await writeFile(resultPath,JSON.stringify({passed:false,build,scope:'Native preview test started'},null,2));
 let app,keys;const traces=[];
 const portalLog=openSync('artifacts/preview-portal.log','w');
-const monitor=spawn('dbus-monitor',['--session',"interface='org.freedesktop.portal.Request'","interface='org.freedesktop.impl.portal.Request'"],{stdio:['ignore',portalLog,portalLog]});closeSync(portalLog);
+const monitor=spawn('dbus-monitor',['--session',"interface='org.freedesktop.portal.Request'","interface='org.freedesktop.impl.portal.Request'","type='method_call',interface='org.freedesktop.portal.FileChooser'"],{stdio:['ignore',portalLog,portalLog]});closeSync(portalLog);
 const monitored=new Promise(resolve=>{monitor.once('error',resolve);monitor.once('exit',resolve);});
 const focused=async()=> (await app.events()).filter(e=>e.data.stage==='window-focus').at(-1)?.data.focused;
 async function rawKey(code,modifiers=[]){for(const m of modifiers){await keys.command({keycode:m,pressed:true});await delay(30);}await keys.command({keycode:code,pressed:true});await delay(30);await keys.command({keycode:code,pressed:false});for(const m of modifiers.reverse())await keys.command({keycode:m,pressed:false});await delay(70);}
@@ -44,6 +44,7 @@ try{
   keys=await NativeKeys.open();
   app=await launch({binary,application:fixture.application,engine:'web',name:'preview-native'});traces.push(app.path);keys.app=app;
   await app.waitEvent(e=>e.data.stage==='window-opened','preview window');await delay(400);await focusApp();
+  assert.ok((await app.events()).some(e=>e.data.stage==='portal-parent'&&e.data.available),'Actual native parent export');
   await state(s=>s.status==='Loaded','Notes initial load');
   await phase(0);await choose(fixture.input);await state(s=>s.status==='File opened','Notes file open');await done(0);
   await phase(1);await choose(fixture.output);await state(s=>s.status==='File saved','Notes file save');await done(1);
@@ -52,7 +53,7 @@ try{
   await state(s=>s.dialog,'unsaved native-close prompt');await keys.key(28);await state(s=>!s.dialog&&s.dirty==='Unsaved changes','keep editing');
   await phase(3);await portal();await rawKey(46,[56]);await done(3);await waitFor(focused,'focus restored after chooser cancellation'); // Explicit GTK Cancel accelerator.
   await phase(4);await choose(fixture.invalid);await done(4);await waitFor(focused,'focus restored after invalid file');
-  await phase(5);await choose(fixture.output);await done(5);assert.equal(await readFile(fixture.output,'utf8'),'\n'.repeat(262144));await waitFor(focused,'focus after overwrite');
+  await phase(5);await choose(fixture.output);await done(5);assert.equal(await readFile(fixture.output,'utf8'),'\u0001'.repeat(262144));await waitFor(focused,'focus after overwrite');
   await phase(6);await choose(fixture.oversized);await done(6);await waitFor(focused,'focus after oversized file');
   await phase(7);await done(7);await waitFor(focused,'chooser closed after AbortSignal');
   await phase(8);await done(8);await state(s=>s.error?.includes('Preview synchronous application failure'),'script error display');
@@ -66,7 +67,9 @@ try{
   app=await launch({binary,application:fixture.errorApplication,engine:'web',name:'preview-error-capture',capture:true});traces.push(app.path);keys.app=app;
   await app.waitEvent(e=>e.data.stage==='preview-error-capture'&&e.data.visible,'startup error visible');const captured=await app.waitExit();assert.equal(captured.code,0,JSON.stringify(captured));
   assert.ok((await stat('artifacts/preview-error-capture.png')).size>1000,'real Servo screenshot of startup diagnostic');
-  await writeFile(resultPath,JSON.stringify({passed:true,build,sdkVersion:fixture.sdkVersion,installedSdk:fixture.installed,display:process.env.WEBER_TEST_DISPLAY,portalBackend:process.env.WEBER_TEST_FILE_CHOOSER??'desktop default',traces,scope:'Actual desktop FileChooser portal and virtual keyboard in isolated Wayland: Notes open/save, explicit GTK Cancel, invalid UTF-8, 256KiB escaped overwrite, oversized external input, SDK validation, AbortSignal, native Alt+F4 keep/discard, visible JS/promise/startup errors, final close and pending chooser cleanup. App button/input setup is programmatic. No physical input/IME, Windows/macOS, AOT, clean OS or performance claim.'},null,2));
+  const parentArguments=(await readFile('artifacts/preview-portal.log','utf8')).match(/string "wayland:[^"]+"/g)??[];
+  assert.ok(parentArguments.length>=8,'All chooser calls carry actual exported Wayland parent identifiers');
+  await writeFile(resultPath,JSON.stringify({passed:true,build,sdkVersion:fixture.sdkVersion,installedSdk:fixture.installed,display:process.env.WEBER_TEST_DISPLAY,portalBackend:process.env.WEBER_TEST_FILE_CHOOSER??'desktop default',traces,parentArguments,scope:'Actual desktop FileChooser portal and virtual keyboard in isolated Wayland: Notes open/save, explicit GTK Cancel, invalid UTF-8, 256KiB escaped overwrite, oversized external input, SDK validation, AbortSignal, native Alt+F4 keep/discard, visible JS/promise/startup errors, final close and pending chooser cleanup. App button/input setup is programmatic. No physical input/IME, Windows/macOS, AOT, clean OS or performance claim.'},null,2));
   console.log('Linux preview native acceptance cases passed');
 }catch(error){
   try{await execute('gdbus',['call','--timeout','5','--session','--dest','org.gnome.Shell.Screenshot','--object-path','/org/gnome/Shell/Screenshot','--method','org.gnome.Shell.Screenshot.Screenshot','false','false',resolve('artifacts/preview-failure.png')]);}catch{}

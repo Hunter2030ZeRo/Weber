@@ -28,7 +28,7 @@ async function previewAdvance() {
     let error='';try{await openTextFile();}catch(value){error=String(value);}previewCheck(error.includes('UTF-8'),'Invalid UTF-8 rejects: '+error);
     previewCheck(note.value==='Unsaved note to keep','Failed open preserves Notes');
   } else if (phase === 5) {
-    const result=await saveTextFile('\n'.repeat(262144),'boundary.txt');previewCheck(!!result,'Save maximum escaped file');
+    const result=await saveTextFile('\u0001'.repeat(262144),'boundary.txt');previewCheck(!!result,'Save maximum escaped file');
   } else if (phase === 6) {
     let error='';try{await openTextFile();}catch(value){error=String(value);}previewCheck(error.includes('262144'),'External oversized file rejected: '+error);
     let rejected=0;for(const args of [['x'.repeat(262145),'large.txt'],['text','../bad']]){try{await saveTextFile(args[0],args[1]);}catch{rejected++;}}previewCheck(rejected===2,'SDK file validation');

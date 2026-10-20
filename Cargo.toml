@@ -31,6 +31,7 @@ rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] 
 servo = { path = "vendor/servo/components/servo", default-features = false, features = ["bundled", "js_jit"] }
 url = "2"
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen", "wayland-csd-adwaita"] }
+wayland-protocols = { version = "0.32.13", features = ["client", "unstable"] }
 
 [dependencies.wayland-client]
 version = "0.31.15"

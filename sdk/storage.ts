@@ -23,12 +23,15 @@ function call<T>(action: string, area?: StorageArea, key?: string, value?: Stora
   return new Promise((resolve, reject) => {
     try {
       const request = { op: 'storage.start', action, area, key, value };
-      if (action === 'set') JSON.stringify(value, (_, item) => {
+      if (action === 'set') {
+        const serialized = JSON.stringify(value, (_, item) => {
         if (typeof item === 'undefined') throw new TypeError('Storage requires JSON values');
         if (typeof item === 'number' && !Number.isFinite(item)) throw new TypeError('Storage requires finite JSON values');
         if (['bigint', 'symbol', 'function'].includes(typeof item)) throw new TypeError('Storage requires JSON values');
         return item;
-      });
+        });
+        if (new TextEncoder().encode(serialized).length > 1048576) throw new RangeError('Storage value exceeds 1048576 JSON bytes');
+      }
       const { id } = nativeRequest(request);
       pending.set(id, { resolve: result => resolve(result as T), reject, deadline: performance.now() + 30000 });
       schedule();
@@ -37,7 +40,7 @@ function call<T>(action: string, area?: StorageArea, key?: string, value?: Stora
 }
 /** Paths follow the OS app directories and are scoped to manifest id. No directories are created by this query. */
 export function getAppPaths(): Promise<AppPaths> { return call('paths'); }
-/** Missing keys return null. Values are JSON, at most 8192 UTF-8 bytes; 128 keys per area. */
+/** Missing keys return null. Values are JSON, at most 1 MiB encoded; 128 keys and 16 MiB per area. */
 export function getValue<T extends StorageValue = StorageValue>(key: string, area: StorageArea = 'config'): Promise<T | null> { return call('get', area, key); }
 /** Atomic file replacement on the worker thread. App windows share one ordered queue. */
 export function setValue(key: string, value: StorageValue, area: StorageArea = 'config'): Promise<void> { return call('set', area, key, value); }

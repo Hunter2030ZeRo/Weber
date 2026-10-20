@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Developer preview</strong> · Linux / Wayland · SDK 0.4.0
+  <strong>Developer preview</strong> · Linux / Wayland · SDK 0.5.0
 </p>
 
 <p align="center">
@@ -48,10 +48,12 @@ Linux foundation, web compatibility, responsiveness and resource use.
 Windows and macOS are planned. Weber is a developer preview, not a released beta;
 the SDK and runtime packages are not published to npm.
 
-Parented dialogs, contenteditable editing, accessibility and broader platform
-integration remain on the [beta roadmap](docs/beta-plan.md). The text clipboard
-and app-store value limit is 8 KiB; file open/save supports 256 KiB UTF-8 text.
-See the [Linux preview milestone](docs/linux-preview-milestone.md). Browser compatibility is measured
+Contenteditable editing, accessibility and broader platform integration remain
+on the [beta roadmap](docs/beta-plan.md). Clipboard and text files support
+256 KiB UTF-8; app-store values support 1 MiB encoded JSON with a 16 MiB area
+quota. File choosers receive the calling Wayland window through xdg-foreign
+when the compositor supports it. See the [Linux foundation increment](docs/linux-foundation-05.md)
+and the preceding [preview milestone](docs/linux-preview-milestone.md). Browser compatibility is measured
 against a [selected, locked test profile](docs/compatibility-target.md), rather
 than assumed to cover every web API or arbitrary Electron applications.
 
@@ -176,7 +178,7 @@ memory or startup advantage over Electron or native GUI frameworks is claimed.
 | Persistent data | [Storage API and Notes example](docs/app-storage.md) |
 | Clipboard | [Native text clipboard API and validation](docs/clipboard.md) |
 | Files and lifecycle | [Text files, close decisions and diagnostics](docs/files-and-lifecycle.md) |
-| Linux preview | [Acceptance criteria and results](docs/linux-preview-milestone.md) |
+| Linux preview | [Document and lifecycle foundation](docs/linux-foundation-05.md) · [Initial acceptance](docs/linux-preview-milestone.md) |
 | Optional backend | [Bun integration](docs/bun-backend.md) · [Backend validation](docs/bun-backend-validation.md) |
 | Web compatibility | [Locked test profile](docs/compatibility-target.md) · [Profile validation](docs/profile-validation.md) |
 | Performance | [JIT foundation results](docs/foundation-validation.md) · [CPU investigation](docs/jit-cpu-analysis.md) |

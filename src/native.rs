@@ -77,6 +77,7 @@ pub struct Control {
     pub wake: Option<winit::event_loop::EventLoopProxy<crate::host::Wake>>,
     pub commands: VecDeque<Command>,
     pub windows: BTreeMap<u64, Value>,
+    pub portal_parents: BTreeMap<u64, String>,
     next: u64,
     revision: u64,
     watch_generation: u64,
@@ -104,6 +105,7 @@ impl Control {
         }
     }
     pub fn remove(&mut self, id: u64) {
+        self.portal_parents.remove(&id);
         self.watches.remove(&id);
         self.close_watches.remove(&id);
         if self.windows.remove(&id).is_some() {
@@ -220,13 +222,15 @@ pub fn exchange(control: &Shared, source: u64, payload: &str) -> String {
             "Native request too large"
         );
         let request: Value = serde_json::from_str(payload)?;
-        if request["op"] != "files.start" {
+        if !matches!(
+            request["op"].as_str(),
+            Some("files.start" | "clipboard.start" | "storage.start")
+        ) {
             ensure!(payload.len() <= 65_536, "Native request too large");
         }
-        if !request["op"]
-            .as_str()
-            .is_some_and(|op| op.starts_with("clipboard.") || op.starts_with("files."))
-        {
+        if !request["op"].as_str().is_some_and(|op| {
+            op.starts_with("clipboard.") || op.starts_with("files.") || op == "storage.start"
+        }) {
             ensure!(payload.len() <= 16_000, "Native request too large");
         }
         ensure!(request.is_object(), "Native request must be an object");
@@ -301,7 +305,15 @@ pub fn exchange(control: &Shared, source: u64, payload: &str) -> String {
                         .is_some_and(|window| window["focused"] == true),
                     "File chooser requires the calling window to have focus"
                 );
-                crate::files::submit(source, &request)
+                crate::files::submit(
+                    source,
+                    &request,
+                    control
+                        .portal_parents
+                        .get(&source)
+                        .cloned()
+                        .unwrap_or_default(),
+                )
             }
             Some("files.poll") => crate::files::poll(source, &request),
             Some("files.cancel") => {

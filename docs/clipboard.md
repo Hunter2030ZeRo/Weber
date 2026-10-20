@@ -1,4 +1,4 @@
-# Native text clipboard — SDK 0.3.2
+# Native text clipboard — SDK 0.5.0
 
 Applications use JavaScript/TypeScript; the Rust host owns the platform connection.
 The Notes template includes **Copy note** and **Paste** buttons using this API:
@@ -26,7 +26,7 @@ commands, a clipboard-manager protocol, Node.js or Bun.
 - The calling native window must have focus and the app must have the existing
   native capability. This is a trusted application API, not a browser permission
   prompt or a replacement for the web Clipboard API's user-activation policy.
-- Text is limited to 8192 UTF-8 bytes. Writes reject NUL and non-string values.
+- Text is limited to 256 KiB of UTF-8 text (SDK/runtime 0.5.0). Writes reject NUL and non-string values.
   Both the SDK and native host validate writes; the native reader caps data while
   receiving it, rather than allocating the complete external payload first.
 - At most 16 application requests may be pending. Results and cancellation belong
@@ -89,7 +89,7 @@ and write-error behavior has not been validated. Servo's write delegate has no
 completion result in upstream Servo. Weber 0.4.0 adds a separately maintained
 `servo-safe-cut.patch`: default cuts use an explicit write-result callback and
 preserve the selection if validation or native submission fails, including the
-8192-byte limit. Hosts advertise `safeCutProtocol: 1`. This is a Weber extension,
+current text-size limit. Hosts advertise `safeCutProtocol: 1`. This is a Weber extension,
 not an existing upstream API or an acknowledgment of a future paste. Custom
 JavaScript cut handlers remain responsible for edits they perform themselves.
 The script thread waits for the bounded worker reply; the host event loop keeps
@@ -122,7 +122,7 @@ not changed. GTK uses the Wayland backend and Cairo renderer. Focus changes and
 test actions use Mutter's virtual keyboard inside this private display.
 
 The harness checks Notes Paste from GTK and Copy note to GTK, Korean/emoji and
-multiline text, an 8192-byte escaped write, oversized external reads, malformed
+multiline text, a 256 KiB escaped write, oversized external reads, malformed
 writes, native request limits, invalid capability, background denial, recovery,
 idle worker ticks and clean last-window shutdown. Rust tests separately check
 request ownership, cancellation, nonblocking pipe reads, invalid UTF-8 and stalled

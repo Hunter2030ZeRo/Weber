@@ -12,7 +12,7 @@ Generated TypeScript paths resolve from that project's `node_modules`.
 
 `@weber/sdk/clipboard` exports asynchronous `readText()` and `writeText(text)`.
 It requires native `clipboardProtocol: 1` and a focused app window. Text is
-limited to 8192 UTF-8 bytes; writes reject NUL. This API uses the system
+limited to 256 KiB of UTF-8 text; writes reject NUL. This API uses the system
 clipboard. Native hosts advertising `browserClipboardProtocol: 1`
 also connect Servo's normal textarea/input copy/cut/paste shortcuts and clipboard
 events to that same system clipboard without app shortcut handlers. This SDK
@@ -25,7 +25,14 @@ See the source repository's `docs/clipboard.md`.
 cancel returns `null`. Open returns `{ name, text }`, save returns `{ name }`.
 The Linux host requires `fileDialogProtocol: 1` and a working FileChooser portal.
 UTF-8 files are limited to 256 KiB. `options.signal` cancels a pending request.
+Hosts with `fileDialogParentProtocol: 1` export the calling Wayland window
+through xdg-foreign v2/v1 and pass its identifier to the chooser. Compositors
+without that protocol retain the unparented fallback.
 The host performs file I/O and atomic replacement, without a Node/Bun runtime.
+
+`@weber/sdk/storage` accepts values up to 1 MiB of encoded JSON, with 128 keys
+and a 16 MiB quota per area. Queued/in-flight request payloads share a 4 MiB
+budget and 32 pending slots; cancellation does not undo an issued write.
 
 `onCloseRequested(async () => boolean)` from `@weber/sdk/window` intercepts native
 and SDK close requests. Return `true` to close or `false` to keep editing; thrown

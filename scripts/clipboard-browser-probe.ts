@@ -57,9 +57,9 @@ async function advance() {
     check(single.value === 'Read only', 'Readonly cut/paste preserve value: ' + single.value);
     check(events.some(e => e.type === 'input' && e.inputType === 'insertFromPaste'), 'Paste input event');
     check(events.some(e => e.type === 'input' && e.inputType === 'deleteByCut'), 'Cut input event');
-    single.readOnly = false; single.value = '한'.repeat(2731); single.focus();
+    single.readOnly = false; single.value = '한'.repeat(87382); single.focus();
   } else if (phase === 9) {
-    check(single.value === '한'.repeat(2731), 'Oversized default cut preserves the original text');
+    check(single.value === '한'.repeat(87382), 'Oversized default cut preserves the original text');
     single.value = 'Cut recovered 한글 😀'; single.focus();
   } else if (phase === 10) {
     check(single.value === '', 'Default cut recovers after rejected oversized cut');

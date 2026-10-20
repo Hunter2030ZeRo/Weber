@@ -33,8 +33,11 @@ its channels; a filesystem call already in progress may delay shutdown.
 
 Keys contain 1–96 ASCII letters, digits, dots, underscores or hyphens. They are
 JSON object keys, never filesystem paths. Each area permits 128 keys, values of
-up to 8192 serialized UTF-8 JSON bytes, and a total store file of at most 1 MiB.
-There are at most 32 pending requests app-wide. Undefined values, nonfinite
+up to 1 MiB serialized UTF-8 JSON bytes, and a total store file of at most 16 MiB.
+There are at most 32 pending requests app-wide. SDK/runtime 0.5.0 additionally
+bounds queued/in-flight request payloads to 4 MiB; reservations follow each task
+until execution/drop, so discarding its result does not free that budget early.
+Large read results remain bounded by the value and pending-count limits. Undefined values, nonfinite
 numbers and non-JSON values are rejected. Missing keys return null; stored null
 also returns null, so use `listKeys` if that distinction matters. A generic type
 parameter is a TypeScript assertion, not runtime schema validation.

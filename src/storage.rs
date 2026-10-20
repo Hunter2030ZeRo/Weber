@@ -7,12 +7,17 @@ use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::{Mutex, mpsc},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    },
     thread::JoinHandle,
 };
 
-const MAX_VALUE: usize = 8192;
-const MAX_STORE: u64 = 1_048_576;
+const MAX_VALUE: usize = 1_048_576;
+const MAX_STORE: u64 = 16_777_216;
+const MAX_QUEUED_BYTES: usize = 4_194_304;
 const MAX_PENDING: usize = 32;
 #[derive(Clone)]
 struct Paths {
@@ -64,6 +69,35 @@ impl Paths {
 struct Task {
     id: u64,
     request: Value,
+    _reservation: Reservation,
+}
+struct Reservation {
+    counter: Arc<AtomicUsize>,
+    bytes: usize,
+}
+impl Reservation {
+    fn new(counter: &Arc<AtomicUsize>, bytes: usize) -> Result<Self> {
+        let mut used = counter.load(Ordering::Relaxed);
+        loop {
+            let total = used
+                .checked_add(bytes)
+                .filter(|total| *total <= MAX_QUEUED_BYTES)
+                .ok_or_else(|| anyhow!("Storage queued data limit reached"))?;
+            match counter.compare_exchange_weak(used, total, Ordering::Relaxed, Ordering::Relaxed) {
+                Ok(_) => break,
+                Err(current) => used = current,
+            }
+        }
+        Ok(Self {
+            counter: counter.clone(),
+            bytes,
+        })
+    }
+}
+impl Drop for Reservation {
+    fn drop(&mut self) {
+        self.counter.fetch_sub(self.bytes, Ordering::Relaxed);
+    }
 }
 struct Reply {
     id: u64,
@@ -74,6 +108,7 @@ struct Pending {
     result: Option<Result<Value, String>>,
 }
 struct Worker {
+    reserved: Arc<AtomicUsize>,
     send: mpsc::SyncSender<Task>,
     receive: mpsc::Receiver<Reply>,
     pending: BTreeMap<u64, Pending>,
@@ -103,6 +138,7 @@ impl Worker {
                 }
             })?;
         Ok(Self {
+            reserved: Arc::new(AtomicUsize::new(0)),
             send,
             receive,
             pending: BTreeMap::new(),
@@ -111,9 +147,24 @@ impl Worker {
         })
     }
     fn drain(&mut self) {
-        while let Ok(reply) = self.receive.try_recv() {
-            if let Some(pending) = self.pending.get_mut(&reply.id) {
-                pending.result = Some(reply.result);
+        loop {
+            match self.receive.try_recv() {
+                Ok(reply) => {
+                    if let Some(pending) = self.pending.get_mut(&reply.id) {
+                        pending.result = Some(reply.result);
+                    }
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    for pending in self
+                        .pending
+                        .values_mut()
+                        .filter(|pending| pending.result.is_none())
+                    {
+                        pending.result = Some(Err("Storage worker stopped".into()));
+                    }
+                    break;
+                }
             }
         }
     }
@@ -133,11 +184,14 @@ pub fn submit(owner: u64, request: &Value) -> Result<Value> {
         "Storage request limit reached"
     );
     let id = worker.next;
+    let bytes = serde_json::to_vec(request)?.len();
+    let reservation = Reservation::new(&worker.reserved, bytes)?;
     worker
         .send
         .try_send(Task {
             id,
             request: request.clone(),
+            _reservation: reservation,
         })
         .map_err(|_| anyhow!("Storage queue full or stopped"))?;
     worker.next += 1;
@@ -250,7 +304,7 @@ fn validate(request: &Value) -> Result<()> {
         ensure!(
             request.get("value").is_some()
                 && serde_json::to_vec(&request["value"])?.len() <= MAX_VALUE,
-            "Storage value exceeds 8192 bytes"
+            "Storage value exceeds 1048576 JSON bytes"
         );
     }
     Ok(())
@@ -358,6 +412,55 @@ fn operate(paths: &Paths, request: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn queued_budget_lives_until_task_drop_even_without_a_waiter() -> Result<()> {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let first = Reservation::new(&counter, MAX_QUEUED_BYTES)?;
+        assert!(Reservation::new(&counter, 1).is_err());
+        drop(first);
+        let second = Reservation::new(&counter, 1)?;
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+        drop(second);
+        assert_eq!(counter.load(Ordering::Relaxed), 0);
+        Ok(())
+    }
+    #[test]
+    fn disconnected_worker_fails_pending_and_preserves_completed_results() -> Result<()> {
+        let (send, _tasks) = mpsc::sync_channel(1);
+        let (replies, receive) = mpsc::sync_channel(1);
+        let mut worker = Worker {
+            send,
+            receive,
+            reserved: Arc::new(AtomicUsize::new(0)),
+            next: 3,
+            thread: std::thread::spawn(|| {}),
+            pending: BTreeMap::from([
+                (
+                    1,
+                    Pending {
+                        owner: 7,
+                        result: None,
+                    },
+                ),
+                (
+                    2,
+                    Pending {
+                        owner: 7,
+                        result: Some(Ok(json!("complete"))),
+                    },
+                ),
+            ]),
+        };
+        drop(replies);
+        worker.drain();
+        assert_eq!(
+            worker.pending[&1].result,
+            Some(Err("Storage worker stopped".into()))
+        );
+        assert_eq!(worker.pending[&2].result, Some(Ok(json!("complete"))));
+        let _ = worker.thread.join();
+        Ok(())
+    }
     #[test]
     fn coincident_os_bases_keep_areas_and_apps_separate() {
         let root = Path::new("shared-os-base");

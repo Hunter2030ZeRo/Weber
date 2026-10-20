@@ -14,7 +14,7 @@ use wayland_client::Connection;
 
 #[path = "clipboard_wayland.rs"]
 mod platform;
-pub(super) const MAX_TEXT: usize = 8192;
+pub(super) const MAX_TEXT: usize = 262_144;
 const MAX_PENDING: usize = 16;
 pub(super) struct Task {
     id: u64,
@@ -179,7 +179,7 @@ fn text(request: &Value) -> Result<Operation> {
                 .ok_or_else(|| anyhow!("Clipboard text must be a string"))?;
             ensure!(
                 text.len() <= MAX_TEXT,
-                "Clipboard text exceeds 8192 UTF-8 bytes"
+                "Clipboard text exceeds {MAX_TEXT} UTF-8 bytes"
             );
             ensure!(!text.contains('\0'), "Clipboard text must not contain NUL");
             Ok(Operation::Write(text.into()))
@@ -421,8 +421,8 @@ mod tests {
     }
     #[test]
     fn text_and_native_payload_are_bounded() {
-        assert!(text(&json!({"action":"write","text":"한".repeat(2730)})).is_ok());
-        assert!(text(&json!({"action":"write","text":"한".repeat(2731)})).is_err());
+        assert!(text(&json!({"action":"write","text":"한".repeat(MAX_TEXT / 3)})).is_ok());
+        assert!(text(&json!({"action":"write","text":"한".repeat(MAX_TEXT / 3 + 1)})).is_err());
         assert!(text(&json!({"action":"write","text":"\0"})).is_err());
         assert!(text(&json!({"action":"write","text":42})).is_err());
         assert!(text(&json!({"action":"write","text":""})).is_ok());
