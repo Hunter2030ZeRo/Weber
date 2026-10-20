@@ -1,5 +1,5 @@
 //! A separate queue on winit's Wayland connection. No X11 or data-control access.
-use super::{MAX_TEXT, Reply, Task};
+use super::{MAX_TEXT, Operation, Reply, ReplySender, Task};
 use anyhow::{Result, anyhow, ensure};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use std::{
@@ -76,11 +76,11 @@ struct State {
     source: Option<wl_data_source::WlDataSource>,
     transfers: Vec<Transfer>,
     tasks: VecDeque<(Task, Instant)>,
-    replies: mpsc::Sender<Reply>,
+    replies: ReplySender,
 }
 impl State {
     fn reply(&self, id: u64, result: Result<serde_json::Value>) {
-        let _ = self.replies.send(Reply {
+        self.replies.send(Reply {
             id,
             result: result.map_err(|error| error.to_string()),
         });
@@ -112,7 +112,20 @@ impl State {
             .and_then(|id| self.seats.get(&id))
             .ok_or_else(|| anyhow!("Clipboard seat unavailable"))?;
         ensure!(seat.focused, "Clipboard requires keyboard focus");
-        if let Some(text) = &task.text {
+        if matches!(task.operation, Operation::Clear) {
+            // Clear selection ownership, rather than offering an empty source.
+            // Servo sends Clear then Set for custom copy data. Some compositors
+            // reject two non-null sources using the same input serial.
+            seat.device
+                .as_ref()
+                .ok_or_else(|| anyhow!("Clipboard device unavailable"))?
+                .set_selection(None, seat.serial);
+            if let Some(old) = self.source.take() {
+                old.destroy();
+            }
+            return Ok(Some(serde_json::Value::Null));
+        }
+        if let Operation::Write(text) = &task.operation {
             let manager = self
                 .manager
                 .as_ref()
@@ -228,7 +241,7 @@ pub(super) fn run(
     connection: Connection,
     mut wake: UnixStream,
     tasks: mpsc::Receiver<Task>,
-    replies: mpsc::Sender<Reply>,
+    replies: ReplySender,
     ready: mpsc::SyncSender<()>,
 ) -> Result<()> {
     let mut queue = connection.new_event_queue();

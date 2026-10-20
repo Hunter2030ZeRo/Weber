@@ -12,9 +12,13 @@ Generated TypeScript paths resolve from that project's `node_modules`.
 
 `@weber/sdk/clipboard` exports asynchronous `readText()` and `writeText(text)`.
 It requires native `clipboardProtocol: 1` and a focused app window. Text is
-limited to 8192 UTF-8 bytes; writes reject NUL. Only the text SDK is connected
-to the system clipboard; browser shortcuts and `navigator.clipboard` are not
-redirected by this module. See the source repository's `docs/clipboard.md`.
+limited to 8192 UTF-8 bytes; writes reject NUL. This API uses the system
+clipboard. Native hosts advertising `browserClipboardProtocol: 1`
+also connect Servo's normal textarea/input copy/cut/paste shortcuts and clipboard
+events to that same system clipboard without app shortcut handlers. This SDK
+module does not polyfill `navigator.clipboard`; full web Clipboard API permission
+semantics and contenteditable default paste remain outside the verified scope.
+See the source repository's `docs/clipboard.md`.
 
 Project commands: `npm run dev`, `npm run check`, `npm run build`,
 `npm start`, and `npm run package`. The final command produces `package/weber`,

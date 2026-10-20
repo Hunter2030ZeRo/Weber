@@ -2,6 +2,7 @@
 use anyhow::{Result, anyhow, ensure};
 use serde_json::{Value, json};
 use std::{
+    cell::RefCell,
     collections::BTreeMap,
     io::Write,
     os::unix::net::UnixStream,
@@ -17,7 +18,12 @@ pub(super) const MAX_TEXT: usize = 8192;
 const MAX_PENDING: usize = 16;
 pub(super) struct Task {
     id: u64,
-    text: Option<String>,
+    operation: Operation,
+}
+pub(super) enum Operation {
+    Read,
+    Write(String),
+    Clear,
 }
 pub(super) struct Reply {
     id: u64,
@@ -26,6 +32,24 @@ pub(super) struct Reply {
 struct Pending {
     owner: u64,
     result: Option<Result<Value, String>>,
+}
+pub(super) struct ReplySender {
+    send: mpsc::Sender<Reply>,
+    proxy: winit::event_loop::EventLoopProxy<crate::host::Wake>,
+}
+impl ReplySender {
+    fn send(&self, reply: Reply) {
+        let _ = self.send.send(reply);
+        let _ = self.proxy.send_event(crate::host::Wake::Clipboard);
+    }
+}
+struct BrowserRequest {
+    owner: u64,
+    request: Option<servo::StringRequest>,
+}
+thread_local! {
+    // Servo callbacks stay on the event-loop thread. Workers only send values.
+    static BROWSER: RefCell<BTreeMap<u64, BrowserRequest>> = const { RefCell::new(BTreeMap::new()) };
 }
 struct Worker {
     send: mpsc::SyncSender<Task>,
@@ -36,12 +60,14 @@ struct Worker {
 #[derive(Default)]
 struct Service {
     connection: Option<Connection>,
+    proxy: Option<winit::event_loop::EventLoopProxy<crate::host::Wake>>,
     worker: Option<Worker>,
     pending: BTreeMap<u64, Pending>,
     next: u64,
 }
 static SERVICE: Mutex<Service> = Mutex::new(Service {
     connection: None,
+    proxy: None,
     worker: None,
     pending: BTreeMap::new(),
     next: 0,
@@ -52,7 +78,10 @@ static SERVICE: Mutex<Service> = Mutex::new(Service {
     unsafe_code,
     reason = "App retains an OwnedDisplayHandle and joins this service before releasing that guard"
 )]
-pub fn attach(display: winit::raw_window_handle::DisplayHandle<'_>) -> Result<()> {
+pub fn attach(
+    display: winit::raw_window_handle::DisplayHandle<'_>,
+    proxy: winit::event_loop::EventLoopProxy<crate::host::Wake>,
+) -> Result<()> {
     let winit::raw_window_handle::RawDisplayHandle::Wayland(handle) = display.as_raw() else {
         return Err(anyhow!("Wayland clipboard unavailable"));
     };
@@ -66,6 +95,7 @@ pub fn attach(display: winit::raw_window_handle::DisplayHandle<'_>) -> Result<()
         .lock()
         .map_err(|_| anyhow!("Clipboard lock failed"))?;
     service.connection = Some(Connection::from_backend(backend));
+    service.proxy = Some(proxy);
     // Mutter assigns clipboard devices when client focus changes. Binding after
     // the first window is focused misses its initial offer; register first.
     service.worker()?;
@@ -74,9 +104,24 @@ pub fn attach(display: winit::raw_window_handle::DisplayHandle<'_>) -> Result<()
 impl Service {
     fn drain(&mut self) {
         if let Some(worker) = &self.worker {
-            while let Ok(reply) = worker.receive.try_recv() {
-                if let Some(pending) = self.pending.get_mut(&reply.id) {
-                    pending.result = Some(reply.result);
+            loop {
+                match worker.receive.try_recv() {
+                    Ok(reply) => {
+                        if let Some(pending) = self.pending.get_mut(&reply.id) {
+                            pending.result = Some(reply.result);
+                        }
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        for pending in self
+                            .pending
+                            .values_mut()
+                            .filter(|pending| pending.result.is_none())
+                        {
+                            pending.result = Some(Err("Clipboard worker stopped".into()));
+                        }
+                        break;
+                    }
                 }
             }
         }
@@ -89,6 +134,14 @@ impl Service {
                 .ok_or_else(|| anyhow!("Clipboard display unavailable"))?;
             let (send, tasks) = mpsc::sync_channel(MAX_PENDING);
             let (replies, receive) = mpsc::channel();
+            let proxy = self
+                .proxy
+                .clone()
+                .ok_or_else(|| anyhow!("Clipboard event loop unavailable"))?;
+            let replies = ReplySender {
+                send: replies,
+                proxy: proxy.clone(),
+            };
             let (ready, initialized) = mpsc::sync_channel(1);
             let (wake, receiver) = UnixStream::pair()?;
             wake.set_nonblocking(true)?;
@@ -99,6 +152,7 @@ impl Service {
                     if let Err(error) = platform::run(connection, receiver, tasks, replies, ready) {
                         log::warn!("Clipboard worker: {error}");
                     }
+                    let _ = proxy.send_event(crate::host::Wake::Clipboard);
                 })?;
             self.worker = Some(Worker {
                 send,
@@ -115,9 +169,10 @@ impl Service {
             .ok_or_else(|| anyhow!("Clipboard worker unavailable"))
     }
 }
-fn text(request: &Value) -> Result<Option<String>> {
+fn text(request: &Value) -> Result<Operation> {
     match request["action"].as_str() {
-        Some("read") => Ok(None),
+        Some("read") => Ok(Operation::Read),
+        Some("clear") => Ok(Operation::Clear),
         Some("write") => {
             let text = request["text"]
                 .as_str()
@@ -127,13 +182,16 @@ fn text(request: &Value) -> Result<Option<String>> {
                 "Clipboard text exceeds 8192 UTF-8 bytes"
             );
             ensure!(!text.contains('\0'), "Clipboard text must not contain NUL");
-            Ok(Some(text.into()))
+            Ok(Operation::Write(text.into()))
         }
         _ => Err(anyhow!("Unknown clipboard action")),
     }
 }
 pub fn submit(owner: u64, request: &Value) -> Result<Value> {
-    let text = text(request)?;
+    Ok(json!({"id": submit_id(owner, request)?}))
+}
+fn submit_id(owner: u64, request: &Value) -> Result<u64> {
+    let operation = text(request)?;
     let mut service = SERVICE
         .lock()
         .map_err(|_| anyhow!("Clipboard lock failed"))?;
@@ -147,7 +205,7 @@ pub fn submit(owner: u64, request: &Value) -> Result<Value> {
     let worker = service.worker()?;
     worker
         .send
-        .try_send(Task { id, text })
+        .try_send(Task { id, operation })
         .map_err(|_| anyhow!("Clipboard queue full or stopped"))?;
     match worker.wake.write(&[1]) {
         Ok(_) => {}
@@ -161,7 +219,7 @@ pub fn submit(owner: u64, request: &Value) -> Result<Value> {
             result: None,
         },
     );
-    Ok(json!({ "id": id }))
+    Ok(id)
 }
 fn request_id(request: &Value) -> Result<u64> {
     request["requestId"]
@@ -218,10 +276,87 @@ pub fn close_window(owner: u64) {
         service.pending.retain(|_, p| p.owner != owner);
         service.drain();
     }
+    let removed = BROWSER.with(|requests| {
+        let mut requests = requests.borrow_mut();
+        let ids: Vec<_> = requests
+            .iter()
+            .filter(|(_, request)| request.owner == owner)
+            .map(|(id, _)| *id)
+            .collect();
+        ids.into_iter()
+            .filter_map(|id| requests.remove(&id))
+            .collect::<Vec<_>>()
+    });
+    for pending in removed {
+        if let Some(request) = pending.request {
+            request.failure("Clipboard window closed or navigated".into());
+        }
+    }
+}
+/// Queue Servo's clipboard callbacks on the same bounded service as SDK requests.
+pub fn browser(owner: u64, contents: Option<String>, request: Option<servo::StringRequest>) {
+    let payload = match contents {
+        Some(text) => json!({"action":"write","text":text}),
+        None => json!({"action":"read"}),
+    };
+    browser_submit(owner, &payload, request);
+}
+pub fn browser_clear(owner: u64) {
+    browser_submit(owner, &json!({"action":"clear"}), None);
+}
+fn browser_submit(owner: u64, payload: &Value, request: Option<servo::StringRequest>) {
+    match submit_id(owner, payload) {
+        Ok(id) => {
+            BROWSER.with(|requests| {
+                requests
+                    .borrow_mut()
+                    .insert(id, BrowserRequest { owner, request })
+            });
+        }
+        Err(error) => {
+            if let Some(request) = request {
+                request.failure(error.to_string());
+            } else {
+                log::warn!("Browser clipboard: {error}");
+            }
+        }
+    }
+}
+/// Called only on worker replies; browser operations need no polling timer.
+pub fn deliver_browser() {
+    let ready = BROWSER.with(|requests| {
+        let mut requests = requests.borrow_mut();
+        let ids: Vec<_> = requests.keys().copied().collect();
+        let mut ready = Vec::new();
+        for id in ids {
+            let owner = requests[&id].owner;
+            match poll(owner, &json!({"requestId":id})) {
+                Ok(value) if value["pending"] == true => {}
+                result => {
+                    if let Some(pending) = requests.remove(&id) {
+                        ready.push((pending, result));
+                    }
+                }
+            }
+        }
+        ready
+    });
+    for (pending, result) in ready {
+        match (pending.request, result) {
+            (Some(request), Ok(value)) => {
+                request.success(value["value"].as_str().unwrap_or_default().into())
+            }
+            (Some(request), Err(error)) => request.failure(error.to_string()),
+            (None, Err(error)) => log::warn!("Browser clipboard write: {error}"),
+            (None, Ok(_)) => {}
+        }
+    }
 }
 pub fn shutdown() {
+    BROWSER.with(|requests| requests.borrow_mut().clear());
     let worker = if let Ok(mut service) = SERVICE.lock() {
         service.connection.take();
+        service.proxy.take();
         service.pending.clear();
         service.worker.take()
     } else {
@@ -244,6 +379,46 @@ pub fn shutdown() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn worker_disconnect_fails_waiters_without_losing_completed_results() -> Result<()> {
+        let (send, _tasks) = mpsc::sync_channel(1);
+        let (replies, receive) = mpsc::channel();
+        let (wake, _reader) = UnixStream::pair()?;
+        let mut service = Service {
+            worker: Some(Worker {
+                send,
+                receive,
+                wake,
+                thread: std::thread::spawn(|| {}),
+            }),
+            ..Service::default()
+        };
+        service.pending.insert(
+            1,
+            Pending {
+                owner: 7,
+                result: None,
+            },
+        );
+        service.pending.insert(
+            2,
+            Pending {
+                owner: 7,
+                result: Some(Ok(json!("complete"))),
+            },
+        );
+        drop(replies);
+        service.drain();
+        assert_eq!(
+            service.pending[&1].result,
+            Some(Err("Clipboard worker stopped".into()))
+        );
+        assert_eq!(service.pending[&2].result, Some(Ok(json!("complete"))));
+        if let Some(worker) = service.worker.take() {
+            let _ = worker.thread.join();
+        }
+        Ok(())
+    }
     #[test]
     fn text_and_native_payload_are_bounded() {
         assert!(text(&json!({"action":"write","text":"한".repeat(2730)})).is_ok());

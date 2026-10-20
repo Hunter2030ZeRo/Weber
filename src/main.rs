@@ -45,6 +45,7 @@ fn main() -> Result<()> {
         info["windowProtocol"] = 2.into();
         info["storageProtocol"] = 1.into();
         info["clipboardProtocol"] = 1.into();
+        info["browserClipboardProtocol"] = 1.into();
         info["layoutPolicy"] = "serial-small-dom-v1".into();
         info["memoryReclaimPolicy"] = if cfg!(all(target_os = "linux", target_env = "gnu")) {
             "glibc-window-close"

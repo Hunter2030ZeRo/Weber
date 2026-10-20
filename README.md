@@ -38,7 +38,7 @@ Linux foundation, web compatibility, responsiveness and resource use.
 | Web UI | Vite, SolidJS, TypeScript, development HMR, CSS animation and `requestAnimationFrame` |
 | Windows | Multiple windows for the same app, titles, resizing, maximize, fullscreen and state subscriptions |
 | Storage | App-scoped directories and asynchronous persistent JSON storage shared across app windows |
-| Clipboard | Asynchronous text copy/paste through the JS/TS SDK on focused Wayland app windows |
+| Clipboard | System text clipboard through the SDK and Servo's standard copy/cut/paste in textarea/input controls on focused Wayland windows |
 | Backend | Optional Bun process with named calls, subscriptions, cancellation and bounded IPC |
 | Distribution | Local npm SDK/runtime packages and relocatable Linux application bundles |
 

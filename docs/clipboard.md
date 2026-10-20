@@ -57,9 +57,42 @@ notifications, Windows and macOS backends are not implemented. The worker tracks
 up to 8 seats and bounds offers/transfers; multi-seat and hotplug behavior still
 need compositor testing.
 
-`navigator.clipboard`, DOM clipboard events and standard browser copy/cut/paste
-shortcuts are not redirected to this SDK yet. Servo's default clipboard delegate
-remains separate. AOT runtime integration has not been validated for this API.
+Hosts advertising `browserClipboardProtocol: 1` install Servo's public
+`ClipboardDelegate` on each WebView. Standard Ctrl+C/X/V in textarea/input
+controls and the resulting trusted DOM clipboard events use the same Wayland
+worker as the SDK. Apps need no clipboard shortcut handlers. Reads complete
+through Servo's `StringRequest` callback on the host event loop; worker replies
+wake it without a browser polling timer. Closing/navigating a window fails its
+outstanding browser callbacks. Worker disconnection fails pending reads instead
+of leaving them waiting indefinitely. The host itself does not block on a paste;
+Servo's current default paste algorithm waits on its script thread for the read
+callback, bounded by the worker's deadlines.
+
+Clear removes Wayland selection ownership instead of offering an empty text
+source. This matters for custom `copy` handlers: Servo clears then writes their
+`clipboardData`, using a single input serial. Some Mutter versions reject the
+second of two non-null selections with the same serial; this was observed in
+protocol traces and corrected for the clear-then-write path. Compare the serial
+checks in [Mutter 50.0](https://github.com/GNOME/mutter/blob/50.0/src/wayland/meta-wayland-data-device.c)
+and [current Mutter](https://github.com/GNOME/mutter/blob/main/src/wayland/meta-wayland-data-device.c).
+Repeated standalone writes without a fresh input serial remain compositor
+dependent; Wayland offers no success acknowledgment.
+
+Browser access requires a focused native window whose top-level WebView URL is
+`weber-app:`. This is a trusted packaged-app boundary, not a complete browser
+permission model for arbitrary untrusted pages or frames. `navigator.clipboard`
+is not polyfilled or given new permissions. Its complete permission, activation
+and write-error behavior has not been validated. Servo's write delegate has no
+completion result: copy/cut failures are logged, and a cut is **not rolled back**
+if publishing fails (including the 8192-byte limit). Apps requiring confirmed
+large transfers must not rely on this provisional cut path.
+
+Servo's pinned `EditingContext::Document::pasting_enabled` returns false, and its
+document insertion/removal paths contain contenteditable TODOs. An explicit
+selection-range native probe confirms that paste events/data arrive but default
+contenteditable insertion does not occur. This increment does not implement
+contenteditable editing, rich text, images, primary selection or a full browser
+Clipboard API. AOT runtime integration has not been validated for this API.
 
 The native window's initial DOM focus now follows actual window focus instead of
 being forced on at creation. Native focus remains the authority for SDK access.
@@ -71,6 +104,7 @@ Prepare the current JIT runtime in `target/package/weber-clipboard-jit`, then:
 ```sh
 node scripts/clipboard-workflow.mjs
 dbus-run-session -- node scripts/headless-wayland.mjs scripts/clipboard-native.mjs
+dbus-run-session -- node scripts/headless-wayland.mjs scripts/clipboard-native.mjs --browser
 ```
 
 The GTK4/PyGObject peer is a separate process using GDK's clipboard API. The test
@@ -92,7 +126,7 @@ After creating the local npm SDK tarball, use
 the installed SDK rather than the source SDK. Native results are recorded in
 `artifacts/clipboard-native.json`; the full trace and peer events remain local.
 
-## Recorded result
+## Recorded SDK-only baseline (f494ed9)
 
 The default JIT release compiled with `--release --locked --offline`; the optional
 `layer-shell` feature also compiled. All 9 Rust tests passed, as did project
@@ -113,3 +147,32 @@ source, and verifies packaged executable, library and application asset hashes.
 The normal Notes package is `target/package/weber-notes-npm`; test-instrumented
 applications are kept separately. No new startup/memory advantage or AOT result
 is claimed by this increment.
+
+## Browser shortcut validation
+
+The `--browser` suite runs actual virtual Ctrl+C/X/V in the private compositor,
+without SDK clipboard calls, synthetic clipboard events or app shortcut
+overrides. It checks textarea Unicode/multiline paste/copy with an independent
+GTK4 process, input cut/paste, trusted event data, custom `copy` data,
+`preventDefault` on paste, read-only input preservation and generated input
+events. Its contenteditable capability observation is recorded separately as a
+known engine limitation, not counted as a supported-case pass. Results and the
+full event trace are local in `artifacts/clipboard-browser-native.json` and
+`artifacts/clipboard-browser-native.jsonl`.
+
+The final default JIT release and installed SDK 0.3.2 passed the supported-case
+browser suite, the existing SDK clipboard suite, external npm distribution
+checks, and the native Notes persistence/multiwindow/Vite HMR regression suite.
+The contenteditable observation reported `supported: false`. All 10 Rust tests
+passed with `layer-shell` enabled; project Clippy with warnings denied and
+formatting checks passed. The SDK-suite idle clipboard-thread sample again
+recorded 0 ticks over 2 seconds; no whole-app CPU claim follows from that.
+
+Verified source fingerprint:
+`75684aecbce881aacb9e0905b8919ccceb0ab69948a3068e7cc350649dfbdff3`.
+`artifacts/browser-clipboard-audit.json` confirms the same source identity across
+all four integration results and local npm runtime, checks tarball hashes,
+compares the installed SDK files with source, and verifies the normal Notes
+package's executable/private libraries and absence of test instrumentation.
+No new AOT, Windows/macOS, physical-input, clean-machine or performance result
+is claimed.

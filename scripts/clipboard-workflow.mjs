@@ -19,6 +19,10 @@ await run('install', 'npm', ['install', '--offline', '--cache', '/tmp/weber-vite
 if (installed) cli = join(project, 'node_modules/@weber/sdk/cli.mjs');
 await run('build', 'npm', ['run', 'build'], project);
 const entry = join(project, 'src/main.tsx'), original = await readFile(entry, 'utf8');
+// Build the keyboard fixture separately; never ship instrumentation in Notes.
+await writeFile(entry, original + '\n' + await readFile('scripts/clipboard-browser-probe.ts', 'utf8'));
+try { await run('browser-build', process.execPath, [cli, 'build', project, join(project, 'dist-browser')], project); }
+finally { await writeFile(entry, original); }
 await writeFile(entry, original + String.raw`
 const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 const check=(ok:unknown,message:string)=>{if(!ok)throw new Error(message);};
@@ -66,5 +70,5 @@ window.addEventListener('keydown',event=>{if(event.key==='F6')runOnce();if(event
 window.addEventListener('blur',()=>{void readText().then(()=>report({stage:'failure',message:'Unfocused read accepted'}),()=>report({stage:'clipboard-unfocused',passed:true}));});`);
 try { await run('probe-build', process.execPath, [cli, 'build', project, join(project, 'dist-native')], project); }
 finally { await writeFile(entry, original); }
-await writeFile('artifacts/clipboard-workflow.json', JSON.stringify({ passed: true, installed, sdkVersion, project, application: join(project, 'dist-native'), production: join(project, 'dist') }, null, 2));
+await writeFile('artifacts/clipboard-workflow.json', JSON.stringify({ passed: true, installed, sdkVersion, project, application: join(project, 'dist-native'), browserApplication: join(project, 'dist-browser'), production: join(project, 'dist') }, null, 2));
 console.log('Clipboard Notes workflow built');

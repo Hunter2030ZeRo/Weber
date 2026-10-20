@@ -26,6 +26,7 @@ pub enum Wake {
     Exit(u64),
     Native,
     Backend,
+    Clipboard,
 }
 
 #[derive(Clone)]
@@ -53,6 +54,37 @@ struct Delegate {
     active: Cell<bool>,
     telemetry: Rc<crate::telemetry::Telemetry>,
     ime: Rc<Cell<bool>>,
+}
+
+struct Clipboard {
+    window: Arc<Window>,
+    id: u64,
+}
+impl Clipboard {
+    fn allowed(&self, webview: &WebView) -> bool {
+        self.window.has_focus() && webview.url().is_some_and(|url| url.scheme() == "weber-app")
+    }
+}
+impl servo::ClipboardDelegate for Clipboard {
+    fn clear(&self, webview: WebView) {
+        if self.allowed(&webview) {
+            crate::clipboard::browser_clear(self.id);
+        }
+    }
+    fn get_text(&self, webview: WebView, request: servo::StringRequest) {
+        if self.allowed(&webview) {
+            crate::clipboard::browser(self.id, None, Some(request));
+        } else {
+            request.failure("Clipboard requires a focused Weber application window".into());
+        }
+    }
+    fn set_text(&self, webview: WebView, contents: String) {
+        if self.allowed(&webview) {
+            crate::clipboard::browser(self.id, Some(contents), None);
+        } else {
+            log::warn!("Clipboard requires a focused Weber application window");
+        }
+    }
 }
 
 #[cfg(feature = "aot")]
@@ -430,6 +462,10 @@ impl Running {
         let ime_visible = Rc::new(Cell::new(false));
         let webview = WebViewBuilder::new(servo, context.clone())
             .url(url)
+            .clipboard_delegate(Rc::new(Clipboard {
+                window: Arc::clone(&window),
+                id,
+            }))
             .delegate(Rc::new(Delegate {
                 window: Arc::clone(&window),
                 id,
@@ -704,7 +740,7 @@ impl ApplicationHandler<Wake> for App {
         if let Err(error) = event_loop
             .display_handle()
             .map_err(anyhow::Error::from)
-            .and_then(crate::clipboard::attach)
+            .and_then(|display| crate::clipboard::attach(display, self.proxy.clone()))
         {
             self.failure = Some(error);
             event_loop.exit();
@@ -772,6 +808,7 @@ impl ApplicationHandler<Wake> for App {
                     }
                 }
             }
+            Wake::Clipboard => crate::clipboard::deliver_browser(),
             _ => {}
         }
         if let Some(servo) = &self.servo {
