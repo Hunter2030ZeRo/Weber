@@ -1,185 +1,180 @@
-# Weber
-
 <p align="center">
-  <img alt="Weber logo" src="logo.png">
+  <img src="logo.png" alt="Weber" width="600">
 </p>
 
-Current priority: Servo/SpiderMonkey JIT beta and performance. Further Static
-Hermes integration is deferred; the existing AOT path remains experimental.
+<h1 align="center">Weber</h1>
 
-Beta foundation and AOT performance gate: [delivery plan](docs/beta-plan.md).
-Default builds are JIT-only; use `--features aot` for the existing native AOT path.
-[Window lifetime / backend subscriptions / layer probe](docs/native-runtime.md).
-[Compiled/native validation](docs/beta-foundation-validation.md).
-[Window controls, state snapshots and resource validation](docs/platform-validation.md).
-[App storage and Notes template](docs/app-storage.md).
-[JIT CPU tuning and foundation validation](docs/foundation-validation.md).
-[Local npm SDK/runtime distribution and installation](docs/npm-distribution.md).
+<p align="center">
+  <strong>Web interfaces. Native desktop applications.</strong><br>
+  A desktop application framework built with Rust, Servo and the tools you already use.
+</p>
 
-Current development/build interface: [Vite and npm workflow, SDK 0.3](docs/vite-workflow.md).
-Node-oriented backend code has an [optional Bun connection](docs/bun-backend.md),
-shared by JIT and AOT UI apps. [Backend validation](docs/bun-backend-validation.md).
-JIT and native AOT are separate build choices; Node runs development tools and is
-not required by the packaged UI. [Workflow validation](docs/vite-workflow-validation.md).
+<p align="center">
+  <strong>Developer preview</strong> · Linux / Wayland · SDK 0.3.1
+</p>
 
-JIT is the default general-purpose path. Native AOT is an optional optimization
-track for startup/memory-sensitive applications, including a downstream desktop
-environment; its cross-platform port must not block JIT platform support.
-The default host build excludes Hermes and Weber's AOT bridge. The `aot` feature
-explicitly includes them; JIT-only application output and a JIT-only host build
-are distinct supported choices.
+<p align="center">
+  <a href="#get-started">Get started</a> ·
+  <a href="examples">Examples</a> ·
+  <a href="#documentation">Documentation</a> ·
+  <a href="docs/beta-plan.md">Roadmap</a> ·
+  <a href="LICENSE">License</a>
+</p>
 
-Binding implementation and preceding measured performance: [native byte bindings](docs/binary-dom-validation.md). Startup and memory goals remain unmet. The [beta foundation comparison](docs/beta-foundation-validation.md) measures the current Hermes-free JIT baseline; AOT remains slower and larger on that workload.
+---
 
-Cross-platform GUI framework in development, currently implemented and tested on
-Linux Wayland: Rust + winit + Servo 0.7.0, with a Vite +
-SolidJS + TypeScript application, with an optional experimental Static Hermes
-native AOT path.
-No Electron or Chromium runtime dependency.
-The previous Electron tree was deleted at the user's explicit request.
+Weber lets you build desktop interfaces with **HTML, CSS and JavaScript/TypeScript**.
+Vite handles development and bundling; Servo renders the interface inside native
+windows owned by a Rust host. The runtime has no Electron or Chromium dependency.
 
-The [experimental Weber SDK 0.2](docs/framework.md) adds reusable JS/TS application
-entries, strict checks, native AOT modules, a build/run/package CLI and relocatable
-user applications. It also binds inline CSS to Servo and removes redundant DOM
-metadata/JSON conversions. See [framework validation](docs/framework-validation.md)
-for the current evidence and limits; the older standalone milestone below is a
-preserved baseline rather than the latest source revision.
+The goal is a general-purpose GUI framework for applications of every size,
+including future desktop shells. Development currently focuses on a working
+Linux foundation, web compatibility, responsiveness and resource use.
 
-The [complete standalone AOT desktop milestone](docs/standalone-plan.md)
-[passed its validation](docs/standalone-validation.md). Its
-[optimized comparison](docs/performance.md) currently shows higher memory use
-and slower startup for AOT, with similar input/presentation timings.
-The [fixed 2025-01 UI compatibility profile](docs/compatibility-target.md)
-has 17 original WPT files and required application scenarios locked by hash
-in `compatibility/`. `node scripts/profile-smoke.mjs` runs both actual Wayland
-Servo and native Hermes AOT, writing `artifacts/compatibility-profile.json`.
-The profile [passed its fixed completion gate](docs/profile-validation.md): 1,474
-selected WPT subtests on each engine and 15 required scenarios. The runner exits
-unsuccessfully if a later change introduces a failure or missing scenario.
+## What works today
 
-## Runtime contract
+| Area | Available in the current prototype |
+| --- | --- |
+| Web UI | Vite, SolidJS, TypeScript, development HMR, CSS animation and `requestAnimationFrame` |
+| Windows | Multiple windows for the same app, titles, resizing, maximize, fullscreen and state subscriptions |
+| Storage | App-scoped directories and asynchronous persistent JSON storage shared across app windows |
+| Backend | Optional Bun process with named calls, subscriptions, cancellation and bounded IPC |
+| Distribution | Local npm SDK/runtime packages and relocatable Linux application bundles |
 
-- **Implemented baseline:** Servo's existing SpiderMonkey JavaScript engine.
-- **Native AOT path:** Static Hermes compiles the DOM/application sources and
-  pinned selector/CSS libraries into two core native objects
-  linked into the host. A persistent Hermes runtime calls this logic through JSI.
-  The default embedded desktop runs both its shell/navigation and application
-  UI in this path, including signals, Show, keyed For, input, timers/rAF and
-  disposal. `--web` runs the identical component in SpiderMonkey for comparison
-  without initializing a Hermes heap. Generic DOM glue remains in SpiderMonkey.
-  See [standalone validation](docs/standalone-validation.md).
-  The compatibility runner additionally links original WPT as separate native
-  units. See [live renderer reads, events and asynchronous APIs](docs/live-dom.md).
-- **Experimental DOM binding:** AOT code creates a mounted subtree, updates text
-  and attributes, receives click/input callbacks, and releases nodes/listeners.
-  See [DOM binding API and evidence](docs/dom-binding.md). Servo DOM runs in SpiderMonkey.
-  The [browser-shaped compatibility layer](docs/native-solid.md) adds document/Node/
-  Element/Text objects, selectors, inline CSS, MutationObserver, tree mutation
-  HTML parsing/templates/cloning, live collections and EventTarget semantics.
-  A synchronous Servo extension returns native event cancellation before default
-  actions. See [current validation and gaps](docs/native-solid.md).
-  This is not a replacement of Servo's JavaScript engine or a complete Hermes DOM.
-- **Optional compatibility path:** Bun for applications requiring Node.js APIs.
-  The [backend connection](docs/bun-backend.md) uses an app-owned process and
-  asynchronous bounded calls over private pipes. It is not required by apps
-  without a backend, and it does not replace Servo's DOM engine. No zero-IPC
-  or complete Node/Electron compatibility result is claimed.
+**Platform status:** Linux x64 on Wayland is the implemented and tested target.
+Windows and macOS are planned. Weber is a developer preview, not a released beta;
+the SDK and runtime packages are not published to npm.
 
-## Build and run
+Clipboard, native file dialogs, accessibility and broader platform integration
+remain on the [beta roadmap](docs/beta-plan.md). Browser compatibility is measured
+against a [selected, locked test profile](docs/compatibility-target.md), rather
+than assumed to cover every web API or arbitrary Electron applications.
 
-Linux prerequisites: Rust/Cargo, C/C++ compiler, CMake, pkg-config, Python 3,
-fontconfig/freetype, X11/Wayland and OpenGL development libraries, Node and pnpm.
-The initial build is substantial because it compiles Servo and its dependencies.
+## Get started
+
+### 1. Build Weber
+
+Use a Linux Wayland session. Building from source requires Rust/Cargo, a C/C++
+toolchain, CMake/Ninja, Git, Python 3, pkg-config, Node.js and pnpm, together with
+Servo's graphics and font development dependencies, including Wayland/EGL,
+OpenGL, fontconfig and FreeType. Linux packaging also requires `patchelf`.
+Bun is needed only for apps that use a Bun backend.
 
 ```sh
+git clone https://github.com/Hunter2030ZeRo/Weber.git
+cd Weber
 bash scripts/bootstrap.sh
 bash scripts/run.sh
 ```
 
-The launcher opens the embedded demo without a development server. The optional
-AOT-enabled build uses the existing native AOT demo path. `target/debug/weber-servo --web` opens the comparison desktop. To work
-on the older development demonstration, alternatively
-run `pnpm --dir app run dev` and `cargo run --locked -- http://127.0.0.1:5173` in
-separate terminals. Vite and Node are build/development tools, not runtime
-dependencies of the packaged desktop.
+Bootstrap fetches the pinned Servo source, applies Weber's patches, installs the
+UI dependencies and builds the JIT host. The first build compiles a browser
+engine and takes time. The launcher opens an embedded interaction demo without
+a development server.
 
-Build a relocatable Linux bundle with `cargo build --release --offline` then
-`python3 scripts/package.py --profile release`. Run `target/package/weber/weber`.
-An alternate target directory can be passed through `--binary`; this workspace's
-optimized bundle is `target/package/weber-release/weber`. System glibc,
-Wayland/EGL/GPU drivers and fonts remain prerequisites. No host installation is
-performed. This is not a universal Linux binary.
+### 2. Create an application
 
-Servo source is pinned to `aac43a3f31a259f04a574f5ec4e959c943ad7cc7` (v0.7.0).
-`Cargo.lock` and `app/pnpm-lock.yaml` pin resolved dependencies. The `vendor/`
-checkout and build outputs are excluded from the new repository. Bootstrap applies
-the tracked observer, synchronous-host and time-origin patches in `patches/`. Its Rust embedding
-API and the documented local extension are used directly, without inventing a C ABI.
-
-## Verification
+From the Weber checkout, create a Notes app in a sibling directory:
 
 ```sh
-pnpm --dir app run build
-cargo build --locked
-cargo clippy --locked --no-deps -- -D warnings
-cargo fmt --check --package weber-servo
-target/debug/weber-servo --aot-self-test
-target/debug/weber-servo --browser-contract-self-test
-target/debug/weber-servo --solid-self-test
-target/debug/weber-servo --scheduler-self-test
-target/debug/weber-servo --lifetime-self-test
-node scripts/standalone-smoke.mjs target/package/weber-release
-node scripts/desktop-stress.mjs target/package/weber-release/weber
-node scripts/desktop-input.mjs target/package/weber-release/weber
-node scripts/desktop-benchmark.mjs target/package/weber-release/weber
-node scripts/wayland-smoke.mjs
-WEBER_DOM_TEST=1 node scripts/wayland-smoke.mjs
-WEBER_BROWSER_TEST=1 node scripts/wayland-smoke.mjs
-WEBER_SOLID_TEST=1 node scripts/wayland-smoke.mjs
-target/hermes/bin/shermes -O -Xes6-block-scoping -exec aot/dom.js aot/dom.test.js
+node sdk/cli.mjs init ../weber-notes notes
+cd ../weber-notes
+npm install
+npm run dev
 ```
 
-The current smoke test requires an active Wayland session. It unsets DISPLAY,
-runs native AOT state tests, and checks programmatic DOM/AOT round trips.
-Browser mode also executes 30 common contracts against the actual Servo DOM and
-checks observer microtask ordering; the separate native entrypoint executes them
-as Static Hermes AOT code.
-Solid mode tests synchronous native default-action cancellation and a real
-Solid TSX component compiled into the native AOT application unit, including actual
-Servo timeout/interval/rAF delivery, pause/resume, microtasks and task disposal.
-The older `native-smoke.mjs` is historical X11 baseline evidence and is not
-compatible with the Wayland-only host.
+This opens the app in a native Weber window connected to Vite. Edit
+`src/main.tsx` or its stylesheet to see updates through HMR. Stop development
+before running the next commands:
 
-Historical baseline test description:
-Set `XDOTOOL` if it is not on PATH. It sends XTest mouse and keyboard events into
-the real winit window; it does not invoke DOM `.click()` or set the input value
-through injected JavaScript. DOM state is observed through the page title, which
-Servo forwards to the native window. Screenshots and results go to `artifacts/`.
-Software OpenGL under Xvfb is functional evidence, not a hardware performance
-benchmark or a Wayland/macOS/Windows validation.
+```sh
+npm run check
+npm run build
+npm start
+```
 
-The test compiles a tiny X11 helper to send `WM_DELETE_WINDOW` directly; no window
-manager is needed. The default test port is 5187 (`WEBER_TEST_PORT` overrides it).
-Run tests sequentially because the evidence filenames are shared.
+| Command | Result |
+| --- | --- |
+| `npm run dev` | Vite development server and a native app window |
+| `npm run check` | TypeScript validation |
+| `npm run build` | Compiled JavaScript, CSS and app manifest in `dist/` |
+| `npm start` | Run the compiled app with the native host |
+| `npm run package` | Bundle the compiled app and a prepared native runtime in `package/` |
 
-## Boundaries
+Templates: [`solid`](examples/solid) · [`dom`](examples/dom) ·
+[`notes`](examples/notes) · [`node`](examples/node) · [`windows`](examples/windows).
+The `windows` template demonstrates multiple app windows; it is not a Windows OS port.
 
-The host owns one Servo instance and a set of native windows/WebViews. It sleeps on the event loop and wakes
-on Servo notifications. Native events feed `WebView::notify_input_event`, frame
-notifications request redraw, and redraw calls `paint()` and `present()`.
-The demonstration covers click, text editing, scroll, CSS animation and rAF.
-Key handling currently covers text and common editing/navigation keys; complete
-physical-key codes/location and modifiers are forwarded. Complete shortcut
-coverage, clipboard, dialogs and accessibility remain future work. The initial
-window SDK adds same-app windows, title/list/close and independent lifetime. Media/WebGPU/
-WebXR are not enabled in this minimal build.
+### 3. Package for distribution
 
-The current target is Linux Wayland only. Measurements must identify the build,
-display, workload and method; AOT is not assumed to use less memory or start
-faster. Interactive desktop tests require an unlocked session. Automated tests
-can use `dbus-run-session -- node scripts/headless-wayland.mjs SCRIPT [ARGS]`,
-which creates and removes a separate GNOME Wayland compositor/configuration and
-reports its virtual monitor separately from the user's desktop.
-See [Wayland/AOT integration](docs/wayland-aot.md) for current boundaries and
-[architecture](docs/architecture.md) for the original validation gates and
-[validation](docs/validation.md) for the measured outcome of this run.
+Build a release host and prepare its private libraries from the Weber checkout,
+then package the app. The following continues from `weber-notes` above:
+
+```sh
+cd ../Weber
+cargo build --release --locked
+python3 scripts/package.py --profile release --output target/package/weber
+export WEBER_HOST="$(pwd)/target/package/weber/weber"
+
+cd ../weber-notes
+npm run package
+./package/weber --app ./package/application
+```
+
+The bundle contains the native executable, private libraries, notices and app
+resources. A JIT app without a backend runs without Node.js, npm or Bun installed.
+A compatible system glibc loader, Wayland compositor, GPU/EGL drivers and fonts
+are still required; this is not a universal Linux binary.
+
+The SDK can also be installed independently of the source checkout using local
+tarballs. See the [npm distribution guide](docs/npm-distribution.md) for creating
+and installing the SDK and platform runtime packages.
+
+## Runtime choices
+
+| Runtime | Role | Status |
+| --- | --- | --- |
+| **SpiderMonkey** | JavaScript execution and Servo DOM integration | Default JIT path; the normal host excludes Hermes |
+| **Bun** | Optional backend for Node.js-oriented code | Separate app-owned process; compatibility depends on the APIs and packages used |
+| **Static Hermes** | Native AOT compilation of app logic | Experimental, opt-in source toolchain; further integration is deferred |
+
+The current Hermes path still uses a SpiderMonkey adapter to reach Servo's DOM.
+It does **not** replace Servo's JavaScript engine or provide a Hermes-only DOM.
+Existing measurements have not demonstrated a startup and memory advantage over
+the JIT host. See the [AOT performance gate](docs/beta-plan.md#aot-product-gate)
+and [measured comparison](docs/beta-foundation-validation.md).
+
+## Validation
+
+The local npm workflow has been exercised outside the source checkout, including
+installation, type checking, builds, packaging and relocation. Native tests ran
+the Notes app in isolated GNOME Wayland windows and checked programmatic input,
+Save/Reload, a second window, persistence across restart and Vite HMR. These tests
+do not establish physical keyboard/IME behavior, Windows/macOS support or
+clean-machine compatibility.
+
+The recorded compatibility milestone covers **1,474 selected WPT subtests** from
+17 locked upstream files and 15 application scenarios. The
+[profile report](docs/profile-validation.md) identifies the tested engines and
+builds; it is not a whole-browser conformance score.
+
+Performance results include their workload and build identity. Current work
+targets idle activity, small-DOM scheduling and window lifetime; no blanket
+memory or startup advantage over Electron or native GUI frameworks is claimed.
+
+## Documentation
+
+| Topic | Guide |
+| --- | --- |
+| Build tools and SDK | [Vite workflow](docs/vite-workflow.md) · [Local npm distribution](docs/npm-distribution.md) |
+| Native windows | [Runtime and ownership](docs/native-runtime.md) · [Window controls and validation](docs/platform-validation.md) |
+| Persistent data | [Storage API and Notes example](docs/app-storage.md) |
+| Optional backend | [Bun integration](docs/bun-backend.md) · [Backend validation](docs/bun-backend-validation.md) |
+| Web compatibility | [Locked test profile](docs/compatibility-target.md) · [Profile validation](docs/profile-validation.md) |
+| Performance | [JIT foundation results](docs/foundation-validation.md) · [CPU investigation](docs/jit-cpu-analysis.md) |
+| Project direction | [Beta plan](docs/beta-plan.md) · [Architecture](docs/architecture.md) |
+
+Builds pin Servo to `aac43a3f31a259f04a574f5ec4e959c943ad7cc7` (v0.7.0).
+`Cargo.lock` and `app/pnpm-lock.yaml` pin resolved native and UI dependencies;
+tracked patches document Weber's engine extensions. Generated files, engine
+checkouts, local test artifacts and compiled packages are excluded from Git.
