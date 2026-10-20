@@ -18,7 +18,7 @@ const fixture=await read('artifacts/preview-workflow.json');assert.equal(fixture
 const clipboard=await read('artifacts/clipboard-workflow.json');assert.equal(clipboard.installed,true);
 const lifecycle=await read('artifacts/lifecycle-workflow.json');assert.equal(lifecycle.installed,true);
 const lifecycle200=await read('artifacts/lifecycle-200-workflow.json');assert.equal(lifecycle200.installed,true);
-const patches=await read('artifacts/preview-patches.json');assert.equal(patches.passed,true);assert.equal(patches.patches.length,8);assert.equal(patches.compiledCheckoutMatchesCleanApply,true);
+const patches=await read('artifacts/preview-patches.json');assert.equal(patches.passed,true);assert.equal(patches.patches.length,9);assert.equal(patches.compiledCheckoutMatchesCleanApply,true);
 for(const pkg of release.packages){
   assert.equal(await hash(join('target/npm',pkg.file)),pkg.sha256);
   if(pkg.name==='@weber/sdk')for(const file of pkg.files){

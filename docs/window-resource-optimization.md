@@ -75,7 +75,7 @@ The provisional regression budget permits at most **8 MiB additional native
 heap from cycle 200 to 1000**, after warmup. The final run used
 3.00 MiB. The recorded pre-fix run would exceed the same budget.
 This budget detects a recurrence of the large growth; it is not a zero-leak gate.
-File descriptors stayed 28→28; threads were 49→50, including the existing lazy
+File descriptors stayed 28→28; final-run threads were 50→51, including the existing lazy
 reclamation worker. Static idle checkpoints added zero CPU ticks at the sampling
 resolution. This does not imply zero CPU for an animated GUI.
 

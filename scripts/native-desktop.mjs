@@ -80,14 +80,29 @@ export class NativeKeys {
   }
   async activate() {
     if (!this.app || this.app.child.exitCode !== null) throw new Error('No owned window to activate');
-    const already = (await this.app.events()).filter(event => event.data.stage === 'window-focus').at(-1);
-    if (already?.data.focused) return;
+    const focused = async () => (await this.app.events()).filter(event => event.data.stage === 'window-focus').at(-1)?.data.focused;
+    // Mapping and DOM readiness can precede compositor activation. Let natural
+    // focus arrive before an Alt-Tab could switch away from the new window.
+    for (let attempt = 0; attempt < 50; attempt++) {
+      if (await focused()) return;
+      if (this.app.child.exitCode !== null) throw new Error('Owned activation window exited');
+      await delay(30);
+    }
+    if (process.env.WEBER_TEST_DISPLAY?.startsWith('isolated GNOME')) {
+      // The private Shell can show Overview after the last startup sample closes.
+      // Dismiss it only on our owned test display, then recheck actual focus.
+      await this.command({ keycode: 1, pressed: true });
+      await this.command({ keycode: 1, pressed: false });
+      await delay(300);
+      if (await focused()) return;
+    }
     // The compositor owns Alt-Tab. No text/control keys go to another application.
     await this.command({ keycode: 56, pressed: true });
     try { await this.command({ keycode: 15, pressed: true }); await this.command({ keycode: 15, pressed: false }); }
     finally { await this.command({ keycode: 56, pressed: false }); }
-    await this.app.waitEvent(event => event.data.stage === 'window-focus' && event.data.focused, 'Owned window activation', 5000);
+    await waitFor(focused, 'Owned window activation', 5000);
   }
+
   async key(code, modifiers = []) {
     await this.focused();
     const down = [];

@@ -8,7 +8,7 @@ root = Path(__file__).resolve().parent.parent
 vendor = root / "vendor/servo"
 revision = "aac43a3f31a259f04a574f5ec4e959c943ad7cc7"
 names = ["transient-observers", "sync-host", "time-origin", "keyboard-click",
-         "binary-host", "small-dom-scheduling", "safe-cut", "document-envelope"]
+         "binary-host", "small-dom-scheduling", "safe-cut", "document-envelope", "font-lifecycle"]
 patches = [root / "patches" / f"servo-{name}.patch" for name in names]
 
 

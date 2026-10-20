@@ -51,10 +51,14 @@ broader platform APIs and process/renderer recovery remain subsequent work.
 The [window resource increment](window-resource-optimization.md) reuses completed
 Stylo TLS caches and adds a 1000-window regression budget. This reduces the main
 observed growth without adding an application API or changing the JIT choice.
-The next resource target is system-font service caches for removed painters.
-The animation screen showed no CPU/startup win, so include CPU attribution and
-representative-app startup/idle/input regression measurements, followed
-by physical Korean IME, focus/output scaling and clean-environment packaging.
+The [font-lifetime increment](font-lifetime-optimization.md) now removes renderer
+font caches at last-WebView close and guards against late-request resurrection.
+The normal Notes screen showed higher initial PSS in executable mappings despite
+lower retained heap growth. Resolve this initial resident-file increase before
+claiming an overall memory win or promoting beta. CPU repeats disagree; no CPU
+improvement is established. Keep representative startup/idle/input gates, then
+physical Korean IME, activation/focus, output scaling and clean-environment
+packaging. Test-helper activation waits do not complete application activation.
 These are Linux beta gates; they do not certify a cross-platform beta or a
 downstream desktop environment.
 

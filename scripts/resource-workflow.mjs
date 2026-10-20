@@ -22,10 +22,14 @@ let probe=(await readFile('scripts/lifecycle-probe.ts','utf8')).replace('const c
 if(styles)probe=probe.replace('for (let i = 0; i < 80;', 'const styleRows = currentWindow().id % 2 ? 80 : 600; for (let i = 0; i < styleRows;').replace('const self = currentWindow().id;', `const self = currentWindow().id;
   const expected = self % 2 ? 'rgb(11, 37, 101)' : 'rgb(179, 23, 61)';
   const style = document.createElement('style');
-  style.textContent = '#rows > div { color: ' + expected + '; margin-left: ' + (self % 13) + 'px; }';
+  const family = self % 2 ? 'monospace' : 'serif';
+  const fontSize = 13 + self % 9;
+  style.textContent = '#rows > div { color: ' + expected + '; margin-left: ' + (self % 13) + 'px; font-family: ' + family + '; font-size: ' + fontSize + 'px; font-weight: ' + (self % 2 ? 400 : 700) + '; }';
+  rows.firstElementChild!.textContent = '한글 العربية 😀 Font lifetime ' + self;
   document.head.appendChild(style);
   const computed = getComputedStyle(rows.firstElementChild!);
   check(computed.color === expected && computed.marginLeft === (self % 13) + 'px', 'Styles isolated after thread/cache reuse');
+  check(computed.fontFamily === family && computed.fontSize === fontSize + 'px', 'Font selection isolated across surviving and reopened windows');
 `);
 await writeFile(join(project,'src/main.tsx'),probe);
 await run('build',[join(project,'node_modules/@weber/sdk/cli.mjs'),'build',project],project);

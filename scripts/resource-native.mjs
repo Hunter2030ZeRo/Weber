@@ -27,7 +27,7 @@ try{
     const raw=profile?.data.report.results.flatMap(p=>p.reports)??[];
     const total=test=>raw.filter(test).reduce((sum,r)=>sum+r.size,0);
     return {phase:begin.data.phase,cycles:begin.data.cycles,pssMiB:distribution(points.map(p=>p.pssKiB/1024)),anonMiB:distribution(points.map(p=>p.anonKiB/1024)),fileMiB:distribution(points.map(p=>p.fileKiB/1024)),fds:distribution(points.map(p=>p.fds)),threads:distribution(points.map(p=>p.threads)),idleTicks:points.at(-1).cpuTicks-points[0].cpuTicks,
-      engine:profile?{reportMs:profile.data.durationMs,reportCount:raw.length,systemHeapAllocated:total(r=>r.path.join('/')==='system-heap-allocated'),systemHeapReserved:total(r=>r.path.join('/')==='system-heap-reserved'),jsGcUsed:total(r=>r.path.slice(-2).join('/')==='gc-heap/used'),jsGcUnused:total(r=>r.path.slice(-2).join('/')==='gc-heap/unused'),jsGcDecommitted:total(r=>r.path.slice(-2).join('/')==='gc-heap/decommitted'),jsMalloc:total(r=>r.path[1]==='js'&&r.path.at(-1)==='malloc-heap'),zombieDomBytes:total(r=>r.path.some(p=>p.includes('-zombie-'))),webRenderBytes:total(r=>r.path[0]==='webrender')}:null};
+      engine:profile?{reportMs:profile.data.durationMs,reportCount:raw.length,systemHeapAllocated:total(r=>r.path.join('/')==='system-heap-allocated'),systemFontBytes:total(r=>r.path.join('/')==='system-fonts'),systemHeapReserved:total(r=>r.path.join('/')==='system-heap-reserved'),jsGcUsed:total(r=>r.path.slice(-2).join('/')==='gc-heap/used'),jsGcUnused:total(r=>r.path.slice(-2).join('/')==='gc-heap/unused'),jsGcDecommitted:total(r=>r.path.slice(-2).join('/')==='gc-heap/decommitted'),jsMalloc:total(r=>r.path[1]==='js'&&r.path.at(-1)==='malloc-heap'),zombieDomBytes:total(r=>r.path.some(p=>p.includes('-zombie-'))),webRenderBytes:total(r=>r.path[0]==='webrender')}:null};
   });
   if(disabled)assert.equal(profiles.length,0,'No memory reporting without explicit opt-in');else assert.equal(profiles.length,phases.length);
   assert.ok(phases.at(-1).fds.p50<=phases[0].fds.p50+4);assert.ok(phases.at(-1).threads.p50<=phases[0].threads.p50+4);
@@ -35,7 +35,9 @@ try{
   if(!disabled&&cycles>=1000){
     const warm=phases.find(p=>p.cycles===200),last=phases.at(-1);assert.ok(warm?.engine&&last.engine);
     assert.ok(warm.engine.systemHeapAllocated>1048576,'Available default-allocator counters');
-    memoryGuard={warmCycles:200,finalCycles:cycles,additionalNativeHeapBytes:last.engine.systemHeapAllocated-warm.engine.systemHeapAllocated,limitBytes:8388608};
+    memoryGuard={warmCycles:200,finalCycles:cycles,additionalNativeHeapBytes:last.engine.systemHeapAllocated-warm.engine.systemHeapAllocated,limitBytes:8388608,additionalSystemFontBytes:last.engine.systemFontBytes-warm.engine.systemFontBytes,systemFontLimitBytes:262144};
+    assert.ok(warm.engine.systemFontBytes>0,'Available system-font service counter');
+    assert.ok(memoryGuard.additionalSystemFontBytes<=memoryGuard.systemFontLimitBytes,'Closed painters must not accumulate more than 256 KiB of font caches after warmup');
     assert.ok(memoryGuard.additionalNativeHeapBytes<=memoryGuard.limitBytes,'Warmed native heap must not grow by more than 8 MiB from cycle 200 to 1000');
   }
   const report={passed:true,memoryGuard,build,sdkVersion:fixture.sdkVersion,cycles,disabled,styles,display:process.env.WEBER_TEST_DISPLAY,phases,cycleMs:distribution(final.times),samples,trace:app.path,

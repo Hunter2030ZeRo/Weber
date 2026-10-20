@@ -43,7 +43,7 @@ async function choose(path){
 try{
   keys=await NativeKeys.open();
   app=await launch({binary,application:fixture.application,engine:'web',name:'preview-native'});traces.push(app.path);keys.app=app;
-  await app.waitEvent(e=>e.data.stage==='window-opened','preview window');await delay(400);await focusApp();
+  await app.waitEvent(e=>e.data.stage==='window-opened','preview window');await keys.activate();
   assert.ok((await app.events()).some(e=>e.data.stage==='portal-parent'&&e.data.available),'Actual native parent export');
   await state(s=>s.status==='Loaded','Notes initial load');
   await phase(0);await choose(fixture.input);await state(s=>s.status==='File opened','Notes file open');await done(0);
