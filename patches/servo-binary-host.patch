@@ -1,0 +1,461 @@
+--- a/components/script/dom/window/window.rs
++++ b/components/script/dom/window/window.rs
+@@ -26,8 +26,9 @@
+ use dom_struct::dom_struct;
+ use embedder_traits::user_contents::UserScript;
+ use embedder_traits::{
+-    AlertResponse, ConfirmResponse, EmbedderMsg, PromptResponse, ScriptToEmbedderChan, WeberHostReply,
++    AlertResponse, ConfirmResponse, EmbedderMsg, PromptResponse, ScriptToEmbedderChan,
+     SimpleDialogRequest, Theme, UntrustedNodeAddress, ViewportDetails, WebDriverLoadStatus,
++    WeberHostReply,
+ };
+ use euclid::{Point2D, Rect, Scale, Size2D, Vector2D};
+ use fonts::{
+@@ -110,7 +111,7 @@
+ use webrender_api::units::{DeviceIntSize, DevicePixel, LayoutPixel, LayoutPoint};
+ 
+ use crate::dom::StatelessWorkletThreadPool;
+-use crate::dom::bindings::callback::{RootedCallback, ExceptionHandling};
++use crate::dom::bindings::callback::{ExceptionHandling, RootedCallback};
+ use crate::dom::bindings::codegen::Bindings::AnimationFrameProviderBinding::FrameRequestCallback;
+ use crate::dom::bindings::codegen::Bindings::DocumentBinding::{
+     DocumentMethods, DocumentReadyState, NamedPropertyValue,
+@@ -126,7 +127,8 @@
+ use crate::dom::bindings::codegen::Bindings::RequestBinding::{RequestInfo, RequestInit};
+ use crate::dom::bindings::codegen::Bindings::VoidFunctionBinding::VoidFunction;
+ use crate::dom::bindings::codegen::Bindings::WindowBinding::{
+-    self, DeferredRequestInit, ScrollBehavior, WindowMethods, WindowPostMessageOptions, WeberDOMQuery,
++    self, DeferredRequestInit, ScrollBehavior, WeberDOMBytes, WeberDOMQuery, WindowMethods,
++    WindowPostMessageOptions,
+ };
+ use crate::dom::bindings::codegen::UnionTypes::{
+     RequestOrUSVString, TrustedScriptOrString, TrustedScriptOrStringOrFunction,
+@@ -1353,7 +1355,79 @@
+         }
+     }
+ 
+-    fn WeberHostCall(&self, cx: &mut JSContext, payload: DOMString, query: Option<RootedCallback<WeberDOMQuery>>) -> Option<DOMString> {
++    fn WeberHostBytes(
++        &self,
++        cx: &mut JSContext,
++        payload: CustomAutoRooterGuard<js::typedarray::Uint8Array>,
++        query: RootedCallback<WeberDOMBytes>,
++    ) -> Option<script_bindings::trace::RootedTraceableBox<js::typedarray::HeapUint8Array>> {
++        let bytes = payload.as_slice_safe(cx.no_gc())?;
++        if bytes.len() > 1_048_576 {
++            return None;
++        }
++        let bytes = bytes.to_vec();
++        let (sender, receiver) =
++            ProfiledGenericChannel::channel(self.global().time_profiler_chan().clone())?;
++        self.send_to_embedder(EmbedderMsg::WeberHostBytes(
++            self.webview_id(),
++            bytes,
++            sender,
++        ));
++        let receiver = receiver.into_inner();
++        loop {
++            match receiver
++                .try_recv_timeout(std::time::Duration::from_secs(30))
++                .ok()?
++            {
++                WeberHostReply::FinalBytes(reply) => {
++                    let bytes = reply?;
++                    if bytes.len() > 1_048_576 {
++                        return None;
++                    }
++                    rooted!(&in(cx) let mut object = std::ptr::null_mut::<JSObject>());
++                    return crate::dom::bindings::buffer_source::create_buffer_source(
++                        cx,
++                        &bytes,
++                        object.handle_mut(),
++                    )
++                    .ok();
++                },
++                WeberHostReply::QueryBytes(bytes, sender) => {
++                    let result = if bytes.len() > 1_048_576 {
++                        None
++                    } else {
++                        rooted!(&in(cx) let mut object = std::ptr::null_mut::<JSObject>());
++                        let _buffer = crate::dom::bindings::buffer_source::create_buffer_source::<
++                            js::typedarray::Uint8,
++                        >(cx, &bytes, object.handle_mut())
++                        .ok()?;
++                        rooted!(&in(cx) let argument = js::jsval::ObjectValue(object.get()));
++                        query
++                            .Call__(cx, argument.handle(), ExceptionHandling::Report)
++                            .ok()
++                            .flatten()
++                            .and_then(|buffer| {
++                                buffer
++                                    .as_slice_safe(cx.no_gc())
++                                    .filter(|bytes| bytes.len() <= 1_048_576)
++                                    .map(|bytes| bytes.to_vec())
++                            })
++                    };
++                    if sender.send(result).is_err() {
++                        return None;
++                    }
++                },
++                _ => return None,
++            }
++        }
++    }
++
++    fn WeberHostCall(
++        &self,
++        cx: &mut JSContext,
++        payload: DOMString,
++        query: Option<RootedCallback<WeberDOMQuery>>,
++    ) -> Option<DOMString> {
+         let payload = String::from(payload);
+         if payload.len() > 1_048_576 {
+             return None;
+@@ -1361,21 +1435,35 @@
+         let (sender, receiver) =
+             ProfiledGenericChannel::channel(self.global().time_profiler_chan().clone())?;
+         self.send_to_embedder(EmbedderMsg::WeberHostCall(
+-            self.webview_id(), payload, sender,
++            self.webview_id(),
++            payload,
++            sender,
+         ));
+         let receiver = receiver.into_inner();
+         // Only service explicit queries for this call. Do not spin a nested
+         // script event loop or call the embedder recursively.
+         loop {
+-            match receiver.try_recv_timeout(std::time::Duration::from_secs(30)).ok()? {
++            match receiver
++                .try_recv_timeout(std::time::Duration::from_secs(30))
++                .ok()?
++            {
++                WeberHostReply::FinalBytes(_) | WeberHostReply::QueryBytes(_, _) => return None,
+                 WeberHostReply::Final(reply) => return reply.map(Into::into),
+                 WeberHostReply::Query(payload, sender) => {
+-                    let result = if payload.len() > 1_048_576 { None } else {
++                    let result = if payload.len() > 1_048_576 {
++                        None
++                    } else {
+                         query.as_ref().and_then(|callback| {
+-                            callback.Call__(cx, DOMString::from(payload), ExceptionHandling::Report).ok().flatten().map(String::from)
++                            callback
++                                .Call__(cx, DOMString::from(payload), ExceptionHandling::Report)
++                                .ok()
++                                .flatten()
++                                .map(String::from)
+                         })
+                     };
+-                    if sender.send(result).is_err() { return None; }
++                    if sender.send(result).is_err() {
++                        return None;
++                    }
+                 },
+             }
+         }
+@@ -1503,9 +1591,9 @@
+             let is_auxiliary = window_proxy.is_auxiliary();
+ 
+             // https://html.spec.whatwg.org/multipage/#script-closable
+-            let is_script_closable = (self.is_top_level() && history_length == 1) ||
+-                is_auxiliary ||
+-                pref!(dom_allow_scripts_to_close_windows);
++            let is_script_closable = (self.is_top_level() && history_length == 1)
++                || is_auxiliary
++                || pref!(dom_allow_scripts_to_close_windows);
+ 
+             // TODO: rest of Step 3:
+             // Is the incumbent settings object's responsible browsing context familiar with current?
+@@ -1955,8 +2043,8 @@
+                 iframe
+                     .browsing_context_id()
+                     .as_ref()
+-                    .map(BrowsingContextId::to_string) ==
+-                    Some(browsing_context_id.to_string())
++                    .map(BrowsingContextId::to_string)
++                    == Some(browsing_context_id.to_string())
+             })
+             .and_then(|iframe| iframe.GetContentWindow())
+     }
+@@ -2400,10 +2488,10 @@
+                     return true;
+                 }
+                 match type_ {
+-                    HTMLElementTypeId::HTMLEmbedElement |
+-                    HTMLElementTypeId::HTMLFormElement |
+-                    HTMLElementTypeId::HTMLImageElement |
+-                    HTMLElementTypeId::HTMLObjectElement => {
++                    HTMLElementTypeId::HTMLEmbedElement
++                    | HTMLElementTypeId::HTMLFormElement
++                    | HTMLElementTypeId::HTMLImageElement
++                    | HTMLElementTypeId::HTMLObjectElement => {
+                         elem.get_name().as_ref() == Some(&self.name)
+                     },
+                     _ => false,
+@@ -2685,8 +2773,8 @@
+         // layouts (for queries and scrolling) are not blocked, as they do not display
+         // anything and script expects the layout to be up-to-date after they run.
+         let pipeline_id = self.pipeline_id();
+-        if reflow_goal == ReflowGoal::UpdateTheRendering &&
+-            self.layout_blocker.get().layout_blocked()
++        if reflow_goal == ReflowGoal::UpdateTheRendering
++            && self.layout_blocker.get().layout_blocked()
+         {
+             debug!("Suppressing pre-load-event reflow pipeline {pipeline_id}");
+             return Default::default();
+@@ -2715,8 +2803,8 @@
+             // If the viewport changed and viewport units were used, all nodes need
+             // to be restyled, because we currently do not track which ones rely on
+             // viewport units.
+-            if restyle_reason.contains(RestyleReason::ViewportChanged) &&
+-                self.layout().device().used_viewport_size()
++            if restyle_reason.contains(RestyleReason::ViewportChanged)
++                && self.layout().device().used_viewport_size()
+             {
+                 document.dirty_all_nodes(cx.no_gc());
+             }
+@@ -2766,10 +2854,10 @@
+             animations: document.animation_manager().sets(),
+             animating_images: document.animation_manager().animating_images(),
+             highlighted_dom_node: document.highlighted_dom_node().map(|node| node.to_opaque()),
+-            frame_focused: self.webview_state().has_system_focus.get() &&
+-                document.focus_handler().has_focus(),
+-            halt_lcp: self.has_dispatched_scroll_event.get() ||
+-                self.has_dispatched_input_event.get(),
++            frame_focused: self.webview_state().has_system_focus.get()
++                && document.focus_handler().has_focus(),
++            halt_lcp: self.has_dispatched_scroll_event.get()
++                || self.has_dispatched_input_event.get(),
+             paint_timing_eligible: document.paint_timing_eligible(),
+             paint_timing_info: document.paint_timing_info(),
+             document_context,
+@@ -2839,8 +2927,8 @@
+         // See http://testthewebforward.org/docs/reftests.html
+         // and https://web-platform-tests.org/writing-tests/crashtest.html
+         if document.GetDocumentElement().is_some_and(|elem| {
+-            elem.has_class(&atom!("reftest-wait"), CaseSensitivity::CaseSensitive) ||
+-                elem.has_class(&Atom::from("test-wait"), CaseSensitivity::CaseSensitive)
++            elem.has_class(&atom!("reftest-wait"), CaseSensitivity::CaseSensitive)
++                || elem.has_class(&Atom::from("test-wait"), CaseSensitivity::CaseSensitive)
+         }) {
+             return;
+         }
+@@ -2853,8 +2941,8 @@
+             return;
+         }
+ 
+-        if !self.pending_layout_images.borrow().is_empty() ||
+-            !self.pending_images_for_rasterization.borrow().is_empty()
++        if !self.pending_layout_images.borrow().is_empty()
++            || !self.pending_images_for_rasterization.borrow().is_empty()
+         {
+             return;
+         }
+@@ -3410,8 +3498,8 @@
+     ) {
+         // We doesn't need to do anything if the following condition is fulfilled. Since there are no JS listener
+         // to fire and we could reconstruct visual viewport from layout viewport in case JS access it.
+-        if pinch_zoom_infos.rect == Rect::from_size(self.viewport_details().size) &&
+-            self.visual_viewport.get().is_none()
++        if pinch_zoom_infos.rect == Rect::from_size(self.viewport_details().size)
++            && self.visual_viewport.get().is_none()
+         {
+             return;
+         }
+@@ -3749,8 +3837,8 @@
+             fonts.notify_font_face_rules_removed(&changed_web_fonts.removed_font_faces);
+         }
+ 
+-        if !changed_web_fonts.removed_font_faces.is_empty() ||
+-            changed_web_fonts.cascade_index_of_any_rule_changed
++        if !changed_web_fonts.removed_font_faces.is_empty()
++            || changed_web_fonts.cascade_index_of_any_rule_changed
+         {
+             // TODO: This should only dirty nodes that are rendered using any of the removed
+             // web fonts!
+@@ -3874,8 +3962,8 @@
+     /// <https://html.spec.whatwg.org/multipage/#sticky-activation>
+     pub(crate) fn has_sticky_activation(&self) -> bool {
+         // > When the current high resolution time given W is greater than or equal to the last activation timestamp in W, W is said to have sticky activation.
+-        UserActivationTimestamp::TimeStamp(CrossProcessInstant::now()) >=
+-            self.last_activation_timestamp.get()
++        UserActivationTimestamp::TimeStamp(CrossProcessInstant::now())
++            >= self.last_activation_timestamp.get()
+     }
+ 
+     /// <https://html.spec.whatwg.org/multipage/#transient-activation>
+@@ -3883,10 +3971,9 @@
+         // > When the current high resolution time given W is greater than or equal to the last activation timestamp in W, and less than the last activation
+         // > timestamp in W plus the transient activation duration, then W is said to have transient activation.
+         let current_time = CrossProcessInstant::now();
+-        UserActivationTimestamp::TimeStamp(current_time) >= self.last_activation_timestamp.get() &&
+-            UserActivationTimestamp::TimeStamp(current_time) <
+-                self.last_activation_timestamp.get() +
+-                    pref!(dom_transient_activation_duration_ms)
++        UserActivationTimestamp::TimeStamp(current_time) >= self.last_activation_timestamp.get()
++            && UserActivationTimestamp::TimeStamp(current_time)
++                < self.last_activation_timestamp.get() + pref!(dom_transient_activation_duration_ms)
+     }
+ 
+     pub(crate) fn consume_last_activation_timestamp(&self) {
+@@ -4247,10 +4334,10 @@
+     };
+     matches!(
+         type_,
+-        HTMLElementTypeId::HTMLEmbedElement |
+-            HTMLElementTypeId::HTMLFormElement |
+-            HTMLElementTypeId::HTMLImageElement |
+-            HTMLElementTypeId::HTMLObjectElement
++        HTMLElementTypeId::HTMLEmbedElement
++            | HTMLElementTypeId::HTMLFormElement
++            | HTMLElementTypeId::HTMLImageElement
++            | HTMLElementTypeId::HTMLObjectElement
+     )
+ }
+ 
+--- a/components/script_bindings/codegen/Bindings.conf
++++ b/components/script_bindings/codegen/Bindings.conf
+@@ -1437,6 +1437,7 @@
+     'realm': ['CreateImageBitmap', 'CreateImageBitmap_', 'WebdriverCallback', 'GetOpener', 'Fetch'],
+     'cx': [
+         'WeberHostCall',
++        'WeberHostBytes',
+         'ClientInformation',
+         'Caches',
+         'Close',
+--- a/components/script_bindings/webidls/Window.webidl
++++ b/components/script_bindings/webidls/Window.webidl
+@@ -3,6 +3,7 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ callback WeberDOMQuery = DOMString? (DOMString payload);
++callback WeberDOMBytes = Uint8Array? (any payload);
+ 
+ // https://html.spec.whatwg.org/multipage/#window
+ [Global=Window, Exposed=Window, LegacyUnenumerableNamedProperties, NeedResolve]
+@@ -61,6 +62,7 @@
+   DOMString? prompt(optional DOMString message = "", optional DOMString default = "");
+   // Weber embedder extension: synchronous, explicitly handled host call.
+   DOMString? weberHostCall(DOMString payload, optional WeberDOMQuery? query = null);
++  Uint8Array? weberHostBytes(Uint8Array payload, WeberDOMBytes query);
+   //void print();
+   //any showModalDialog(DOMString url, optional any argument);
+ 
+--- a/components/servo/servo.rs
++++ b/components/servo/servo.rs
+@@ -488,9 +488,26 @@
+ 
+     fn handle_embedder_message(&self, message: EmbedderMsg) {
+         match message {
++            EmbedderMsg::WeberHostBytes(webview_id, payload, sender) => {
++                let reply = self.get_webview_handle(webview_id).and_then(|webview| {
++                    webview.delegate().weber_host_bytes(
++                        webview,
++                        payload,
++                        WeberDomQuery(sender.clone()),
++                    )
++                });
++                if let Err(error) = sender.send(WeberHostReply::FinalBytes(reply)) {
++                    log::warn!("Weber bytes reply failed: {error:?}");
++                }
++            },
+             EmbedderMsg::WeberHostCall(webview_id, payload, sender) => {
+-                let reply = self.get_webview_handle(webview_id)
+-                    .and_then(|webview| webview.delegate().weber_host_call(webview, payload, WeberDomQuery(sender.clone())));
++                let reply = self.get_webview_handle(webview_id).and_then(|webview| {
++                    webview.delegate().weber_host_call(
++                        webview,
++                        payload,
++                        WeberDomQuery(sender.clone()),
++                    )
++                });
+                 if let Err(error) = sender.send(WeberHostReply::Final(reply)) {
+                     log::warn!("Weber host reply failed: {error:?}");
+                 }
+--- a/components/servo/webview_delegate.rs
++++ b/components/servo/webview_delegate.rs
+@@ -326,8 +326,8 @@
+ 
+ impl Drop for InterceptedWebResourceLoad {
+     fn drop(&mut self) {
+-        if !self.finished &&
+-            let Err(error) = self
++        if !self.finished
++            && let Err(error) = self
+                 .response_sender
+                 .send(WebResourceResponseMsg::FinishLoad)
+         {
+@@ -916,9 +916,22 @@
+ /// instance. A [`WebView`]'s delegate needs to be set at the time of creation using
+ /// [`WebViewBuilder::delegate`].
+ pub trait WebViewDelegate {
++    fn weber_host_bytes(
++        &self,
++        _webview: WebView,
++        _payload: Vec<u8>,
++        _query: embedder_traits::WeberDomQuery,
++    ) -> Option<Vec<u8>> {
++        None
++    }
+     /// Called while the script thread waits. Only the scoped query route may
+     /// call back; invoking the Servo event loop synchronously would deadlock.
+-    fn weber_host_call(&self, _webview: WebView, _payload: String, _query: embedder_traits::WeberDomQuery) -> Option<String> {
++    fn weber_host_call(
++        &self,
++        _webview: WebView,
++        _payload: String,
++        _query: embedder_traits::WeberDomQuery,
++    ) -> Option<String> {
+         None
+     }
+     /// Get the [`ScreenGeometry`] for this [`WebView`]. If this is unimplemented or returns `None`
+--- a/components/shared/embedder/lib.rs
++++ b/components/shared/embedder/lib.rs
+@@ -468,6 +468,8 @@
+ #[derive(Deserialize, Serialize)]
+ pub enum WeberHostReply {
+     Final(Option<String>),
++    FinalBytes(Option<Vec<u8>>),
++    QueryBytes(Vec<u8>, GenericSender<Option<Vec<u8>>>),
+     Query(String, GenericSender<Option<String>>),
+ }
+ 
+@@ -476,11 +478,29 @@
+ pub struct WeberDomQuery(pub GenericSender<WeberHostReply>);
+ 
+ impl WeberDomQuery {
++    pub fn query_bytes(&self, payload: Vec<u8>) -> Option<Vec<u8>> {
++        if payload.len() > 1_048_576 {
++            return None;
++        }
++        let (sender, receiver) = servo_base::generic_channel::channel()?;
++        self.0
++            .send(WeberHostReply::QueryBytes(payload, sender))
++            .ok()?;
++        receiver
++            .try_recv_timeout(std::time::Duration::from_secs(30))
++            .ok()
++            .flatten()
++    }
+     pub fn query(&self, payload: String) -> Option<String> {
+-        if payload.len() > 1_048_576 { return None; }
++        if payload.len() > 1_048_576 {
++            return None;
++        }
+         let (sender, receiver) = servo_base::generic_channel::channel()?;
+         self.0.send(WeberHostReply::Query(payload, sender)).ok()?;
+-        receiver.try_recv_timeout(std::time::Duration::from_secs(30)).ok().flatten()
++        receiver
++            .try_recv_timeout(std::time::Duration::from_secs(30))
++            .ok()
++            .flatten()
+     }
+ }
+ 
+@@ -501,6 +521,7 @@
+     ShowSimpleDialog(WebViewId, SimpleDialogRequest),
+     /// A synchronous Weber host call. Always reply, including when unsupported.
+     WeberHostCall(WebViewId, String, GenericSender<WeberHostReply>),
++    WeberHostBytes(WebViewId, Vec<u8>, GenericSender<WeberHostReply>),
+     /// Request to (un)register protocol handler by page content.
+     AllowProtocolHandlerRequest(
+         WebViewId,

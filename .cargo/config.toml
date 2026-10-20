@@ -1,0 +1,7 @@
+[env]
+RUSTC_BOOTSTRAP = "crown,script,script_webgpu,script_bindings,style_tests,mozjs,mozjs_sys"
+MACOSX_DEPLOYMENT_TARGET = "13.0"
+
+[build]
+jobs = 8
+

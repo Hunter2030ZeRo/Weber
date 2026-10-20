@@ -1,0 +1,74 @@
+diff --git a/components/script/dom/document/document_event_handler.rs b/components/script/dom/document/document_event_handler.rs
+index 8ccd71104..063649094 100644
+--- a/components/script/dom/document/document_event_handler.rs
++++ b/components/script/dom/document/document_event_handler.rs
+@@ -2047,7 +2047,11 @@ impl DocumentEventHandler {
+             return;
+         }
+ 
+-        node.fire_synthetic_pointer_event_not_trusted(cx, atom!("click"));
++        node.fire_synthetic_pointer_event_with_trust(
++            cx,
++            atom!("click"),
++            event.upcast::<Event>().IsTrusted(),
++        );
+         event.upcast::<Event>().mark_as_handled();
+     }
+ 
+@@ -2149,6 +2153,10 @@ impl DocumentEventHandler {
+             const LINE_WIDTH: f32 = 76.0;
+ 
+             let current_scroll_offset = scrolling_box.scroll_position();
++            let page_height = scrolling_box.size(cx.no_gc()).height;
++            // A short scroll container must not turn PageDown into an upward
++            // delta (or PageUp into a downward one).
++            let page_step = (page_height - 2.0 * LINE_HEIGHT).max(page_height.min(LINE_HEIGHT));
+             (
+                 current_scroll_offset,
+                 match scroll {
+@@ -2158,14 +2166,8 @@ impl DocumentEventHandler {
+                         -current_scroll_offset.y + scrolling_box.content_size().height -
+                             scrolling_box.size(cx.no_gc()).height,
+                     ),
+-                    KeyboardScroll::PageDown => Vector2D::new(
+-                        0.0,
+-                        scrolling_box.size(cx.no_gc()).height - 2.0 * LINE_HEIGHT,
+-                    ),
+-                    KeyboardScroll::PageUp => Vector2D::new(
+-                        0.0,
+-                        2.0 * LINE_HEIGHT - scrolling_box.size(cx.no_gc()).height,
+-                    ),
++                    KeyboardScroll::PageDown => Vector2D::new(0.0, page_step),
++                    KeyboardScroll::PageUp => Vector2D::new(0.0, -page_step),
+                     KeyboardScroll::Up => Vector2D::new(0.0, -LINE_HEIGHT),
+                     KeyboardScroll::Down => Vector2D::new(0.0, LINE_HEIGHT),
+                     KeyboardScroll::Left => Vector2D::new(-LINE_WIDTH, 0.0),
+diff --git a/components/script/dom/node/node.rs b/components/script/dom/node/node.rs
+index b2f799aaa..9fdfa831d 100644
+--- a/components/script/dom/node/node.rs
++++ b/components/script/dom/node/node.rs
+@@ -593,6 +593,15 @@ impl Node {
+         &self,
+         cx: &mut JSContext,
+         event_type: Atom,
++    ) {
++        self.fire_synthetic_pointer_event_with_trust(cx, event_type, false);
++    }
++
++    pub(crate) fn fire_synthetic_pointer_event_with_trust(
++        &self,
++        cx: &mut JSContext,
++        event_type: Atom,
++        trusted: bool,
+     ) {
+         // Spec says the choice of which global to create the pointer event
+         // on is not well-defined,
+@@ -636,7 +645,7 @@ impl Node {
+         pointer_event.upcast::<Event>().set_composed(true);
+ 
+         // Step 5. If the not trusted flag is set, initialize event's isTrusted attribute to false.
+-        pointer_event.upcast::<Event>().set_trusted(false);
++        pointer_event.upcast::<Event>().set_trusted(trusted);
+ 
+         // Step 6,8. TODO keyboard modifiers
+ 

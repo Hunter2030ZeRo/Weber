@@ -1,0 +1,21 @@
+globalThis.weberSolidContracts = () => {
+  const check = (value, message) => { if (!value) throw new Error(message); };
+  const start = () => globalThis.weberHostCall(JSON.stringify({ action: "solid" }));
+  start();
+  const document = globalThis.document;
+  const get = id => document.getElementById(id);
+  const click = node => node.dispatchEvent(new Event("click", { bubbles: true, cancelable: true }));
+  check(get("solid-count").textContent === "0", "initial Solid signal");
+  click(get("solid-counter")); check(get("solid-count").textContent === "1" && get("solid-conditional"), "Solid signal and Show");
+  const first = get("solid-list").children[0]; const third = get("solid-list").children[2];
+  click(get("solid-reorder"));
+  check(get("solid-list").textContent === "314" && get("solid-list").children[0] === third && get("solid-list").children[1] === first, "keyed For preserves identity");
+  get("solid-input")._value = "Hermes 한글 😀";
+  get("solid-input").dispatchEvent(new Event("input", { bubbles: true })); check(get("solid-text").textContent === "Hermes 한글 😀", "Solid input signal");
+  check(click(get("solid-link")), "conditional allow");
+  click(get("solid-counter")); check(!click(get("solid-link")), "conditional preventDefault");
+  check(document.listenerErrors.length === 0, "Solid listener errors: " + document.listenerErrors.join());
+  globalThis.WeberSolid.unmount(); check(document.body.childNodes.length === 0, "Solid disposal");
+  start(); check(globalThis.document.getElementById("solid-count").textContent === "0", "new document template cache isolation");
+  return JSON.stringify({ passed: true, runtime: "Static Hermes native AOT", cases: ["TSX mount", "signals and Show", "For identity and reorder", "Unicode input", "conditional cancellation", "disposal", "fresh document remount"] });
+};

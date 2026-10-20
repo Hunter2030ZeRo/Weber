@@ -1,0 +1,22 @@
+{
+  "name": "weber-interaction-probe",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 5173 --strictPort"
+  },
+  "dependencies": {
+    "solid-js": "1.9.9"
+  },
+  "devDependencies": {
+    "css-select": "7.0.0",
+    "cssstyle": "6.2.0",
+    "esbuild": "0.25.12",
+    "parse5": "7.3.0",
+    "typescript": "5.9.3",
+    "vite": "7.1.12",
+    "vite-plugin-solid": "2.11.10"
+  }
+}

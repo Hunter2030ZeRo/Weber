@@ -1,0 +1,10 @@
+{
+  "name": "@weber/sdk",
+  "version": "0.3.1",
+  "private": true,
+  "type": "module",
+  "bin": { "weber": "cli.mjs" },
+  "files": ["*.mjs", "*.ts", "defaults.json", "templates", "README.md"],
+  "exports": { "./runtime": "./runtime.ts", "./solid": "./solid.ts", "./dev": "./dev.ts", "./vite": "./vite.mjs", "./backend": "./backend.ts", "./window": "./window.ts", "./storage": "./storage.ts" },
+  "peerDependencies": { "vite": "^7.1.12", "vite-plugin-solid": "^2.11.10", "solid-js": "^1.9.9", "typescript": "^5.9.3" }
+}

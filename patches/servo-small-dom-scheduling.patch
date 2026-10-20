@@ -1,0 +1,57 @@
+diff --git a/components/layout/layout_impl.rs b/components/layout/layout_impl.rs
+index 4928b0512..695bb20ee 100644
+--- a/components/layout/layout_impl.rs
++++ b/components/layout/layout_impl.rs
+@@ -57,7 +57,7 @@ use style::context::{
+ };
+ use style::device::Device;
+ use style::device::servo::FontMetricsProvider;
+-use style::dom::{OpaqueNode, ShowSubtreeDataAndPrimaryValues, TDocument, TElement, TNode};
++use style::dom::{OpaqueNode, ShowSubtreeDataAndPrimaryValues, TDocument, TElement, TNode, TShadowRoot};
+ use style::font_metrics::FontMetrics;
+ use style::global_style_data::GLOBAL_STYLE_DATA;
+ use style::invalidation::element::restyle_hints::RestyleHint;
+@@ -1228,6 +1228,14 @@ impl LayoutThread {
+         let rayon_pool = STYLE_THREAD_POOL.lock();
+         let rayon_pool = rayon_pool.pool();
+         let rayon_pool = rayon_pool.as_ref();
++        // Weber: avoid Rayon handoff and worker wakeups on small GUI documents.
++        // This only selects execution scheduling; traversal/layout work is unchanged.
++        // Re-evaluate on each reflow so growing/shrinking documents retain the
++        // upstream parallel path. The bounded scan never walks a large tree fully.
++        let small_document =
++            weber_small_document(unsafe { root_element.dangerous_style_element() }.as_node());
++        log::trace!("Weber style scheduling: serial={small_document}");
++        let rayon_pool = if small_document { None } else { rayon_pool };
+ 
+         let device_has_changed = std::mem::replace(&mut self.device_has_changed, false);
+         let dangerous_root_element = unsafe { root_element.dangerous_style_element() };
+@@ -2060,3 +2068,28 @@ struct StylistStylesheetUpdate {
+     /// A list of changes to the set of web fonts.
+     changed_web_fonts: WebFontSetDifference,
+ }
++
++/// Bounded DOM-size heuristic, including the shadow trees used by native controls.
++fn weber_small_document(root: script::layout_dom::ServoDangerousStyleNode<'_>) -> bool {
++    static LIMIT: LazyLock<usize> = LazyLock::new(|| {
++        std::env::var("WEBER_SERIAL_DOM_LIMIT")
++            .ok()
++            .and_then(|value| value.parse().ok())
++            .filter(|limit| *limit <= 4096)
++            .unwrap_or(256)
++    });
++    if *LIMIT == 0 { return false; }
++    let mut visited = 0;
++    let mut pending = vec![root];
++    while let Some(current) = pending.pop() {
++        visited += 1;
++        if visited > *LIMIT { return false; }
++        if let Some(sibling) = current.next_sibling() { pending.push(sibling); }
++        if let Some(child) = current.first_child() { pending.push(child); }
++        if let Some(shadow) = current.as_element().and_then(|element| element.shadow_root()) {
++            pending.push(shadow.as_node());
++        }
++    }
++    log::trace!("Weber document node count including shadow trees: {visited}");
++    true
++}

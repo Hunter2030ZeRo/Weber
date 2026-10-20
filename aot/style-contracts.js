@@ -1,0 +1,53 @@
+// Identical assertions against Servo and the AOT facade in a real view.
+globalThis.weberStyleContracts = () => {
+  const cases = [], values = {};
+  const check = (condition, name) => { if (!condition) throw new Error(name); cases.push(name); };
+  const element = document.createElement("div"); document.body.appendChild(element);
+  const style = element.style;
+  const observer = new MutationObserver(() => {});
+  observer.observe(element, { attributes: true, attributeOldValue: true, attributeFilter: ["style"] });
+  check(style === element.style && style instanceof CSSStyleDeclaration, "stable native style identity and prototype");
+  let illegal = false; try { new CSSStyleDeclaration(); } catch (error) { illegal = error instanceof TypeError; }
+  check(illegal, "CSSStyleDeclaration is not constructible");
+  style.setProperty("width", "12px", "important");
+  check(style.width === "12px" && style.getPropertyPriority("width") === "important", "property and priority");
+  const attribute = element.getAttributeNode("style");
+  style.height = "24px";
+  check(element.getAttributeNode("style") === attribute && attribute.value === style.cssText, "Attr identity and canonical value");
+  values.initialMutations = observer.takeRecords().map(record => record.oldValue);
+  const before = style.cssText;
+  style.width = "definitely-invalid-width";
+  style.setProperty("height", "50px", "bad-priority");
+  check(style.cssText === before && observer.takeRecords().length === 0, "invalid CSS values do not mutate");
+  style.setProperty("--weber-value", "2px");
+  check(style.getPropertyValue("--weber-value").trim() === "2px", "custom properties");
+  check(style.removeProperty("--weber-value").trim() === "2px" && style.getPropertyValue("--weber-value") === "", "removeProperty returns old value");
+  style.cssFloat = "left";
+  check(style.getPropertyValue("float") === "left", "cssFloat alias");
+  style.margin = "1px 2px";
+  check(style.marginTop === "1px" && style.marginLeft === "2px", "native shorthand expansion");
+  style.cssText = "color: red; width: 7px !important; definitely-invalid-property: 1;";
+  check(style.color !== "" && style.width === "7px" && style.getPropertyPriority("width") === "important", "cssText parse and normalize");
+  check(style.item(0) === style[0] && style.item(-1) === "" && style[4294967294] === undefined, "indexed declaration");
+  check(Object.keys(style).filter(key => /^(0|[1-9][0-9]*)$/.test(key)).length === style.length, "enumeration of indexed properties");
+  style.applicationObject = { value: 7 };
+  check(style.applicationObject.value === 7 && element.getAttribute("style") === style.cssText, "application expandos do not become CSS");
+  element.setAttribute("style", "width: 19px; color: blue");
+  check(style.width === "19px" && style === element.style && attribute.value === element.getAttribute("style"), "setAttribute updates existing declaration");
+  element.removeAttribute("style");
+  check(style.length === 0 && !element.hasAttribute("style") && attribute.ownerElement === null, "removeAttribute updates existing declaration");
+  observer.takeRecords();
+  style.setProperty("width", "5px");
+  style.setProperty("width", "5px");
+  values.identicalWrites = observer.takeRecords().map(record => record.oldValue);
+  const detached = document.createElement("div"), detachedStyle = detached.style;
+  detachedStyle.backgroundColor = "tomato";
+  check(detachedStyle.backgroundColor !== "" && detached.getAttribute("style") === detachedStyle.cssText, "detached node CSSOM");
+  const clone = detached.cloneNode(true);
+  check(clone.style !== detachedStyle && clone.style.backgroundColor === detachedStyle.backgroundColor, "clone style independence");
+  let missing = false; try { style.setProperty("width"); } catch (error) { missing = error instanceof TypeError; }
+  check(missing, "required argument conversion");
+  values.final = style.cssText; values.detached = detachedStyle.cssText;
+  observer.disconnect(); element.remove();
+  return { passed: true, cases, values };
+};

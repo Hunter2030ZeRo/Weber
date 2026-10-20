@@ -1,0 +1,174 @@
+diff --git a/components/script/dom/window/window.rs b/components/script/dom/window/window.rs
+index 1ab2f91c4..b426a7bdc 100644
+--- a/components/script/dom/window/window.rs
++++ b/components/script/dom/window/window.rs
+@@ -26,7 +26,7 @@ use devtools_traits::{ScriptToDevtoolsControlMsg, TimelineMarker, TimelineMarker
+ use dom_struct::dom_struct;
+ use embedder_traits::user_contents::UserScript;
+ use embedder_traits::{
+-    AlertResponse, ConfirmResponse, EmbedderMsg, PromptResponse, ScriptToEmbedderChan,
++    AlertResponse, ConfirmResponse, EmbedderMsg, PromptResponse, ScriptToEmbedderChan, WeberHostReply,
+     SimpleDialogRequest, Theme, UntrustedNodeAddress, ViewportDetails, WebDriverLoadStatus,
+ };
+ use euclid::{Point2D, Rect, Scale, Size2D, Vector2D};
+@@ -110,7 +110,7 @@ use webrender_api::ExternalScrollId;
+ use webrender_api::units::{DeviceIntSize, DevicePixel, LayoutPixel, LayoutPoint};
+ 
+ use crate::dom::StatelessWorkletThreadPool;
+-use crate::dom::bindings::callback::RootedCallback;
++use crate::dom::bindings::callback::{RootedCallback, ExceptionHandling};
+ use crate::dom::bindings::codegen::Bindings::AnimationFrameProviderBinding::FrameRequestCallback;
+ use crate::dom::bindings::codegen::Bindings::DocumentBinding::{
+     DocumentMethods, DocumentReadyState, NamedPropertyValue,
+@@ -126,7 +126,7 @@ use crate::dom::bindings::codegen::Bindings::ReportingObserverBinding::Report;
+ use crate::dom::bindings::codegen::Bindings::RequestBinding::{RequestInfo, RequestInit};
+ use crate::dom::bindings::codegen::Bindings::VoidFunctionBinding::VoidFunction;
+ use crate::dom::bindings::codegen::Bindings::WindowBinding::{
+-    self, DeferredRequestInit, ScrollBehavior, WindowMethods, WindowPostMessageOptions,
++    self, DeferredRequestInit, ScrollBehavior, WindowMethods, WindowPostMessageOptions, WeberDOMQuery,
+ };
+ use crate::dom::bindings::codegen::UnionTypes::{
+     RequestOrUSVString, TrustedScriptOrString, TrustedScriptOrStringOrFunction,
+@@ -1353,6 +1353,34 @@ impl WindowMethods<crate::DomTypeHolder> for Window {
+         }
+     }
+ 
++    fn WeberHostCall(&self, cx: &mut JSContext, payload: DOMString, query: Option<RootedCallback<WeberDOMQuery>>) -> Option<DOMString> {
++        let payload = String::from(payload);
++        if payload.len() > 1_048_576 {
++            return None;
++        }
++        let (sender, receiver) =
++            ProfiledGenericChannel::channel(self.global().time_profiler_chan().clone())?;
++        self.send_to_embedder(EmbedderMsg::WeberHostCall(
++            self.webview_id(), payload, sender,
++        ));
++        let receiver = receiver.into_inner();
++        // Only service explicit queries for this call. Do not spin a nested
++        // script event loop or call the embedder recursively.
++        loop {
++            match receiver.try_recv_timeout(std::time::Duration::from_secs(30)).ok()? {
++                WeberHostReply::Final(reply) => return reply.map(Into::into),
++                WeberHostReply::Query(payload, sender) => {
++                    let result = if payload.len() > 1_048_576 { None } else {
++                        query.as_ref().and_then(|callback| {
++                            callback.Call__(cx, DOMString::from(payload), ExceptionHandling::Report).ok().flatten().map(String::from)
++                        })
++                    };
++                    if sender.send(result).is_err() { return None; }
++                },
++            }
++        }
++    }
++
+     /// <https://html.spec.whatwg.org/multipage/#dom-window-stop>
+     fn Stop(&self, cx: &mut JSContext) {
+         // 1. If this's navigable is null, then return.
+diff --git a/components/script_bindings/codegen/Bindings.conf b/components/script_bindings/codegen/Bindings.conf
+index 680e3a259..1b33199e0 100644
+--- a/components/script_bindings/codegen/Bindings.conf
++++ b/components/script_bindings/codegen/Bindings.conf
+@@ -1436,6 +1436,7 @@ DOMInterfaces = {
+     'additionalTraits': ['crate::interfaces::WindowHelpers', 'crate::interfaces::HasOrigin'],
+     'realm': ['CreateImageBitmap', 'CreateImageBitmap_', 'WebdriverCallback', 'GetOpener', 'Fetch'],
+     'cx': [
++        'WeberHostCall',
+         'ClientInformation',
+         'Caches',
+         'Close',
+diff --git a/components/script_bindings/webidls/Window.webidl b/components/script_bindings/webidls/Window.webidl
+index d9e89044c..6b3525e09 100644
+--- a/components/script_bindings/webidls/Window.webidl
++++ b/components/script_bindings/webidls/Window.webidl
+@@ -2,6 +2,8 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
++callback WeberDOMQuery = DOMString? (DOMString payload);
++
+ // https://html.spec.whatwg.org/multipage/#window
+ [Global=Window, Exposed=Window, LegacyUnenumerableNamedProperties, NeedResolve]
+ /*sealed*/ interface Window : GlobalScope {
+@@ -57,6 +59,8 @@
+   undefined alert();
+   boolean confirm(optional DOMString message = "");
+   DOMString? prompt(optional DOMString message = "", optional DOMString default = "");
++  // Weber embedder extension: synchronous, explicitly handled host call.
++  DOMString? weberHostCall(DOMString payload, optional WeberDOMQuery? query = null);
+   //void print();
+   //any showModalDialog(DOMString url, optional any argument);
+ 
+diff --git a/components/servo/servo.rs b/components/servo/servo.rs
+index 578564fac..bd6e5bc07 100644
+--- a/components/servo/servo.rs
++++ b/components/servo/servo.rs
+@@ -488,6 +488,13 @@ impl ServoInner {
+ 
+     fn handle_embedder_message(&self, message: EmbedderMsg) {
+         match message {
++            EmbedderMsg::WeberHostCall(webview_id, payload, sender) => {
++                let reply = self.get_webview_handle(webview_id)
++                    .and_then(|webview| webview.delegate().weber_host_call(webview, payload, WeberDomQuery(sender.clone())));
++                if let Err(error) = sender.send(WeberHostReply::Final(reply)) {
++                    log::warn!("Weber host reply failed: {error:?}");
++                }
++            },
+             EmbedderMsg::Status(webview_id, status_text) => {
+                 if let Some(webview) = self.get_webview_handle(webview_id) {
+                     webview.set_status_text(status_text);
+diff --git a/components/servo/webview_delegate.rs b/components/servo/webview_delegate.rs
+index f18540b96..e4f7e1060 100644
+--- a/components/servo/webview_delegate.rs
++++ b/components/servo/webview_delegate.rs
+@@ -916,6 +916,11 @@ impl CreateNewWebViewRequest {
+ /// instance. A [`WebView`]'s delegate needs to be set at the time of creation using
+ /// [`WebViewBuilder::delegate`].
+ pub trait WebViewDelegate {
++    /// Called while the script thread waits. Only the scoped query route may
++    /// call back; invoking the Servo event loop synchronously would deadlock.
++    fn weber_host_call(&self, _webview: WebView, _payload: String, _query: embedder_traits::WeberDomQuery) -> Option<String> {
++        None
++    }
+     /// Get the [`ScreenGeometry`] for this [`WebView`]. If this is unimplemented or returns `None`
+     /// the screen will have the size of the [`WebView`]'s `RenderingContext` and `WebView` will be
+     /// considered to be positioned at the screen's origin.
+diff --git a/components/shared/embedder/lib.rs b/components/shared/embedder/lib.rs
+index 950e17b20..1f0b0b0e2 100644
+--- a/components/shared/embedder/lib.rs
++++ b/components/shared/embedder/lib.rs
+@@ -464,6 +464,26 @@ pub struct BluetoothDeviceDescription {
+     pub name: String,
+ }
+ 
++/// Weber's bounded exchange while the originating script call is suspended.
++#[derive(Deserialize, Serialize)]
++pub enum WeberHostReply {
++    Final(Option<String>),
++    Query(String, GenericSender<Option<String>>),
++}
++
++/// A scoped route to the originating script realm, not the Servo event loop.
++#[derive(Clone)]
++pub struct WeberDomQuery(pub GenericSender<WeberHostReply>);
++
++impl WeberDomQuery {
++    pub fn query(&self, payload: String) -> Option<String> {
++        if payload.len() > 1_048_576 { return None; }
++        let (sender, receiver) = servo_base::generic_channel::channel()?;
++        self.0.send(WeberHostReply::Query(payload, sender)).ok()?;
++        receiver.try_recv_timeout(std::time::Duration::from_secs(30)).ok().flatten()
++    }
++}
++
+ /// Messages towards the embedder.
+ #[derive(Deserialize, IntoStaticStr, Serialize)]
+ pub enum EmbedderMsg {
+@@ -479,6 +499,8 @@ pub enum EmbedderMsg {
+     /// or `prompt()`). Since their messages are controlled by web content, they should be presented to the user in a
+     /// way that makes them impossible to mistake for browser UI.
+     ShowSimpleDialog(WebViewId, SimpleDialogRequest),
++    /// A synchronous Weber host call. Always reply, including when unsupported.
++    WeberHostCall(WebViewId, String, GenericSender<WeberHostReply>),
+     /// Request to (un)register protocol handler by page content.
+     AllowProtocolHandlerRequest(
+         WebViewId,

@@ -1,0 +1,138 @@
+{
+  "id": "weber-ui-2025-01-v1",
+  "baseline": "2025-01-01T00:00:00Z",
+  "wpt": {
+    "sha": "58c1148991566b4b3454edac0f9a8e11010e20b2",
+    "date": "2024-12-31T21:52:58Z"
+  },
+  "tests": [
+    "dom/events/Event-constructors.any.js",
+    "dom/events/EventTarget-add-remove-listener.any.js",
+    "dom/events/EventTarget-addEventListener.any.js",
+    "dom/events/EventTarget-constructible.any.js",
+    "dom/events/EventTarget-removeEventListener.any.js",
+    "dom/events/CustomEvent.html",
+    "dom/events/EventTarget-dispatchEvent-returnvalue.html",
+    "dom/events/EventTarget-this-of-listener.html",
+    "dom/events/AddEventListenerOptions-signal.any.js",
+    "dom/abort/AbortSignal.any.js",
+    "dom/nodes/Element-classlist.html",
+    "dom/nodes/Element-hasAttribute.html",
+    "dom/nodes/Element-removeAttribute.html",
+    "dom/nodes/Element-removeAttributeNS.html",
+    "dom/nodes/Element-setAttribute.html",
+    "css/cssom-view/GetBoundingRect.html",
+    "css/cssom-view/cssom-getBoundingClientRect-001.html"
+  ],
+  "files": [
+    {
+      "path": "dom/events/Event-constructors.any.js",
+      "sha256": "860c64f2813cc3e31547aeb49f0a56ec9dde1e1bdfe0a4be7d94155bfbc1028b"
+    },
+    {
+      "path": "dom/events/EventTarget-add-remove-listener.any.js",
+      "sha256": "f1c1c806afb2a3fa88e8fc8e8c1fbbe2c1c9d3d5b7a5cc0df96680717f46f830"
+    },
+    {
+      "path": "dom/events/EventTarget-addEventListener.any.js",
+      "sha256": "7045782f35952ce90ee537a23a8e19b8623c03c2e42714c2097102b2a029783e"
+    },
+    {
+      "path": "dom/events/EventTarget-constructible.any.js",
+      "sha256": "f345e70db0bfcfe8a6a5e0ba4251ad55c79ce6955998991243d6e3277b80ae0e"
+    },
+    {
+      "path": "dom/events/EventTarget-removeEventListener.any.js",
+      "sha256": "5575deb3d90c09224a002a78fa398c0b16ca3ec856348467b642bb45bcefd384"
+    },
+    {
+      "path": "dom/events/CustomEvent.html",
+      "sha256": "4aaf8d6fdedafb2522239727d463734e0053546f858dd346c643ef83936d7bf5"
+    },
+    {
+      "path": "dom/events/EventTarget-dispatchEvent-returnvalue.html",
+      "sha256": "a1892b3d3f67f32c7c623768ac3d080e92fa3138b42fa52e8a4f0f4a2ece29e6"
+    },
+    {
+      "path": "dom/events/EventTarget-this-of-listener.html",
+      "sha256": "e972d5d702242bb7219dd91476bdd9fe6aecb21c372ce88317d314b2364da086"
+    },
+    {
+      "path": "dom/events/AddEventListenerOptions-signal.any.js",
+      "sha256": "26d439086c069f05f930ee3a3fda181e0034b489a89a7031696106cbdd97bc4c"
+    },
+    {
+      "path": "dom/abort/AbortSignal.any.js",
+      "sha256": "04555b5290748ad03511a991fd13196af9692129dce3c85e724affdd9d4f31e8"
+    },
+    {
+      "path": "dom/nodes/Element-classlist.html",
+      "sha256": "66b3e27f92b05079e662a4cbb5b1d0b2949824f8efa7c807cf72e30a57d569c4"
+    },
+    {
+      "path": "dom/nodes/Element-hasAttribute.html",
+      "sha256": "37257bd0824166da90068b2974601eb9885468a050973c11761d839a8a97a58b"
+    },
+    {
+      "path": "dom/nodes/Element-removeAttribute.html",
+      "sha256": "d18a4bb4b146b05f6b298648635c2472529eddf4dd5cd521b5c8d04076aa5678"
+    },
+    {
+      "path": "dom/nodes/Element-removeAttributeNS.html",
+      "sha256": "faed67fa57a1e3fa21cd10f304a944189c625e018805c576506d09655e405828"
+    },
+    {
+      "path": "dom/nodes/Element-setAttribute.html",
+      "sha256": "f9dedd74d75dabc75b46fa828d1a240586b64d6e9316a1efd7926aeb69696b0b"
+    },
+    {
+      "path": "css/cssom-view/GetBoundingRect.html",
+      "sha256": "66fde87cef05f36478f162b1cdec79613ef49cc37663fd11ac8b779c58b83237"
+    },
+    {
+      "path": "css/cssom-view/cssom-getBoundingClientRect-001.html",
+      "sha256": "04e89e24b880e9bdb50c1f9f7833a7c8522f035eb1a2df322b4d8b31d4fe1f63"
+    },
+    {
+      "path": "resources/testharness.js",
+      "sha256": "1794bae793c6e56b777140d61a3040e0a483f72d8967c5f28c0464532cf6f41e"
+    },
+    {
+      "path": "resources/testharnessreport.js",
+      "sha256": "3777176fc736b0a78cf7617b9613b220f635daae7536ec7ebb99c61dbb525aae"
+    },
+    {
+      "path": "dom/nodes/attributes.js",
+      "sha256": "32de63060a3bad2d73799ea393979196e96d58ae690fc9ab3c064689ff1a4c34"
+    },
+    {
+      "path": "LICENSE.md",
+      "sha256": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570"
+    }
+  ],
+  "mandatory_scenarios": [
+    "legacy-dom",
+    "browser-dom-30",
+    "solid-aot-7",
+    "scheduler-aot-9",
+    "wayland-solid-scheduling",
+    "typed-ui-events",
+    "namespaces-and-dataset",
+    "abort-listener-lifecycle",
+    "computed-style-and-client-rects",
+    "scroll-and-viewport",
+    "focus-and-active-element",
+    "resize-observer-lifecycle",
+    "fetch-json-get",
+    "fetch-text-post",
+    "fetch-abort-and-failure"
+  ],
+  "completion": {
+    "all_selected_wpt_subtests": "PASS on both native AOT and actual Servo",
+    "zero_skips": true,
+    "zero_harness_errors": true,
+    "all_mandatory_scenarios": "PASS",
+    "build_types_lint_format": "PASS",
+    "fresh_report_matches_profile_hash": true
+  }
+}

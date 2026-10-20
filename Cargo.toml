@@ -1,0 +1,68 @@
+[package]
+name = "weber-servo"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MPL-2.0"
+description = "Weber native Servo vertical prototype"
+
+[features]
+default = []
+aot = ["dep:cxx", "dep:cxx-build"]
+layer-shell = ["dep:wayland-client", "dep:wayland-protocols-wlr", "dep:calloop", "dep:calloop-wayland-source"]
+
+[dependencies]
+cxx = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+anyhow = "1"
+euclid = "0.22"
+log = "0.4"
+libc = "0.2"
+directories-next = "2"
+http = "1"
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+servo = { path = "vendor/servo/components/servo", default-features = false, features = ["bundled", "js_jit"] }
+url = "2"
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen", "wayland-csd-adwaita"] }
+
+[dependencies.wayland-client]
+version = "0.31.15"
+features = ["system", "dlopen"]
+optional = true
+
+[dependencies.wayland-protocols-wlr]
+version = "0.3.12"
+features = ["client"]
+optional = true
+
+[dependencies.calloop]
+version = "0.14.5"
+optional = true
+
+[dependencies.calloop-wayland-source]
+version = "0.4.1"
+optional = true
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.dev.package.servo-script]
+codegen-units = 16
+
+[lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[build-dependencies]
+cxx-build = { version = "1", optional = true }
+

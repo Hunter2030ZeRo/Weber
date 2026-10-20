@@ -1,0 +1,13 @@
+diff --git a/include/hermes/VM/sh_runtime.h b/include/hermes/VM/sh_runtime.h
+index 1da30e2..f7edbb8 100644
+--- a/include/hermes/VM/sh_runtime.h
++++ b/include/hermes/VM/sh_runtime.h
+@@ -74,7 +74,7 @@ typedef struct SHRuntime {
+ #endif
+ 
+   /// The active SHUnits in this runtime.
+-  SHUnit *units[8];
++  SHUnit *units[128];
+ 
+   /// The current top of the exception handler stack.
+   SHJmpBuf *shCurJmpBuf;

@@ -1,0 +1,172 @@
+diff --git a/components/script/dom/mutationobserver/mutationobserver.rs b/components/script/dom/mutationobserver/mutationobserver.rs
+index b4b719b84..7e708ae19 100644
+--- a/components/script/dom/mutationobserver/mutationobserver.rs
++++ b/components/script/dom/mutationobserver/mutationobserver.rs
+@@ -57,9 +57,10 @@ pub(crate) enum Mutation<'a> {
+ pub(crate) struct RegisteredObserver {
+     pub(crate) observer: Dom<MutationObserver>,
+     options: ObserverOptions,
++    source: Option<Dom<Node>>,
+ }
+ 
+-#[derive(JSTraceable, MallocSizeOf)]
++#[derive(Clone, JSTraceable, MallocSizeOf)]
+ pub(crate) struct ObserverOptions {
+     attribute_old_value: bool,
+     attributes: bool,
+@@ -98,6 +99,68 @@ impl MutationObserver {
+         &self.callback
+     }
+ 
++    /// Preserve subtree observations on a removed subtree until notification.
++    pub(crate) fn register_transient_observers(cx: &JSContext, node: &Node, parent: &Node) {
++        let mut found = false;
++        for ancestor in parent.inclusive_ancestors_unrooted(cx.no_gc(), ShadowIncluding::No) {
++            let Some(registered) = ancestor.registered_mutation_observers() else {
++                continue;
++            };
++            for entry in registered.iter().filter(|entry| entry.options.subtree) {
++                found = true;
++                let observer = entry.observer.as_rooted();
++                node.add_mutation_observer(RegisteredObserver {
++                    observer: Dom::from_ref(&observer),
++                    options: entry.options.clone(),
++                    source: Some(
++                        entry
++                            .source
++                            .as_ref()
++                            .cloned()
++                            .unwrap_or_else(|| Dom::from_ref(&ancestor)),
++                    ),
++                });
++                if !observer
++                    .node_list
++                    .borrow()
++                    .iter()
++                    .any(|item| &**item == node)
++                {
++                    observer.node_list.borrow_mut().push(Dom::from_ref(node));
++                }
++                ScriptThread::mutation_observers().add_mutation_observer(&observer);
++            }
++        }
++        if found {
++            ScriptThread::mutation_observers().queue_mutation_observer_microtask(cx);
++        }
++    }
++
++    pub(crate) fn clear_transient_observers(&self, source: Option<&Node>) {
++        let nodes: Vec<_> = self
++            .node_list
++            .borrow()
++            .iter()
++            .map(|node| node.as_rooted())
++            .collect();
++        for node in &nodes {
++            node.registered_mutation_observers_mut().retain(|entry| {
++                entry.observer != self
++                    || entry.source.is_none()
++                    || source.is_some_and(|source| {
++                        entry
++                            .source
++                            .as_ref()
++                            .is_some_and(|entry| &**entry != source)
++                    })
++            });
++        }
++        self.node_list.borrow_mut().retain(|node| {
++            node.registered_mutation_observers()
++                .is_some_and(|entries| entries.iter().any(|entry| entry.observer == self))
++        });
++    }
++
+     /// <https://dom.spec.whatwg.org/#queueing-a-mutation-record>
+     pub(crate) fn queue_a_mutation_record<'a, F>(
+         cx: &mut JSContext,
+@@ -248,7 +311,6 @@ impl MutationObserverMethods<crate::DomTypeHolder> for MutationObserver {
+     ) -> Fallible<DomRoot<MutationObserver>> {
+         global.set_exists_mut_observer();
+         let observer = MutationObserver::new_with_proto(cx, global, proto, callback);
+-        ScriptThread::mutation_observers().add_mutation_observer(&observer);
+         Ok(observer)
+     }
+ 
+@@ -263,8 +325,8 @@ impl MutationObserverMethods<crate::DomTypeHolder> for MutationObserver {
+         let subtree = options.subtree;
+ 
+         // Step 1
+-        if (options.attributeOldValue.is_some() || options.attributeFilter.is_some()) &&
+-            options.attributes.is_none()
++        if (options.attributeOldValue.is_some() || options.attributeFilter.is_some())
++            && options.attributes.is_none()
+         {
+             attributes = true;
+         }
+@@ -303,13 +365,14 @@ impl MutationObserverMethods<crate::DomTypeHolder> for MutationObserver {
+         }
+ 
+         // Step 7
++        self.clear_transient_observers(Some(target));
+         let add_new_observer = {
+             let mut replaced = false;
+             for registered in &mut *target.registered_mutation_observers_mut() {
+                 if registered.observer != self {
+                     continue;
+                 }
+-                // TODO: remove matching transient registered observers
++                registered.source = None;
+                 registered.options.attribute_old_value = attribute_old_value;
+                 registered.options.attributes = attributes;
+                 registered.options.character_data = character_data;
+@@ -329,6 +392,7 @@ impl MutationObserverMethods<crate::DomTypeHolder> for MutationObserver {
+         if add_new_observer {
+             target.add_mutation_observer(RegisteredObserver {
+                 observer: Dom::from_ref(self),
++                source: None,
+                 options: ObserverOptions {
+                     attributes,
+                     attribute_old_value,
+diff --git a/components/script/dom/node/node.rs b/components/script/dom/node/node.rs
+index b2f799aaa..59589e46d 100644
+--- a/components/script/dom/node/node.rs
++++ b/components/script/dom/node/node.rs
+@@ -3089,7 +3089,8 @@ impl Node {
+             node.assign_slottables_for_a_tree(cx, ForceSlottableNodeReconciliation::Force);
+         }
+ 
+-        // TODO: Step 15. transient registered observers
++        // Step 15. Preserve ancestor subtree observations until the next notification.
++        MutationObserver::register_transient_observers(cx, node, parent);
+ 
+         // Step 16.
+         if let SuppressObserver::Unsuppressed = suppress_observers {
+diff --git a/components/script/event_loop/script_mutation_observers.rs b/components/script/event_loop/script_mutation_observers.rs
+index 01f9a2393..019c5c1ca 100644
+--- a/components/script/event_loop/script_mutation_observers.rs
++++ b/components/script/event_loop/script_mutation_observers.rs
+@@ -31,6 +31,14 @@ pub(crate) struct ScriptMutationObservers {
+ 
+ impl ScriptMutationObservers {
+     pub(crate) fn add_mutation_observer(&self, observer: &MutationObserver) {
++        if self
++            .mutation_observers
++            .borrow()
++            .iter()
++            .any(|entry| entry == &observer)
++        {
++            return;
++        }
+         self.mutation_observers
+             .borrow_mut()
+             .push(Dom::from_ref(observer));
+@@ -63,8 +71,8 @@ impl ScriptMutationObservers {
+             // Step 6.2 Empty mo’s record queue.
+             record_queue.borrow_mut().clear();
+ 
+-            // TODO Step 6.3 For each node of mo’s node list, remove all transient registered observers
+-            // whose observer is mo from node’s registered observer list.
++            // Step 6.3 Remove transient registrations before invoking callbacks.
++            mo.clear_transient_observers(None);
+ 
+             // Step 6.4 If records is not empty, then invoke mo’s callback with « records,
+             // mo » and "report", and with callback this value mo.

@@ -1,0 +1,11 @@
+import { render } from "solid-js/web";
+import { DesktopApp } from "./desktop-app";
+import * as workload from "./desktop-workload";
+const root = document.getElementById("aot-dom-root");
+if (!root) throw new Error("Missing desktop mount root");
+let dispose: (() => void) | undefined;
+const unmount = () => { dispose?.(); dispose = undefined; root.replaceChildren(); };
+const mount = () => { unmount(); dispose = render(() => <DesktopApp />, root); };
+mount();
+Object.assign(globalThis, { WeberDesktopWeb: { mount, unmount, ...workload } });
+window.dispatchEvent(new Event("weber:desktop-mounted"));

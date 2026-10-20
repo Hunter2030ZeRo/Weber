@@ -1,0 +1,33 @@
+diff --git a/components/script/dom/performance/performance.rs b/components/script/dom/performance/performance.rs
+index 993c28539..65b7996f0 100644
+--- a/components/script/dom/performance/performance.rs
++++ b/components/script/dom/performance/performance.rs
+@@ -5,6 +5,8 @@
+ use std::cell::Cell;
+ use std::cmp::Ordering;
+ use std::collections::VecDeque;
++use std::sync::LazyLock;
++use std::time::{SystemTime, UNIX_EPOCH};
+ 
+ use dom_struct::dom_struct;
+ use js::context::JSContext;
+@@ -549,7 +551,18 @@ impl PerformanceMethods<crate::DomTypeHolder> for Performance {
+ 
+     /// <https://www.w3.org/TR/hr-time-2/#dom-performance-timeorigin>
+     fn TimeOrigin(&self) -> DOMHighResTimeStamp {
+-        (self.time_origin - CrossProcessInstant::epoch()).to_dom_high_res_time_stamp()
++        // Keep one wall/monotonic anchor across contexts in this process. Later
++        // system-clock adjustments must not change existing time origins.
++        static UNIX_ANCHOR: LazyLock<(CrossProcessInstant, f64)> = LazyLock::new(|| {
++            let monotonic = CrossProcessInstant::now();
++            let unix_ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or_else(
++                |error| -error.duration().as_secs_f64() * 1000.,
++                |duration| duration.as_secs_f64() * 1000.,
++            );
++            (monotonic, unix_ms)
++        });
++        let relative = (self.time_origin - UNIX_ANCHOR.0).to_dom_high_res_time_stamp();
++        Finite::wrap(UNIX_ANCHOR.1 + *relative)
+     }
+ 
+     /// <https://www.w3.org/TR/performance-timeline-2/#dom-performance-getentries>
