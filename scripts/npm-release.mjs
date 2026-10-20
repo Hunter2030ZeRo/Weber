@@ -5,15 +5,16 @@ import { openSync, closeSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { dirname, join, resolve } from 'node:path';
 import { root, sdkVersion, runtimePackageName } from '../sdk/toolchain.mjs';
-import { atomicOutput, digest } from '../sdk/project.mjs';
+import { atomicOutput, digest, host } from '../sdk/project.mjs';
 import { copyRuntime } from '../sdk/runtime-package.mjs';
 
 const execute = promisify(execFile);
-const binary = resolve(process.argv[2] ?? join(root, 'target/package/weber-foundation-jit/weber'));
+const binary = resolve(process.argv[2] ?? host());
 const output = join(root, 'target/npm');
 if (process.platform !== 'linux' || process.arch !== 'x64') throw new Error('Local native npm release is currently validated only for Linux x64');
 const info = JSON.parse((await execute(binary, ['--build-info'])).stdout);
 if (info.aotAvailable !== false) throw new Error('The default npm runtime must be a JIT-only build');
+if (info.clipboardProtocol !== 1) throw new Error('SDK 0.3.2 requires a native runtime with clipboardProtocol 1; rebuild and prepare the current JIT host');
 await atomicOutput(output, 'release.json', async staging => {
   const work = await mkdtemp(join(dirname(staging), '.weber-npm-'));
   try {

@@ -58,12 +58,12 @@ an already issued write. Await `setValue` before closing if persistence matters.
 ## Working example
 
 ```sh
-rtk proxy node sdk/cli.mjs init /tmp/my-weber-notes notes
+node sdk/cli.mjs init /tmp/my-weber-notes notes
 # From the generated project:
-rtk npm install
-rtk npm run dev
-rtk npm run build
-rtk npm start
+npm install
+npm run dev
+npm run build
+npm start
 ```
 
 The Notes template uses a textarea, Save/Reload and New window. Save persists in
@@ -71,3 +71,8 @@ the data area; Reload reads the latest saved value. There is no autosave or
 live synchronization of unsaved text between windows. Build/package use the
 existing Vite/npm path. See [foundation validation](foundation-validation.md)
 for executed native scenarios and their limits.
+
+SDK 0.3.2 also adds Copy note and Paste through the
+[native text clipboard API](clipboard.md). These buttons require a focused
+window and a host with `clipboardProtocol: 1`. Pasting changes the in-memory
+note; Save is still required to persist it.

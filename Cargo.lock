@@ -8338,6 +8338,7 @@ dependencies = [
  "http",
  "libc",
  "log",
+ "rustix 1.1.5",
  "rustls",
  "serde",
  "serde_json",

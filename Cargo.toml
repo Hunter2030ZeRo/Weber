@@ -9,7 +9,7 @@ description = "Weber native Servo vertical prototype"
 [features]
 default = []
 aot = ["dep:cxx", "dep:cxx-build"]
-layer-shell = ["dep:wayland-client", "dep:wayland-protocols-wlr", "dep:calloop", "dep:calloop-wayland-source"]
+layer-shell = ["dep:wayland-protocols-wlr", "dep:calloop", "dep:calloop-wayland-source"]
 
 [dependencies]
 cxx = { version = "1", optional = true }
@@ -20,6 +20,7 @@ anyhow = "1"
 euclid = "0.22"
 log = "0.4"
 libc = "0.2"
+rustix = { version = "1.1.5", features = ["event", "fs", "pipe"] }
 directories-next = "2"
 http = "1"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
@@ -30,7 +31,6 @@ winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "
 [dependencies.wayland-client]
 version = "0.31.15"
 features = ["system", "dlopen"]
-optional = true
 
 [dependencies.wayland-protocols-wlr]
 version = "0.3.12"

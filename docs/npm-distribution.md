@@ -1,4 +1,4 @@
-# Local npm distribution, SDK 0.3.1
+# Local npm distribution, SDK 0.3.2
 
 Weber has two distribution layers: the JS/TS SDK and CLI are npm development
 dependencies; the native Servo/SpiderMonkey runtime is platform-specific.
@@ -9,8 +9,8 @@ need Node/npm/Bun for a JIT app without a Bun backend.
 
 These are local preview artifacts, not published registry packages:
 
-- `target/npm/weber-sdk-0.3.1.tgz`: SDK, CLI, five templates and pinned defaults.
-- `target/npm/weber-runtime-linux-x64-0.3.1.tgz`: JIT executable, private native
+- `target/npm/weber-sdk-0.3.2.tgz`: SDK, CLI, five templates and pinned defaults.
+- `target/npm/weber-runtime-linux-x64-0.3.2.tgz`: JIT executable, private native
   libraries, existing notices and Servo patches. No Hermes or install scripts.
 - `target/npm/release.json`: artifact hashes, sizes, file lists and native build
   identity. Native protocol versions are independent of the SDK package version.
@@ -18,7 +18,7 @@ These are local preview artifacts, not published registry packages:
 Generate them from a prepared JIT runtime bundle:
 
 ```sh
-node scripts/npm-release.mjs target/package/weber-sdk-jit/weber
+node scripts/npm-release.mjs target/package/weber-clipboard-jit/weber
 ```
 
 To create an app, replace `/absolute/path/weber` and `/path/my-notes` below. The
@@ -27,12 +27,12 @@ It may be relative to the new project (the distribution test uses sibling
 tarballs), allowing the complete project and tarballs to move together.
 
 ```sh
-WEBER_SDK_SPEC=file:/absolute/path/weber/target/npm/weber-sdk-0.3.1.tgz \
-  npm exec --package=/absolute/path/weber/target/npm/weber-sdk-0.3.1.tgz -- \
+WEBER_SDK_SPEC=file:/absolute/path/weber/target/npm/weber-sdk-0.3.2.tgz \
+  npm exec --package=/absolute/path/weber/target/npm/weber-sdk-0.3.2.tgz -- \
   weber init /path/my-notes notes
 cd /path/my-notes
 npm install
-npm install --save-dev /absolute/path/weber/target/npm/weber-runtime-linux-x64-0.3.1.tgz
+npm install --save-dev /absolute/path/weber/target/npm/weber-runtime-linux-x64-0.3.2.tgz
 npm run dev
 npm run build
 npm run package
@@ -80,7 +80,10 @@ not establish clean-machine compatibility, a complete license audit, physical
 keyboard/IME behavior, Windows/macOS support or new performance measurements.
 The native engine and CPU policy have not changed in this SDK work.
 
-## Verified result
+SDK 0.3.2 adds the [native text clipboard](clipboard.md). The current npm runtime
+requires `clipboardProtocol: 1`; use a newly built JIT host.
+
+## Previous SDK 0.3.1 result
 
 The optimized `--release --locked --features layer-shell` host compiled and
 both npm distribution gates passed. Vite reported a live HMR update of

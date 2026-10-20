@@ -195,8 +195,14 @@ pub fn exchange_active(payload: &str) -> String {
 pub fn exchange(control: &Shared, source: u64, payload: &str) -> String {
     let mut watch_started = false;
     let result = (|| -> Result<Value> {
-        ensure!(payload.len() <= 16_000, "Native request too large");
+        ensure!(payload.len() <= 65_536, "Native request too large");
         let request: Value = serde_json::from_str(payload)?;
+        if !request["op"]
+            .as_str()
+            .is_some_and(|op| op.starts_with("clipboard."))
+        {
+            ensure!(payload.len() <= 16_000, "Native request too large");
+        }
         ensure!(request.is_object(), "Native request must be an object");
         let mut control = control.try_borrow_mut()?;
         ensure!(
@@ -214,6 +220,21 @@ pub fn exchange(control: &Shared, source: u64, payload: &str) -> String {
                 .ok_or_else(|| anyhow!("Window id must be a positive integer"))?,
         };
         match request["op"].as_str() {
+            Some("clipboard.start") => {
+                ensure!(
+                    control
+                        .windows
+                        .get(&source)
+                        .is_some_and(|window| window["focused"] == true),
+                    "Clipboard requires the calling window to have focus"
+                );
+                crate::clipboard::submit(source, &request)
+            }
+            Some("clipboard.poll") => crate::clipboard::poll(source, &request),
+            Some("clipboard.cancel") => {
+                crate::clipboard::cancel(source, &request)?;
+                Ok(Value::Null)
+            }
             Some("storage.start") => crate::storage::submit(source, &request),
             Some("storage.poll") => crate::storage::poll(source, &request),
             Some("storage.cancel") => {

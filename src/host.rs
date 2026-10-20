@@ -271,6 +271,7 @@ impl WebViewDelegate for Delegate {
         if request.url.scheme() != "weber" {
             crate::backend::close_window(self.id);
             crate::storage::close_window(self.id);
+            crate::clipboard::close_window(self.id);
             self.control.borrow_mut().detach(self.id);
             #[cfg(feature = "aot")]
             if self.active.replace(false)
@@ -444,7 +445,7 @@ impl Running {
             .hidpi_scale_factor(scale(&window))
             .build();
         webview.resize(window.inner_size());
-        webview.set_focused(true);
+        webview.set_focused(window.has_focus());
         servo.spin_event_loop();
         Ok(Self {
             webview,
@@ -512,6 +513,9 @@ fn window_info(id: u64, window: &Window) -> serde_json::Value {
 }
 
 pub struct App {
+    // run_app consumes EventLoop. Keep its Wayland display alive until the
+    // clipboard worker and its foreign proxies are joined/dropped in App::drop.
+    _display: Option<winit::event_loop::OwnedDisplayHandle>,
     url: Url,
     proxy: EventLoopProxy<Wake>,
     servo: Option<Servo>,
@@ -531,6 +535,7 @@ impl App {
         control.borrow_mut().wake = Some(proxy.clone());
         crate::backend::set_waker(proxy.clone());
         Self {
+            _display: None,
             url,
             proxy,
             servo: None,
@@ -588,6 +593,7 @@ impl App {
             }
             crate::backend::close_window(id);
             crate::storage::close_window(id);
+            crate::clipboard::close_window(id);
             self.control.borrow_mut().remove(id);
             self.telemetry
                 .emit(serde_json::json!({ "stage": "window-closed", "id": id }));
@@ -685,12 +691,23 @@ impl Drop for App {
     fn drop(&mut self) {
         self.running.clear();
         crate::storage::shutdown();
+        crate::clipboard::shutdown();
         self.servo.take();
     }
 }
 impl ApplicationHandler<Wake> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.servo.is_some() {
+            return;
+        }
+        self._display = Some(event_loop.owned_display_handle());
+        if let Err(error) = event_loop
+            .display_handle()
+            .map_err(anyhow::Error::from)
+            .and_then(crate::clipboard::attach)
+        {
+            self.failure = Some(error);
+            event_loop.exit();
             return;
         }
         let waker = Waker(self.proxy.clone());

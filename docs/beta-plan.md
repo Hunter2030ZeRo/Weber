@@ -39,7 +39,9 @@ own build and native evidence before being marked complete.
 Small-DOM scheduling, app paths/persistent JSON stores and a Vite/Solid Notes
 template are implemented. See [foundation validation](foundation-validation.md)
 for the final binary, native tests and performance evidence. File dialogs,
-clipboard, broader platform APIs and recovery remain subsequent work.
+browser clipboard integration, broader platform APIs and recovery remain subsequent work.
+The [SDK 0.3.2 text clipboard](clipboard.md) provides the first native clipboard
+increment; standard browser shortcuts and richer formats remain separate work.
 
 ## Subsequent beta requirements
 
@@ -49,7 +51,7 @@ measures larger DOMs, multiple windows and repeated close/reopen lifetimes on
 both engines, alongside the preceding JIT-only host. See
 [the bundle's validation record](platform-validation.md) for what actually ran.
 
-- Clipboard, native file dialogs, application data paths, remaining window
+- Browser clipboard integration, native file dialogs, remaining window
   controls and real keyboard/IME/shortcut verification.
 - General platform event API, renderer navigation/disposal handling, recovery
   policy, dependency-specific Node compatibility and native app trust boundaries.

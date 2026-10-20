@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Developer preview</strong> · Linux / Wayland · SDK 0.3.1
+  <strong>Developer preview</strong> · Linux / Wayland · SDK 0.3.2
 </p>
 
 <p align="center">
@@ -38,6 +38,7 @@ Linux foundation, web compatibility, responsiveness and resource use.
 | Web UI | Vite, SolidJS, TypeScript, development HMR, CSS animation and `requestAnimationFrame` |
 | Windows | Multiple windows for the same app, titles, resizing, maximize, fullscreen and state subscriptions |
 | Storage | App-scoped directories and asynchronous persistent JSON storage shared across app windows |
+| Clipboard | Asynchronous text copy/paste through the JS/TS SDK on focused Wayland app windows |
 | Backend | Optional Bun process with named calls, subscriptions, cancellation and bounded IPC |
 | Distribution | Local npm SDK/runtime packages and relocatable Linux application bundles |
 
@@ -45,7 +46,7 @@ Linux foundation, web compatibility, responsiveness and resource use.
 Windows and macOS are planned. Weber is a developer preview, not a released beta;
 the SDK and runtime packages are not published to npm.
 
-Clipboard, native file dialogs, accessibility and broader platform integration
+Native file dialogs, accessibility and broader platform integration
 remain on the [beta roadmap](docs/beta-plan.md). Browser compatibility is measured
 against a [selected, locked test profile](docs/compatibility-target.md), rather
 than assumed to cover every web API or arbitrary Electron applications.
@@ -169,6 +170,7 @@ memory or startup advantage over Electron or native GUI frameworks is claimed.
 | Build tools and SDK | [Vite workflow](docs/vite-workflow.md) · [Local npm distribution](docs/npm-distribution.md) |
 | Native windows | [Runtime and ownership](docs/native-runtime.md) · [Window controls and validation](docs/platform-validation.md) |
 | Persistent data | [Storage API and Notes example](docs/app-storage.md) |
+| Clipboard | [Native text clipboard API and validation](docs/clipboard.md) |
 | Optional backend | [Bun integration](docs/bun-backend.md) · [Backend validation](docs/bun-backend-validation.md) |
 | Web compatibility | [Locked test profile](docs/compatibility-target.md) · [Profile validation](docs/profile-validation.md) |
 | Performance | [JIT foundation results](docs/foundation-validation.md) · [CPU investigation](docs/jit-cpu-analysis.md) |

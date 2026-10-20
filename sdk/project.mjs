@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { dirname, resolve, relative, join, isAbsolute, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { importTool, resolveTool, root, sdk, checkout, installedRuntime, runtimePackageName, packageDirectory } from './toolchain.mjs';
+import { importTool, resolveTool, root, sdk, checkout, sdkVersion, installedRuntime, runtimePackageName, packageDirectory } from './toolchain.mjs';
 import { weber } from './vite.mjs';
 
 export const digest = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -19,7 +19,7 @@ export function host(aot = false, project = process.cwd()) {
   const runtime = installedRuntime(project);
   if (runtime && !aot) return join(runtime, 'weber');
   const prepared = checkout && [
-  ...(aot ? ['target/package/weber-platform-aot/weber'] : ['target/package/weber-foundation-jit/weber', 'target/package/weber-platform-jit/weber']),
+  ...(aot ? ['target/package/weber-platform-aot/weber'] : ['target/package/weber-clipboard-jit/weber', 'target/package/weber-foundation-jit/weber', 'target/package/weber-platform-jit/weber']),
   ...(aot ? ['target/package/weber-beta-aot/weber'] : ['target/package/weber-beta-jit/weber']),
   'target/package/weber-bun/weber', 'target/package/weber-vite/weber', 'target/debug/weber-servo', 'target/package/weber-framework/weber',
   ].map(path => join(root, path)).find(existsSync);
@@ -82,7 +82,7 @@ export async function atomicOutput(destination, marker, work) {
 export async function init(project, template) {
   if (!['solid', 'dom', 'node', 'windows', 'notes'].includes(template)) throw new Error('Template must be solid, dom, node, windows or notes');
   if (existsSync(project)) throw new Error('Project directory already exists');
-  if (!checkout && !process.env.WEBER_SDK_SPEC) throw new Error('This SDK preview is not published: set WEBER_SDK_SPEC=file:/absolute/path/to/weber-sdk-0.3.1.tgz before init');
+  if (!checkout && !process.env.WEBER_SDK_SPEC) throw new Error(`This SDK preview is not published: set WEBER_SDK_SPEC=file:/absolute/path/to/weber-sdk-${sdkVersion}.tgz before init`);
   await cp(join(checkout ? root : sdk, checkout ? 'examples' : 'templates', template), project, { recursive: true, filter: source => !['dist', 'node_modules'].includes(source.split(sep).at(-1)) });
   const spec = JSON.parse(await readFile(join(sdk, 'defaults.json'), 'utf8'));
   await writeFile(join(project, 'package.json'), JSON.stringify({ name: 'weber-app', private: true, type: 'module', scripts: {

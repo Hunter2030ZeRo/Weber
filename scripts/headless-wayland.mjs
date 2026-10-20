@@ -11,13 +11,17 @@ if (!process.argv[2]) throw new Error('Pass a test script and optional arguments
 if (process.env.DBUS_SESSION_BUS_ADDRESS?.includes('/run/user/')) throw new Error('Use dbus-run-session, not the desktop session bus');
 const temp = await mkdtemp(join(tmpdir(), 'weber-wayland-'));
 const runtime = join(temp, 'runtime'); await mkdir(runtime, { mode: 0o700 });
-const env = { ...process.env, XDG_RUNTIME_DIR: runtime, WAYLAND_DISPLAY: 'weber-test', XDG_CURRENT_DESKTOP: 'GNOME',
+const env = { ...process.env, GDK_BACKEND: 'wayland', XDG_RUNTIME_DIR: runtime, WAYLAND_DISPLAY: 'weber-test', XDG_CURRENT_DESKTOP: 'GNOME',
   XDG_CONFIG_HOME: join(temp, 'config'), XDG_CACHE_HOME: join(temp, 'cache'), XDG_DATA_HOME: join(temp, 'data'), XDG_STATE_HOME: join(temp, 'state'), WEBER_TEST_DISPLAY: 'isolated GNOME headless Wayland; 960x720@60 virtual monitor' };
 for (const key of ['DISPLAY', 'XDG_ACTIVATION_TOKEN', 'DESKTOP_STARTUP_ID']) delete env[key];
 await promisify(execFile)('dbus-update-activation-environment', [
-  ...['XDG_RUNTIME_DIR', 'WAYLAND_DISPLAY', 'XDG_CURRENT_DESKTOP', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME'].map(key => `${key}=${env[key]}`),
+  ...['GDK_BACKEND', 'XDG_RUNTIME_DIR', 'WAYLAND_DISPLAY', 'XDG_CURRENT_DESKTOP', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME'].map(key => `${key}=${env[key]}`),
   'DISPLAY=', 'XDG_ACTIVATION_TOKEN=', 'DESKTOP_STARTUP_ID=',
 ], { env });
+// A fresh profile otherwise opens Welcome over our windows and steals focus.
+// This dconf write belongs only to this temporary profile and private bus.
+const version = (await promisify(execFile)('gnome-shell', ['--version'], { env })).stdout.trim().split(' ').at(-1);
+await promisify(execFile)('gsettings', ['set', 'org.gnome.shell', 'welcome-dialog-last-shown-version', version], { env });
 const log = openSync(resolve('artifacts/headless-wayland.log'), 'w');
 const compositor = spawn('gnome-shell', ['--headless', '--wayland', '--no-x11', '--wayland-display=weber-test', '--virtual-monitor=960x720@60'], { env, stdio: ['ignore', log, log] }); closeSync(log);
 const exit = new Promise(resolveExit => compositor.once('exit', (code, signal) => resolveExit({ code, signal })));

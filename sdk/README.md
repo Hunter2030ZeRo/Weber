@@ -10,6 +10,12 @@ runtime downloads are used. `WEBER_SDK_SPEC=file:/absolute/path/to/sdk.tgz`
 must select that tarball when creating a project with `weber init PROJECT notes`.
 Generated TypeScript paths resolve from that project's `node_modules`.
 
+`@weber/sdk/clipboard` exports asynchronous `readText()` and `writeText(text)`.
+It requires native `clipboardProtocol: 1` and a focused app window. Text is
+limited to 8192 UTF-8 bytes; writes reject NUL. Only the text SDK is connected
+to the system clipboard; browser shortcuts and `navigator.clipboard` are not
+redirected by this module. See the source repository's `docs/clipboard.md`.
+
 Project commands: `npm run dev`, `npm run check`, `npm run build`,
 `npm start`, and `npm run package`. The final command produces `package/weber`,
 private libraries, notices and `application/`. Launch `./weber --app ./application`
