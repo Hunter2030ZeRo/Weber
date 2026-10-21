@@ -1,0 +1,1917 @@
+diff --git a/components/layout/display_list/mod.rs b/components/layout/display_list/mod.rs
+--- a/components/layout/display_list/mod.rs
++++ b/components/layout/display_list/mod.rs
+@@ -245,6 +245,7 @@
+ 
+         // Clear any caret color from previous display list constructions.
+         builder.paint_info.caret_property_binding = None;
++        builder.paint_info.ime_cursor_rect = None;
+ 
+         builder.add_all_spatial_nodes();
+ 
+@@ -1442,6 +1443,8 @@
+             ),
+         )
+         .to_webrender();
++
++        builder.paint_info.ime_cursor_rect = Some((insertion_point_rect, state.spatial_id));
+ 
+         let color = parent_style.clone_color();
+         let caret_color = match parent_style.clone_caret_color().0 {
+diff --git a/components/paint/painter.rs b/components/paint/painter.rs
+--- a/components/paint/painter.rs
++++ b/components/paint/painter.rs
+@@ -715,6 +715,28 @@
+     /// and not the entire scene?
+     fn update_transaction_with_all_scroll_offsets(&self, transaction: &mut Transaction) {
+         for webview_renderer in self.webview_renderers.values() {
++            // Reuse the painted caret; do not force an extra layout or poll on a timer.
++            if let Some(root) = webview_renderer.root_pipeline_id
++                && let Some(details) = webview_renderer.pipelines.get(&root)
++                && let Some((rect, node)) = details.ime_cursor_rect
++            {
++                let transform = details.scroll_tree.cumulative_node_to_root_transform(node);
++                let rect = match transform {
++                    servo_geometry::FastLayoutTransform::Offset(offset) => {
++                        Some(rect.translate(offset))
++                    },
++                    servo_geometry::FastLayoutTransform::Transform { transform, .. } => transform
++                        .outer_transformed_rect(&rect.to_rect())
++                        .map(|rect| rect.to_box2d()),
++                };
++                if let Some(rect) = rect {
++                    let rect = rect.cast_unit::<style_traits::CSSPixel>()
++                        * webview_renderer.device_pixels_per_page_pixel();
++                    webview_renderer
++                        .webview
++                        .notify_ime_cursor_rect(rect.round_out().to_i32());
++                }
++            }
+             for details in webview_renderer.pipelines.values() {
+                 for node in details.scroll_tree.nodes.iter() {
+                     let (Some(offset), Some(external_id)) = (node.offset(), node.external_id())
+@@ -1008,6 +1030,7 @@
+         let details = webview_renderer.ensure_pipeline_details(pipeline_id.into());
+ 
+         details.install_new_scroll_tree(display_list_info.scroll_tree);
++        details.ime_cursor_rect = display_list_info.ime_cursor_rect;
+         details.viewport_scale = Some(display_list_info.viewport_details.hidpi_scale_factor);
+ 
+         let epoch = display_list_info.epoch.into();
+diff --git a/components/paint/pipeline_details.rs b/components/paint/pipeline_details.rs
+--- a/components/paint/pipeline_details.rs
++++ b/components/paint/pipeline_details.rs
+@@ -38,6 +38,10 @@
+     /// The `Paint`-side [ScrollTree]. This is used to allow finding and scrolling
+     /// nodes in `Paint` before forwarding new offsets to WebRender.
+     pub scroll_tree: ScrollTree,
++    pub ime_cursor_rect: Option<(
++        webrender_api::units::LayoutRect,
++        servo_base::id::ScrollTreeNodeId,
++    )>,
+ 
+     /// The paint metric status of the first paint.
+     pub first_paint_metric: PaintMetricState,
+@@ -90,6 +94,7 @@
+             animation_callbacks_running: false,
+             throttled: false,
+             scroll_tree: ScrollTree::default(),
++            ime_cursor_rect: None,
+             first_paint_metric: PaintMetricState::Waiting,
+             first_contentful_paint_metric: PaintMetricState::Waiting,
+             lcp_candidates: VecDeque::new(),
+diff --git a/components/script/dom/characterdata/characterdata.rs b/components/script/dom/characterdata/characterdata.rs
+--- a/components/script/dom/characterdata/characterdata.rs
++++ b/components/script/dom/characterdata/characterdata.rs
+@@ -36,6 +36,7 @@
+     node: Node,
+     #[no_trace]
+     data: AtomicRefCell<String>,
++    editable_caret: std::cell::Cell<bool>,
+ }
+ 
+ impl CharacterData {
+@@ -43,6 +44,7 @@
+         CharacterData {
+             node: Node::new_inherited(document),
+             data: AtomicRefCell::new(String::from(data)),
++            editable_caret: std::cell::Cell::new(false),
+         }
+     }
+ 
+@@ -103,6 +105,12 @@
+             old_value: self.data.borrow().clone(),
+         });
+         MutationObserver::queue_a_mutation_record(cx, self.upcast::<Node>(), mutation);
++    }
++
++    pub(crate) fn set_editable_caret(&self, no_gc: &js::context::NoGC, value: bool) {
++        if self.editable_caret.replace(value)!=value {
++            self.upcast::<Node>().dirty(no_gc,NodeDamage::ContentOrHeritage);
++        }
+     }
+ 
+     /// Returns whether `new_range` was successfully set on an existing text run
+@@ -340,6 +348,8 @@
+ }
+ 
+ impl<'dom> LayoutDom<'dom, CharacterData> {
++    pub(crate) fn paints_editable_caret(&self)->bool {self.unsafe_get().editable_caret.get()}
++
+     #[inline]
+     pub(crate) fn data_for_layout(self) -> AtomicRef<'dom, str> {
+         AtomicRef::map(self.unsafe_get().data.borrow(), |data| &**data)
+diff --git a/components/script/dom/document/document.rs b/components/script/dom/document/document.rs
+--- a/components/script/dom/document/document.rs
++++ b/components/script/dom/document/document.rs
+@@ -432,6 +432,7 @@
+     focus_handler: DocumentFocusHandler,
+     /// A helper to handle showing and hiding user interface controls in the embedding layer.
+     embedder_controls: DocumentEmbedderControls,
++    native_editing: super::native_editing::NativeEditing,
+     id_map: TreeOrderedIndexMap,
+     name_map: TreeOrderedIndexMap,
+     tag_map: DomRefCell<HashMapTracedValues<LocalName, Dom<HTMLCollection>, FxBuildHasher>>,
+@@ -4063,6 +4064,7 @@
+             event_handler: DocumentEventHandler::new(window),
+             focus_handler: DocumentFocusHandler::new(window, has_focus),
+             embedder_controls: DocumentEmbedderControls::new(window),
++            native_editing: Default::default(),
+             id_map: TreeOrderedIndexMap::id(),
+             name_map: TreeOrderedIndexMap::name(),
+             // https://dom.spec.whatwg.org/#concept-document-encoding
+@@ -4231,6 +4233,8 @@
+         &self.focus_handler
+     }
+ 
++    pub(crate) fn native_editing(&self) -> &super::native_editing::NativeEditing { &self.native_editing }
++
+     /// Get the [`Document`]'s [`DocumentEmbedderControls`].
+     pub(crate) fn embedder_controls(&self) -> &DocumentEmbedderControls {
+         &self.embedder_controls
+diff --git a/components/script/dom/document/document_embedder_controls.rs b/components/script/dom/document/document_embedder_controls.rs
+--- a/components/script/dom/document/document_embedder_controls.rs
++++ b/components/script/dom/document/document_embedder_controls.rs
+@@ -178,6 +178,24 @@
+         }
+     }
+ 
++    pub(crate) fn has_ime_for(&self, element: &Element) -> bool {
++        self.visible_elements.borrow().values().any(|control| {
++            matches!(control, ControlElement::Ime(_))
++                && std::ptr::eq(control.node(), element.upcast::<Node>())
++        })
++    }
++
++    pub(crate) fn update_ime_context(&self, element: &Element, context: Option<embedder_traits::ImeSurroundingText>, input_method: bool) {
++        let document = self.window.Document();
++        if !document.focus_handler().focused_area().element().is_some_and(|focused| std::ptr::eq(&*focused, element)) { return; }
++        let id = self.visible_elements.borrow().iter().find_map(|(index, control)| {
++            if matches!(control, ControlElement::Ime(_)) && std::ptr::eq(control.node(), element.upcast::<Node>()) {
++                Some(EmbedderControlId { webview_id: self.window.webview_id(), pipeline_id: self.window.pipeline_id(), index: index.0 })
++            } else { None }
++        });
++        if let Some(id) = id { self.window.send_to_embedder(EmbedderMsg::ImeContextChanged(id, context, input_method)); }
++    }
++
+     pub(crate) fn hide_embedder_control(&self, element: &Element) {
+         self.visible_elements
+             .borrow_mut()
+diff --git a/components/script/dom/document/document_event_handler.rs b/components/script/dom/document/document_event_handler.rs
+--- a/components/script/dom/document/document_event_handler.rs
++++ b/components/script/dom/document/document_event_handler.rs
+@@ -1664,6 +1664,84 @@
+                 document.focus_handler().focus(cx, &FocusableArea::Viewport);
+                 return Default::default();
+             },
++            ImeEvent::DeleteSurroundingText { before_length, after_length, text, cursor, anchor, replacement } => {
++                use crate::dom::text_control::TextControlElement;
++                use crate::dom::text_input::{InputEventType, IsComposing};
++                use crate::dom::types::{HTMLInputElement, HTMLTextAreaElement, InputEvent};
++                let focused_area = document.focus_handler().focused_area();
++                let Some(element) = focused_area.element() else {
++                    return Default::default();
++                };
++                let control: &dyn TextControlElement =
++                    if let Some(input) = element.downcast::<HTMLInputElement>() {
++                        input
++                    } else if let Some(area) = element.downcast::<HTMLTextAreaElement>() {
++                        area
++                    } else {
++                        let expected = embedder_traits::ImeSurroundingText {
++                            text,
++                            cursor,
++                            anchor,
++                        };
++                        document.delete_editable_surrounding(
++                            cx,
++                            &expected,
++                            before_length,
++                            after_length,
++                            replacement.as_deref(),
++                        );
++                        return Default::default();
++                    };
++                if control.read_only_or_disabled() || control.is_password_field() {
++                    return Default::default();
++                }
++                let expected = embedder_traits::ImeSurroundingText {
++                    text,
++                    cursor,
++                    anchor,
++                };
++                if control.text_input().ime_surrounding_text().as_ref() != Some(&expected) {
++                    return Default::default();
++                }
++                let before = InputEvent::new(
++                    cx,
++                    &self.window,
++                    None,
++                    atom!("beforeinput"),
++                    true,
++                    true,
++                    Some(&self.window),
++                    0,
++                    None,
++                    false,
++                    DOMString::from_static("deleteContentBackward"),
++                );
++                if !before.upcast::<Event>().fire(cx, element.upcast()) {
++                    return Default::default();
++                }
++                if !document
++                    .focus_handler()
++                    .focused_area()
++                    .element()
++                    .is_some_and(|focused| std::ptr::eq(&*focused, &*element))
++                {
++                    return Default::default();
++                }
++                if !control.text_input_mut().delete_ime_surrounding(
++                    &expected,
++                    before_length,
++                    after_length,
++                ) {
++                    return Default::default();
++                }
++                control.handle_text_content_changed(cx);
++                control.queue_input_event(None, IsComposing::NotComposing, InputEventType::DeleteContentBackward);
++                if let Some(text) = replacement {
++                    let event = CompositionEvent::new(cx, &self.window, atom!("compositionend").into(), true, false, Some(&self.window), 0, DOMString::from(text));
++                    event.upcast::<Event>().fire(cx, element.upcast());
++                }
++                return Default::default();
++            },
+             ImeEvent::Composition(composition_event) => composition_event,
+         };
+ 
+@@ -1677,6 +1755,8 @@
+             return Default::default();
+         };
+ 
++        let state = composition_event.state;
++        let text = composition_event.data.clone();
+         let cancelable = composition_event.state == keyboard_types::CompositionState::Start;
+         let event = CompositionEvent::new(
+             cx,
+@@ -1691,6 +1771,7 @@
+ 
+         let event = event.upcast::<Event>();
+         event.fire(cx, focused_element.upcast());
++        if !event.DefaultPrevented() { document.editable_composition(cx,state,&text); }
+         event.flags().into()
+     }
+ 
+@@ -2068,6 +2149,13 @@
+             .unwrap_or_else(|| document.upcast());
+ 
+         let event = &event.event;
++        if event.modifiers.intersects(crate::dom::document::editing::CMD_OR_CONTROL) &&
++            !event.modifiers.intersects(Modifiers::ALT) &&
++            let Key::Character(key)=&event.key && (key.eq_ignore_ascii_case("z") || key.eq_ignore_ascii_case("y")) &&
++            document.editable_selection_host(cx).is_some() {
++            document.native_edit_undo(cx,key.eq_ignore_ascii_case("y")||event.modifiers.contains(Modifiers::SHIFT));
++            return input_event_result | InputEventResult::Consumed;
++        }
+         if let Some(editing_action) = editing_action_from_keyboard_event(event) {
+             let editing_host = document.editing_context(cx.no_gc(), node);
+             if editing_host.perform_editing_action(cx, editing_action) {
+diff --git a/components/script/dom/document/editing.rs b/components/script/dom/document/editing.rs
+--- a/components/script/dom/document/editing.rs
++++ b/components/script/dom/document/editing.rs
+@@ -16,6 +16,7 @@
+ use layout_api::QueryMsg;
+ use script_bindings::codegen::GenericBindings::DocumentBinding::DocumentMethods;
+ use script_bindings::codegen::GenericBindings::EventBinding::EventMethods;
++use script_bindings::codegen::GenericBindings::RangeBinding::RangeMethods;
+ use script_bindings::codegen::GenericBindings::SelectionBinding::SelectionMethods;
+ use script_bindings::dom::UnrootedDom;
+ use script_bindings::inheritance::Castable;
+@@ -117,6 +118,9 @@
+                     {
+                         // Step 3.1. If there is a selection in an editable context where
+                         // cutting is enabled, then
++                        if !editing_context.before_clipboard_input(cx,"deleteByCut",None) || !editing_context.cutting_enabled() {
++                            event.mark_as_handled(); return event.flags().into();
++                        }
+                         // Step 3.1.1. Copy the selected contents, if any, to the clipboard.
+                         // Implementations should create alternate text/html and text/plain
+                         // clipboard formats when content in a web page is selected.
+@@ -137,7 +141,9 @@
+ 
+                         // Step 3.1.2. Remove the contents of the selection from the document
+                         // and collapse the selection.
++                        self.begin_edit_history(cx);
+                         editing_context.remove_the_contents_of_the_selection(cx);
++                        self.finish_edit_history(cx);
+ 
+                         // Step 3.1.3. Fire a clipboard event named clipboardchange
+                         self.fire_clipboard_event(cx, &event_target, ClipboardEventType::Change);
+@@ -145,7 +151,7 @@
+                         // Step 3.1.4. Queue tasks to fire any events that should fire due to
+                         // the modification, see §5.3 Integration with other scripts and
+                         // events for details.
+-                        editing_context.fire_cut_events();
++                        editing_context.fire_cut_events(cx);
+ 
+                         // This is how `true` is returned from this function.
+                         event.mark_as_handled();
+@@ -158,14 +164,19 @@
+                     {
+                         // Step 3.1. If there is a selection or cursor in an editable context
+                         // where pasting is enabled, then
++                        if !editing_context.before_clipboard_input(cx,"insertFromPaste",Some(&text_content)) || !editing_context.pasting_enabled() {
++                            event.mark_as_handled(); return event.flags().into();
++                        }
+                         // Step 3.1.1. Insert the most suitable content found on the
+                         // clipboard, if any, into the context.
++                        self.begin_edit_history(cx);
+                         editing_context.insert_content(cx, &text_content);
++                        self.finish_edit_history(cx);
+ 
+                         // Step 3.1.2. Queue tasks to fire any events that should fire due to
+                         // the modification, see §5.3 Integration with other scripts and
+                         // events for details.
+-                        editing_context.fire_paste_events(&text_content);
++                        editing_context.fire_paste_events(cx,&text_content);
+ 
+                         // This is how `true` is returned from this function.
+                         event.mark_as_handled();
+@@ -341,14 +352,18 @@
+         cx: &mut JSContext,
+         editing_action: &EditingAction,
+     ) -> bool {
+-        if !servo_config::pref!(dom_exec_command_enabled) {
++        if self.editable_selection_host(cx).is_none()
++            || !servo_config::pref!(dom_exec_command_enabled)
++        {
+             return false;
+         }
+ 
+         // This function does not do any checks for whether or not we are actually inside an
+         // editing host, since those checks are performed by exec_command_for_command_id either way.
+         let (command, argument) = match editing_action {
+-            EditingAction::MoveCursor(..) => return false,
++            EditingAction::MoveCursor(direction, motion, selection) => {
++                return self.move_editable_selection(cx, *direction, *motion, *selection);
++            },
+             EditingAction::SelectAll | EditingAction::Clipboard(_) => {
+                 unreachable!("Should have been handled before this point.")
+             },
+@@ -391,7 +406,9 @@
+             ),
+         };
+ 
+-        self.exec_command_for_command_id(cx, command, argument)
++        let changed = self.exec_command_for_command_id(cx, command, argument);
++        if changed { self.publish_editable_context(cx,false); }
++        changed
+     }
+ }
+ 
+@@ -521,10 +538,7 @@
+             EditingContext::TextControl(element) => {
+                 !element.text_control_element().read_only_or_disabled()
+             },
+-            EditingContext::Document(..) => {
+-                // TODO(mrobinson): Add support for integration with contenteditable.
+-                false
+-            },
++            EditingContext::Document(document) => document.focus_handler().focused_area().element().is_some_and(|element|element.upcast::<Node>().is_editable_or_editing_host()),
+         }
+     }
+ 
+@@ -535,13 +549,16 @@
+                     .text_control_element()
+                     .remove_the_contents_of_the_selection(cx);
+             },
+-            EditingContext::Document(..) => {
+-                // TODO(mrobinson): Add support for integration with contenteditable.
+-            },
+-        }
+-    }
+-
+-    pub(crate) fn fire_cut_events(&self) {
++            EditingContext::Document(document) => {
++                if document.editable_selection_host(cx).is_some() && let Some(selection)=document.GetSelection(cx) && let Some(range)=selection.active_range(cx) {
++                    let _=range.DeleteContents(cx);
++                    let _=selection.CollapseToStart(cx);
++                }
++            },
++        }
++    }
++
++    pub(crate) fn fire_cut_events(&self, cx: &mut JSContext) {
+         match self {
+             EditingContext::TextControl(element) => {
+                 element.text_control_element().queue_input_event(
+@@ -550,7 +567,7 @@
+                     InputEventType::DeleteByCut,
+                 );
+             },
+-            EditingContext::Document(..) => {},
++            EditingContext::Document(document) => { if let Some(host)=document.editable_selection_host(cx) {document.fire_editable_input(cx,&host,"deleteByCut",None,false,false);document.publish_editable_context(cx,false);} },
+         }
+     }
+ 
+@@ -561,13 +578,15 @@
+                     .text_control_element()
+                     .insert_content(cx, text_content);
+             },
+-            EditingContext::Document(..) => {
+-                // TODO(mrobinson): Add support for integration with contenteditable.
+-            },
+-        }
+-    }
+-
+-    pub(crate) fn fire_paste_events(&self, text_content: &str) {
++            EditingContext::Document(document) => {
++                if document.editable_selection_host(cx).is_some() && let Some(selection)=document.GetSelection(cx) {
++                    crate::dom::execcommand::execute_insert_text_command(cx,document,&selection,DOMString::from(text_content));
++                }
++            },
++        }
++    }
++
++    pub(crate) fn fire_paste_events(&self, cx: &mut JSContext, text_content: &str) {
+         match self {
+             EditingContext::TextControl(element) => {
+                 element.text_control_element().queue_input_event(
+@@ -576,7 +595,18 @@
+                     InputEventType::InsertFromPaste,
+                 );
+             },
+-            EditingContext::Document(..) => {},
++            EditingContext::Document(document) => { if let Some(host)=document.editable_selection_host(cx) {document.fire_editable_input(cx,&host,"insertFromPaste",Some(text_content),false,false);document.publish_editable_context(cx,false);} },
++        }
++    }
++
++    fn before_clipboard_input(&self,cx:&mut JSContext,kind:&str,data:Option<&str>)->bool {
++        match self {
++            EditingContext::TextControl(_) => true,
++            EditingContext::Document(document) => {
++                document.editable_selection_host(cx).is_some_and(|host| {
++                    document.fire_editable_input(cx, &host, kind, data, false, true)
++                })
++            },
+         }
+     }
+ 
+@@ -587,6 +617,9 @@
+                 let Some(selection) = document.GetSelection(cx) else {
+                     return;
+                 };
++                if let Some(host)=document.editable_selection_host(cx) {
++                    let _=selection.SelectAllChildren(cx,host.upcast());return;
++                }
+                 if let Some(node) = document
+                     .GetBody()
+                     .map(DomRoot::upcast::<Node>)
+diff --git a/components/script/dom/document/mod.rs b/components/script/dom/document/mod.rs
+--- a/components/script/dom/document/mod.rs
++++ b/components/script/dom/document/mod.rs
+@@ -17,6 +17,7 @@
+ pub(crate) mod focus;
+ mod iframe_collection;
+ mod interactive_element_command;
++mod native_editing;
+ mod tree_ordered_index_map;
+ pub(crate) mod visibilitystateentry;
+ pub(crate) mod websocket;
+diff --git a/components/script/dom/document/native_editing.rs b/components/script/dom/document/native_editing.rs
+new file mode 100644
+--- /dev/null
++++ b/components/script/dom/document/native_editing.rs
+@@ -0,0 +1,873 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++//! Native plain-text editing uses the live DOM and Servo's editing commands.
++//! Position maps below are temporary; no parallel DOM or JS editor is retained.
++use crate::dom::characterdata::CharacterData;
++use crate::dom::htmlelement::HTMLElement;
++use crate::dom::range::Range;
++use crate::dom::selection::Selection;
++use crate::dom::text::Text;
++use crate::dom::types::{Event, InputEvent};
++use crate::dom::{Document, Element, Node};
++use embedder_traits::{EditingDirection, EditingMotion, ImeSurroundingText, ModifySelection};
++use js::context::JSContext;
++use script_bindings::cell::DomRefCell;
++use script_bindings::codegen::GenericBindings::CharacterDataBinding::CharacterDataMethods;
++use script_bindings::codegen::GenericBindings::DocumentBinding::DocumentMethods;
++use script_bindings::codegen::GenericBindings::NodeBinding::NodeMethods;
++use script_bindings::codegen::GenericBindings::RangeBinding::RangeMethods;
++use script_bindings::codegen::GenericBindings::SelectionBinding::SelectionMethods;
++use script_bindings::dom::MutNullableDom;
++use script_bindings::inheritance::Castable;
++use script_bindings::root::{Dom, DomRoot};
++use script_bindings::str::DOMString;
++use servo_base::text::Utf16CodeUnits;
++use servo_base::{Rope, RopeMovement};
++use web_atoms::local_name;
++
++#[derive(Default, JSTraceable, MallocSizeOf)]
++pub(crate) struct NativeEditing {
++    pub composition_host: MutNullableDom<HTMLElement>,
++    pub composition_range: MutNullableDom<Range>,
++    history: DomRefCell<EditHistory>,
++}
++
++// Retain original nodes, never innerHTML/clones: restoring an edit preserves
++// event listeners, framework references and custom-element identity.
++#[derive(Clone, JSTraceable, MallocSizeOf)]
++struct SavedNode {
++    node: Dom<Node>,
++    children: Vec<Dom<Node>>,
++    data: Option<DOMString>,
++}
++#[derive(Clone, JSTraceable, MallocSizeOf)]
++struct EditSnapshot {
++    host: Dom<HTMLElement>,
++    nodes: Vec<SavedNode>,
++    anchor: Dom<Node>,
++    anchor_offset: u32,
++    focus: Dom<Node>,
++    focus_offset: u32,
++    bytes: usize,
++}
++impl js::gc::Rootable for EditSnapshot {}
++#[derive(Clone, JSTraceable, MallocSizeOf)]
++struct EditEntry {
++    before: EditSnapshot,
++    after: EditSnapshot,
++}
++#[derive(Default, JSTraceable, MallocSizeOf)]
++struct EditHistory {
++    undo: Vec<EditEntry>,
++    redo: Vec<EditEntry>,
++    pending: Option<EditSnapshot>,
++}
++impl EditSnapshot {
++    fn capture(cx: &mut JSContext, document: &Document) -> Option<Self> {
++        let host = document.editable_selection_host(cx)?;
++        let selection = document.GetSelection(cx)?;
++        let anchor = selection.GetAnchorNode(cx)?;
++        let focus = selection.GetFocusNode(cx)?;
++        let mut nodes = Vec::new();
++        let mut stack = vec![DomRoot::from_ref(host.upcast::<Node>())];
++        let mut bytes = 0;
++        while let Some(node) = stack.pop() {
++            if nodes.len() >= 512 {
++                return None;
++            }
++            let children: Vec<_> = node.children().collect();
++            let data = node
++                .downcast::<CharacterData>()
++                .map(CharacterDataMethods::Data);
++            bytes += data
++                .as_ref()
++                .map_or(0, |data| data.len_utf16().0 as usize * 2)
++                + children.len() * std::mem::size_of::<Dom<Node>>();
++            if bytes > 256 * 1024 {
++                return None;
++            }
++            nodes.push(SavedNode {
++                node: Dom::from_ref(&node),
++                children: children.iter().map(|n| Dom::from_ref(&**n)).collect(),
++                data,
++            });
++            stack.extend(children.into_iter().rev());
++        }
++        Some(Self {
++            host: Dom::from_ref(&host),
++            nodes,
++            anchor: Dom::from_ref(&anchor),
++            anchor_offset: selection.AnchorOffset(cx),
++            focus: Dom::from_ref(&focus),
++            focus_offset: selection.FocusOffset(cx),
++            bytes,
++        })
++    }
++    fn same_dom(&self, other: &Self) -> bool {
++        self.host == other.host
++            && self.nodes.len() == other.nodes.len()
++            && self
++                .nodes
++                .iter()
++                .zip(&other.nodes)
++                .all(|(a, b)| a.node == b.node && a.children == b.children && a.data == b.data)
++    }
++    fn restore(&self, cx: &mut JSContext, document: &Document) -> bool {
++        // All handles are rooted through the snapshot for the complete restore.
++        for saved in &self.nodes {
++            let parent = DomRoot::from_ref(&*saved.node);
++            for (index, child) in saved.children.iter().enumerate() {
++                let current = parent.children().nth(index);
++                if current.as_deref() != Some(&**child)
++                    && parent.InsertBefore(cx, child, current.as_deref()).is_err()
++                {
++                    return false;
++                }
++            }
++            while parent.children().count() > saved.children.len() {
++                let Some(extra) = parent.children().nth(saved.children.len()) else {
++                    break;
++                };
++                if parent.RemoveChild(cx, &extra).is_err() {
++                    return false;
++                }
++            }
++            if let Some(data) = &saved.data
++                && let Some(character) = parent.downcast::<CharacterData>()
++                && character.Data() != *data
++            {
++                character.SetData(cx, data.clone());
++            }
++        }
++        document.GetSelection(cx).is_some_and(|selection| {
++            selection
++                .SetBaseAndExtent(
++                    cx,
++                    &self.anchor,
++                    self.anchor_offset,
++                    &self.focus,
++                    self.focus_offset,
++                )
++                .is_ok()
++        })
++    }
++}
++
++type Point = (DomRoot<Node>, u32);
++struct Span {
++    start: u32,
++    end: u32,
++    from: Point,
++    to: Point,
++    text: bool,
++}
++pub(crate) struct EditableText {
++    pub text: String,
++    spans: Vec<Span>,
++    boundaries: Vec<(Point, u32)>,
++    length: u32,
++}
++impl EditableText {
++    pub fn new(host: &HTMLElement) -> Self {
++        let mut map = Self {
++            text: String::new(),
++            spans: Vec::new(),
++            boundaries: Vec::new(),
++            length: 0,
++        };
++        map.walk(host.upcast(), true);
++        map
++    }
++    fn separator(&mut self, from: Point, to: Point) {
++        let start = self.length;
++        self.text.push('\n');
++        self.length += 1;
++        self.spans.push(Span {
++            start,
++            end: self.length,
++            from,
++            to,
++            text: false,
++        });
++    }
++    fn walk(&mut self, node: &Node, root: bool) {
++        if let Some(text) = node.downcast::<Text>() {
++            let data = text.upcast::<CharacterData>().Data();
++            let length = data.len_utf16().0;
++            let start = self.length;
++            self.text.push_str(&data.str());
++            self.length += length;
++            self.spans.push(Span {
++                start,
++                end: self.length,
++                from: (DomRoot::from_ref(node), 0),
++                to: (DomRoot::from_ref(node), length),
++                text: true,
++            });
++            return;
++        }
++        let children: Vec<_> = node.children().collect();
++        for (index, child) in children.iter().enumerate() {
++            self.boundaries
++                .push(((DomRoot::from_ref(node), index as u32), self.length));
++            let before = (DomRoot::from_ref(node), index as u32);
++            let after = (DomRoot::from_ref(node), index as u32 + 1);
++            let br = child
++                .downcast::<Element>()
++                .is_some_and(|e| e.local_name() == &local_name!("br"));
++            if br {
++                self.separator(before, after);
++                continue;
++            }
++            if !child.is_editable_or_editing_host() && child.is::<Element>() {
++                let start = self.length;
++                self.text.push('\u{fffc}');
++                self.length += 1;
++                self.spans.push(Span {
++                    start,
++                    end: self.length,
++                    from: before,
++                    to: after,
++                    text: false,
++                });
++                continue;
++            }
++            if child.is_block_node() && !self.text.is_empty() && !self.text.ends_with('\n') {
++                self.separator(before.clone(), (child.clone(), 0));
++            }
++            self.walk(child, false);
++            if child.is_block_node() && index + 1 < children.len() && !self.text.ends_with('\n') {
++                self.separator((child.clone(), child.len()), after);
++            }
++        }
++        self.boundaries.push((
++            (DomRoot::from_ref(node), children.len() as u32),
++            self.length,
++        ));
++        let _ = root;
++    }
++    pub fn offset(&self, node: &Node, offset: u32) -> Option<u32> {
++        for span in &self.spans {
++            if span.text && std::ptr::eq(&*span.from.0, node) && offset <= span.end - span.start {
++                return Some(span.start + offset);
++            }
++        }
++        self.boundaries
++            .iter()
++            .find(|((n, o), _)| std::ptr::eq(&**n, node) && *o == offset)
++            .map(|(_, value)| *value)
++    }
++    pub fn point(&self, offset: u32) -> Option<Point> {
++        let offset = offset.min(self.length);
++        for span in &self.spans {
++            if offset >= span.start && offset <= span.end {
++                return Some(if span.text {
++                    (span.from.0.clone(), offset - span.start)
++                } else if offset == span.start {
++                    span.from.clone()
++                } else {
++                    span.to.clone()
++                });
++            }
++        }
++        self.boundaries.last().map(|(point, _)| point.clone())
++    }
++    pub fn byte(&self, offset: u32) -> Option<usize> {
++        let mut units = 0;
++        for (byte, ch) in self.text.char_indices() {
++            if units == offset {
++                return Some(byte);
++            }
++            units += ch.len_utf16() as u32;
++            if units > offset {
++                return None;
++            }
++        }
++        (units == offset).then_some(self.text.len())
++    }
++    pub fn selection(&self, cx: &mut JSContext, selection: &Selection) -> Option<(u32, u32)> {
++        let anchor = selection.GetAnchorNode(cx)?;
++        let focus = selection.GetFocusNode(cx)?;
++        Some((
++            self.offset(&anchor, selection.AnchorOffset(cx))?,
++            self.offset(&focus, selection.FocusOffset(cx))?,
++        ))
++    }
++}
++// Composition replaces only its live range, without invoking the legacy
++// rich-text deletion command (which adds placeholder BRs on every update).
++pub(crate) fn insert_editable_text(
++    cx: &mut JSContext,
++    document: &Document,
++    selection: &Selection,
++    text: &str,
++) -> bool {
++    let Some(range) = selection.active_range(cx) else {
++        return false;
++    };
++    if range.DeleteContents(cx).is_err() || selection.CollapseToStart(cx).is_err() {
++        return false;
++    }
++    let Some(range) = selection.active_range(cx) else {
++        return false;
++    };
++    let node = range.start_container();
++    let offset = range.start_offset();
++    if text.is_empty() {
++        return true;
++    }
++    let value = DOMString::from(text);
++    let length = value.len_utf16().0;
++    if let Some(data) = node.downcast::<CharacterData>() {
++        if data.InsertData(cx, offset, value).is_err() {
++            return false;
++        }
++        selection.Collapse(cx, Some(&node), offset + length).is_ok()
++    } else {
++        let text = document.CreateTextNode(cx, value);
++        let node = text.upcast::<Node>();
++        if range.InsertNode(cx, node).is_err() {
++            return false;
++        }
++        selection.Collapse(cx, Some(node), length).is_ok()
++    }
++}
++impl Document {
++    // The legacy rich-text deletion algorithm creates a placeholder BR even
++    // for repeated in-text replacement. Keep same-node text deletion direct and
++    // use grapheme boundaries; retain its structural paragraph merging fallback.
++    pub(crate) fn delete_editable_text(
++        &self,
++        cx: &mut JSContext,
++        selection: &Selection,
++        backward: bool,
++    ) -> Option<bool> {
++        let range = selection.active_range(cx)?;
++        let node = range.start_container();
++        if node != range.end_container()
++            || !node.is::<Text>()
++            || !node.is_editable_or_editing_host()
++        {
++            return None;
++        }
++        if range.collapsed() {
++            let data = node.downcast::<CharacterData>()?.Data();
++            let rope = Rope::new(data.to_string());
++            let offset = range.start_offset();
++            let origin = rope.utf8_offset_to_rope_index(
++                rope.utf16_offset_to_utf8_offset(Utf16CodeUnits(offset)),
++            );
++            let next = rope
++                .index_to_utf16_offset(rope.move_by(
++                    origin,
++                    RopeMovement::Grapheme,
++                    if backward { -1 } else { 1 },
++                ))
++                .0;
++            if next == offset {
++                return None;
++            }
++            if selection
++                .SetBaseAndExtent(cx, &node, offset, &node, next)
++                .is_err()
++            {
++                return Some(false);
++            }
++        }
++        let range = selection.active_range(cx)?;
++        Some(range.DeleteContents(cx).is_ok() && selection.CollapseToStart(cx).is_ok())
++    }
++    pub(crate) fn begin_edit_history(&self, cx: &mut JSContext) {
++        let snapshot = EditSnapshot::capture(cx, self);
++        let mut history = self.native_editing().history.borrow_mut();
++        if snapshot.as_ref().is_none_or(|current| {
++            history
++                .undo
++                .last()
++                .is_some_and(|entry| !entry.after.same_dom(current))
++        }) {
++            history.undo.clear();
++            history.redo.clear();
++        }
++        history.pending = snapshot;
++    }
++    pub(crate) fn finish_edit_history(&self, cx: &mut JSContext) {
++        let after = EditSnapshot::capture(cx, self);
++        let mut history = self.native_editing().history.borrow_mut();
++        let Some(before) = history.pending.take() else {
++            return;
++        };
++        let Some(after) = after else {
++            history.undo.clear();
++            history.redo.clear();
++            return;
++        };
++        if before.host != after.host {
++            history.undo.clear();
++            history.redo.clear();
++            return;
++        }
++        if before.same_dom(&after) {
++            return;
++        }
++        history.redo.clear();
++        history.undo.push(EditEntry { before, after });
++        while history.undo.len() > 32
++            || history
++                .undo
++                .iter()
++                .map(|entry| entry.before.bytes + entry.after.bytes)
++                .sum::<usize>()
++                > 2 * 1024 * 1024
++        {
++            history.undo.remove(0);
++        }
++    }
++    pub(crate) fn native_edit_undo(&self, cx: &mut JSContext, redo: bool) -> bool {
++        let Some(current) = EditSnapshot::capture(cx, self) else {
++            return false;
++        };
++        rooted!(&in(cx) let current=current);
++        let entry = {
++            let history = self.native_editing().history.borrow();
++            if redo {
++                history.redo.last()
++            } else {
++                history.undo.last()
++            }
++            .cloned()
++        };
++        let Some(entry) = entry else {
++            return true;
++        };
++        let (expected, target) = if redo {
++            (entry.before, entry.after)
++        } else {
++            (entry.after, entry.before)
++        };
++        rooted!(&in(cx) let expected=expected);
++        rooted!(&in(cx) let target=target);
++        if !expected.same_dom(&current) {
++            let mut history = self.native_editing().history.borrow_mut();
++            history.undo.clear();
++            history.redo.clear();
++            return true;
++        }
++        let host = DomRoot::from_ref(&*target.host);
++        let kind = if redo { "historyRedo" } else { "historyUndo" };
++        if !self.fire_editable_input(cx, &host, kind, None, false, true) {
++            return true;
++        }
++        let Some(now) = EditSnapshot::capture(cx, self) else {
++            return true;
++        };
++        if !expected.same_dom(&now) {
++            return true;
++        }
++        if !target.restore(cx, self) {
++            return true;
++        }
++        {
++            let mut history = self.native_editing().history.borrow_mut();
++            if redo {
++                if let Some(entry) = history.redo.pop() {
++                    history.undo.push(entry);
++                }
++            } else if let Some(entry) = history.undo.pop() {
++                history.redo.push(entry);
++            }
++        }
++        self.fire_editable_input(cx, &host, kind, None, false, false);
++        self.publish_editable_context(cx, false);
++        true
++    }
++    pub(crate) fn editable_selection_host(
++        &self,
++        cx: &mut JSContext,
++    ) -> Option<DomRoot<HTMLElement>> {
++        let selection = self.GetSelection(cx)?;
++        let range = selection.active_range(cx)?;
++        let start = range.start_container();
++        let end = range.end_container();
++        if !start.is_editable_or_editing_host() || !end.is_editable_or_editing_host() {
++            return None;
++        }
++        let host = start.editing_host_of()?;
++        if end.editing_host_of().as_deref() != Some(&*host) {
++            return None;
++        }
++        if self
++            .focus_handler()
++            .focused_area()
++            .element()
++            .and_then(|element| element.upcast::<Node>().editing_host_of())
++            .as_deref()
++            != Some(&*host)
++        {
++            return None;
++        }
++        host.downcast::<HTMLElement>().map(DomRoot::from_ref)
++    }
++    pub(crate) fn move_editable_selection(
++        &self,
++        cx: &mut JSContext,
++        direction: EditingDirection,
++        motion: EditingMotion,
++        extend: ModifySelection,
++    ) -> bool {
++        let Some(host) = self.editable_selection_host(cx) else {
++            return false;
++        };
++        let Some(selection) = self.GetSelection(cx) else {
++            return false;
++        };
++        let map = EditableText::new(&host);
++        let Some((anchor, focus)) = map.selection(cx, &selection) else {
++            return false;
++        };
++        let rope = Rope::new(map.text.clone());
++        let forward = matches!(direction, EditingDirection::Forward);
++        let movement = match motion {
++            EditingMotion::Character => RopeMovement::Character,
++            EditingMotion::Grapheme => RopeMovement::Grapheme,
++            EditingMotion::Word => RopeMovement::Word,
++            EditingMotion::Line | EditingMotion::Page => RopeMovement::Line,
++            EditingMotion::LineStartOrEnd => RopeMovement::LineStartOrEnd,
++            EditingMotion::DocumentStartOrEnd => RopeMovement::RopeStartOrEnd,
++        };
++        let next;
++        if matches!(extend, ModifySelection::No)
++            && anchor != focus
++            && matches!(motion, EditingMotion::Grapheme | EditingMotion::Character)
++        {
++            next = if forward {
++                anchor.max(focus)
++            } else {
++                anchor.min(focus)
++            };
++        } else {
++            let origin = rope
++                .utf8_offset_to_rope_index(rope.utf16_offset_to_utf8_offset(Utf16CodeUnits(focus)));
++            let step = if matches!(motion, EditingMotion::Page) {
++                28
++            } else {
++                1
++            };
++            next = rope
++                .index_to_utf16_offset(rope.move_by(
++                    origin,
++                    movement,
++                    if forward { step } else { -step },
++                ))
++                .0;
++        }
++        let Some((focus_node, focus_offset)) = map.point(next) else {
++            return false;
++        };
++        let (anchor_node, anchor_offset) = if matches!(extend, ModifySelection::Yes) {
++            match map.point(anchor) {
++                Some(p) => p,
++                None => return false,
++            }
++        } else {
++            (focus_node.clone(), focus_offset)
++        };
++        let _ =
++            selection.SetBaseAndExtent(cx, &anchor_node, anchor_offset, &focus_node, focus_offset);
++        self.publish_editable_context(cx, false);
++        true
++    }
++    pub(crate) fn fire_editable_input(
++        &self,
++        cx: &mut JSContext,
++        host: &HTMLElement,
++        kind: &str,
++        data: Option<&str>,
++        composing: bool,
++        before: bool,
++    ) -> bool {
++        let window = self.window();
++        let event = InputEvent::new(
++            cx,
++            window,
++            None,
++            if before {
++                atom!("beforeinput")
++            } else {
++                atom!("input")
++            },
++            true,
++            before && !composing,
++            Some(window),
++            0,
++            data.map(DOMString::from),
++            composing,
++            DOMString::from(kind),
++        );
++        let event = event.upcast::<Event>();
++        event.set_composed(true);
++        event.fire(cx, host.upcast())
++    }
++    pub(crate) fn editable_surrounding(
++        &self,
++        cx: &mut JSContext,
++        host: &HTMLElement,
++    ) -> Option<ImeSurroundingText> {
++        let map = EditableText::new(host);
++        let selection = self.GetSelection(cx)?;
++        let (anchor, cursor) = map.selection(cx, &selection)?;
++        let (mut anchor, mut cursor) = (map.byte(anchor)?, map.byte(cursor)?);
++        let mut text = map.text.clone();
++        if self.native_editing().composition_host.get().as_deref() == Some(host)
++            && let Some(range) = self.native_editing().composition_range.get()
++        {
++            let start = map.byte(map.offset(&range.start_container(), range.start_offset())?)?;
++            let end = map.byte(map.offset(&range.end_container(), range.end_offset())?)?;
++            text.replace_range(start..end, "");
++            let adjust = |offset: usize| {
++                if offset > end {
++                    offset - (end - start)
++                } else if offset >= start {
++                    start
++                } else {
++                    offset
++                }
++            };
++            anchor = adjust(anchor);
++            cursor = adjust(cursor);
++        }
++        ImeSurroundingText::new(&text, cursor, anchor)
++    }
++    pub(crate) fn publish_editable_context(&self, cx: &mut JSContext, input_method: bool) {
++        let Some(host) = self.editable_selection_host(cx) else {
++            return;
++        };
++        if !self.embedder_controls().has_ime_for(host.upcast()) {
++            self.show_editable_ime(cx, &host);
++            return;
++        }
++        self.embedder_controls().update_ime_context(
++            host.upcast(),
++            self.editable_surrounding(cx, &host),
++            input_method,
++        );
++    }
++    pub(crate) fn show_editable_ime(&self, cx: &mut JSContext, host: &HTMLElement) {
++        if self.editable_selection_host(cx).as_deref() != Some(host) {
++            return;
++        }
++        let text = EditableText::new(host);
++        let selection = self.GetSelection(cx);
++        let cursor = selection
++            .and_then(|s| text.selection(cx, &s))
++            .map(|(_, c)| c);
++        self.embedder_controls().show_embedder_control(
++            crate::dom::document_embedder_controls::ControlElement::Ime(
++                script_bindings::root::Dom::from_ref(host),
++            ),
++            embedder_traits::EmbedderControlRequest::InputMethod(
++                embedder_traits::InputMethodRequest {
++                    input_method_type: embedder_traits::InputMethodType::Text,
++                    text: text.text,
++                    insertion_point: cursor,
++                    surrounding: self.editable_surrounding(cx, host),
++                    multiline: true,
++                    allow_virtual_keyboard: self.window().has_sticky_activation(),
++                },
++            ),
++            None,
++        );
++    }
++    pub(crate) fn delete_editable_surrounding(
++        &self,
++        cx: &mut JSContext,
++        expected: &ImeSurroundingText,
++        before: u32,
++        after: u32,
++        replacement: Option<&str>,
++    ) -> bool {
++        let Some(host) = self.editable_selection_host(cx) else {
++            return false;
++        };
++        if self.native_editing().composition_range.get().is_some()
++            || self.editable_surrounding(cx, &host).as_ref() != Some(expected)
++        {
++            return false;
++        }
++        let map = EditableText::new(&host);
++        let Some(selection) = self.GetSelection(cx) else {
++            return false;
++        };
++        let Some((anchor, cursor)) = map.selection(cx, &selection) else {
++            return false;
++        };
++        let (Some(start), Some(end)) = (map.byte(anchor.min(cursor)), map.byte(anchor.max(cursor)))
++        else {
++            return false;
++        };
++        let (before, after) = (before as usize, after as usize);
++        if before > expected.cursor.min(expected.anchor)
++            || after > expected.text.len() - expected.cursor.max(expected.anchor)
++            || before > start
++            || end + after > map.text.len()
++        {
++            return false;
++        }
++        let (from, to) = (start - before, end + after);
++        if !map.text.is_char_boundary(from) || !map.text.is_char_boundary(to) {
++            return false;
++        }
++        if !self.fire_editable_input(cx, &host, "deleteContentBackward", None, false, true) {
++            return false;
++        }
++        if self.editable_selection_host(cx).as_deref() != Some(&*host)
++            || self.editable_surrounding(cx, &host).as_ref() != Some(expected)
++        {
++            return false;
++        }
++        self.begin_edit_history(cx);
++        let offset = |byte: usize| map.text[..byte].encode_utf16().count() as u32;
++        let range_for = |cx: &mut JSContext, start: usize, end: usize| {
++            let (a, ao) = map.point(offset(start))?;
++            let (b, bo) = map.point(offset(end))?;
++            Some(Range::new(cx, self, &a, ao, &b, bo))
++        };
++        if let Some(text) = replacement {
++            let Some(range) = range_for(cx, from, to) else {
++                return false;
++            };
++            selection.RemoveAllRanges(cx.no_gc());
++            selection.AddRange(cx.no_gc(), &range);
++            if !insert_editable_text(cx, self, &selection, text) {
++                return false;
++            }
++        } else {
++            let Some(left) = range_for(cx, from, start) else {
++                return false;
++            };
++            let Some(right) = range_for(cx, end, to) else {
++                return false;
++            };
++            if right.DeleteContents(cx).is_err() || left.DeleteContents(cx).is_err() {
++                return false;
++            }
++        }
++        self.finish_edit_history(cx);
++        if let Some(text) = replacement {
++            let event = crate::dom::types::CompositionEvent::new(
++                cx,
++                self.window(),
++                atom!("compositionend").into(),
++                true,
++                false,
++                Some(self.window()),
++                0,
++                DOMString::from(text),
++            );
++            event.upcast::<Event>().fire(cx, host.upcast());
++        }
++        self.fire_editable_input(
++            cx,
++            &host,
++            if replacement.is_some() {
++                "insertCompositionText"
++            } else {
++                "deleteContentBackward"
++            },
++            replacement,
++            false,
++            false,
++        );
++        self.publish_editable_context(cx, true);
++        true
++    }
++    pub(crate) fn editable_composition(
++        &self,
++        cx: &mut JSContext,
++        state: keyboard_types::CompositionState,
++        text: &str,
++    ) {
++        use keyboard_types::CompositionState::{End, Start, Update};
++        let Some(host) = self.editable_selection_host(cx) else {
++            return;
++        };
++        if matches!(state, End) && self.native_editing().composition_host.get().is_none() {
++            self.begin_edit_history(cx);
++        }
++        if matches!(state, Start) {
++            self.begin_edit_history(cx);
++            self.native_editing().composition_host.set(Some(&host));
++            self.native_editing().composition_range.set(None);
++            return;
++        }
++        if self
++            .native_editing()
++            .composition_host
++            .get()
++            .as_deref()
++            .is_some_and(|original| original != &*host)
++        {
++            return;
++        }
++        let Some(selection) = self.GetSelection(cx) else {
++            return;
++        };
++        if let Some(range) = self.native_editing().composition_range.get() {
++            selection.RemoveAllRanges(cx.no_gc());
++            selection.AddRange(cx.no_gc(), &range);
++        }
++        if !self.fire_editable_input(
++            cx,
++            &host,
++            "insertCompositionText",
++            Some(text),
++            matches!(state, Update),
++            true,
++        ) {
++            return;
++        }
++        if self.editable_selection_host(cx).as_deref() != Some(&*host) {
++            return;
++        }
++        let Some(before) = selection.active_range(cx) else {
++            return;
++        };
++        let start = before.CloneRange(cx);
++        start.Collapse(cx.no_gc(), true);
++        if !insert_editable_text(cx, self, &selection, text) {
++            return;
++        }
++        let Some(after) = selection.active_range(cx) else {
++            return;
++        };
++        let preedit = Range::new(
++            cx,
++            self,
++            &start.start_container(),
++            start.start_offset(),
++            &after.end_container(),
++            after.end_offset(),
++        );
++        if matches!(state, End) {
++            self.native_editing().composition_host.set(None);
++            self.native_editing().composition_range.set(None);
++        } else {
++            self.native_editing().composition_host.set(Some(&host));
++            self.native_editing().composition_range.set(Some(&preedit));
++        }
++        if matches!(state, End) {
++            self.finish_edit_history(cx);
++        }
++        self.fire_editable_input(
++            cx,
++            &host,
++            "insertCompositionText",
++            Some(text),
++            matches!(state, Update),
++            false,
++        );
++        self.publish_editable_context(cx, true);
++    }
++}
+diff --git a/components/script/dom/execcommand/commands/delete.rs b/components/script/dom/execcommand/commands/delete.rs
+--- a/components/script/dom/execcommand/commands/delete.rs
++++ b/components/script/dom/execcommand/commands/delete.rs
+@@ -27,6 +27,7 @@
+     document: &Document,
+     selection: &Selection,
+ ) -> bool {
++    if let Some(result)=document.delete_editable_text(cx,selection,true) {return result;}
+     let active_range = selection
+         .active_range(cx)
+         .expect("Must always have an active range");
+diff --git a/components/script/dom/execcommand/commands/forwarddelete.rs b/components/script/dom/execcommand/commands/forwarddelete.rs
+--- a/components/script/dom/execcommand/commands/forwarddelete.rs
++++ b/components/script/dom/execcommand/commands/forwarddelete.rs
+@@ -22,6 +22,7 @@
+     selection: &Selection,
+ ) -> bool {
+     // Step 1. If the active range is not collapsed, delete the selection and return true.
++    if let Some(result)=document.delete_editable_text(cx,selection,false) {return result;}
+     let active_range = selection
+         .active_range(cx)
+         .expect("Must always have an active range");
+diff --git a/components/script/dom/execcommand/contenteditable/range.rs b/components/script/dom/execcommand/contenteditable/range.rs
+--- a/components/script/dom/execcommand/contenteditable/range.rs
++++ b/components/script/dom/execcommand/contenteditable/range.rs
+@@ -333,9 +333,9 @@
+                             CommandName::FontSize => {
+                                 let value_override =
+                                     context_object.value_override(&CommandName::FontSize);
+-                                if value_override != optional_string ||
+-                                    (value_override.is_none() &&
+-                                        !CommandName::FontSize.are_loosely_equivalent_values(
++                                if (value_override.is_some() && value_override != optional_string)
++                                    || (value_override.is_none()
++                                        && !CommandName::FontSize.are_loosely_equivalent_values(
+                                             node.effective_command_value(&CommandName::FontSize)
+                                                 .as_ref(),
+                                             optional_string.as_ref(),
+@@ -344,10 +344,15 @@
+                                     // Step 2.5. Convert override to an integer number of pixels,
+                                     // and set override to the legacy font size for the result.
+                                     let pixels = optional_string
+-                                        .and_then(|value| value.parse::<i32>().ok())
+-                                        .map(|value| {
+-                                            legacy_font_size_for(value as f32, context_object)
++                                        .and_then(|value| {
++                                            value
++                                                .str()
++                                                .strip_suffix("px")
++                                                .unwrap_or(&value.str())
++                                                .parse::<f32>()
++                                                .ok()
+                                         })
++                                        .map(|value| legacy_font_size_for(value, context_object))
+                                         .unwrap_or(DOMString::from_static("7"));
+                                     // Step 2.6. Take the action for "fontSize", with value equal to override.
+                                     CommandName::FontSize.execute(
+diff --git a/components/script/dom/execcommand/execcommands.rs b/components/script/dom/execcommand/execcommands.rs
+--- a/components/script/dom/execcommand/execcommands.rs
++++ b/components/script/dom/execcommand/execcommands.rs
+@@ -271,6 +271,11 @@
+         value: DOMString,
+     ) -> bool {
+         let window = self.window();
++        let input_data = if command_id.eq_ignore_ascii_case("inserttext") {
++            Some(value.clone())
++        } else {
++            None
++        };
+         // Step 3. If command is not supported or not enabled, return false.
+         let Some((command, mut selection)) = self.check_support_and_enabled(cx, &command_id) else {
+             return false;
+@@ -300,11 +305,12 @@
+                 true,
+                 Some(window),
+                 0,
+-                None,
++                input_data.clone(),
+                 false,
+-                DOMString::new(),
++                mapped_value_of_command(command),
+             );
+             let event = event.upcast::<Event>();
++            event.set_composed(true);
+             // Step 4.3. If the value returned by the previous step is false, return false.
+             if !event.fire(cx, affected_editing_host.upcast()) {
+                 return false;
+@@ -335,7 +341,9 @@
+         }
+ 
+         // Step 5. Take the action for command, passing value to the instructions as an argument.
++        self.begin_edit_history(cx);
+         let result = command.execute(cx, self, &selection, value);
++        self.finish_edit_history(cx);
+         // Step 6. If the previous step returned false, return false.
+         if !result {
+             return false;
+@@ -353,11 +361,12 @@
+                 false,
+                 Some(window),
+                 0,
+-                None,
++                input_data,
+                 false,
+                 mapped_value_of_command(command),
+             );
+             let event = event.upcast::<Event>();
++            event.set_composed(true);
+             event.set_trusted(true);
+             event.fire(cx, affected_editing_host.upcast());
+         }
+diff --git a/components/script/dom/execcommand/mod.rs b/components/script/dom/execcommand/mod.rs
+--- a/components/script/dom/execcommand/mod.rs
++++ b/components/script/dom/execcommand/mod.rs
+@@ -6,3 +6,5 @@
+ mod commands;
+ pub(crate) mod contenteditable;
+ pub(crate) mod execcommands;
++
++pub(crate) use commands::inserttext::execute_insert_text_command;
+diff --git a/components/script/dom/html/form_controls/htmlinputelement.rs b/components/script/dom/html/form_controls/htmlinputelement.rs
+--- a/components/script/dom/html/form_controls/htmlinputelement.rs
++++ b/components/script/dom/html/form_controls/htmlinputelement.rs
+@@ -1024,6 +1024,7 @@
+     }
+ 
+     fn handle_text_content_changed(&self, cx: &mut JSContext) {
++        self.publish_ime_context(false);
+         self.update_placeholder_shown_state();
+         self.upcast::<Node>()
+             .dirty(cx.no_gc(), NodeDamage::ContentOrHeritage);
+@@ -2005,6 +2006,7 @@
+             document.embedder_controls().show_embedder_control(
+                 ControlElement::Ime(Dom::from_ref(self.upcast())),
+                 EmbedderControlRequest::InputMethod(InputMethodRequest {
++                    surrounding: if self.is_password_field() { None } else { self.text_input().ime_surrounding_text() },
+                     input_method_type,
+                     text: String::from(self.Value()),
+                     insertion_point: self.GetSelectionEnd(),
+diff --git a/components/script/dom/html/form_controls/htmltextareaelement.rs b/components/script/dom/html/form_controls/htmltextareaelement.rs
+--- a/components/script/dom/html/form_controls/htmltextareaelement.rs
++++ b/components/script/dom/html/form_controls/htmltextareaelement.rs
+@@ -186,6 +186,7 @@
+             document.embedder_controls().show_embedder_control(
+                 ControlElement::Ime(Dom::from_ref(self.upcast())),
+                 EmbedderControlRequest::InputMethod(InputMethodRequest {
++                    surrounding: if self.is_password_field() { None } else { self.text_input().ime_surrounding_text() },
+                     input_method_type: InputMethodType::Text,
+                     text: String::from(self.Value()),
+                     insertion_point: self.GetSelectionEnd(),
+@@ -321,6 +322,7 @@
+     }
+ 
+     fn handle_text_content_changed(&self, cx: &mut JSContext) {
++        self.publish_ime_context(false);
+         self.validity_state(cx)
+             .perform_validation_and_update(cx, ValidationFlags::all());
+ 
+diff --git a/components/script/dom/html/form_controls/text_control.rs b/components/script/dom/html/form_controls/text_control.rs
+--- a/components/script/dom/html/form_controls/text_control.rs
++++ b/components/script/dom/html/form_controls/text_control.rs
+@@ -47,6 +47,12 @@
+     fn handle_text_content_changed(&self, cx: &mut JSContext);
+     fn handle_key_reaction(&self, cx: &mut JSContext, action: KeyReaction);
+ 
++    fn publish_ime_context(&self, input_method: bool) {
++        let element = self.as_element();
++        let context = if self.is_password_field() || self.read_only_or_disabled() { None } else { self.text_input().ime_surrounding_text() };
++        element.owner_document().embedder_controls().update_ime_context(element, context, input_method);
++    }
++
+     fn insert_content(&self, cx: &mut JSContext, text_content: &str) {
+         self.text_input_mut().insert(text_content);
+         self.handle_text_content_changed(cx);
+@@ -69,6 +75,7 @@
+         }
+ 
+         self.handle_key_reaction(cx, key_reaction);
++        self.publish_ime_context(false);
+         true // TODO: Return true if the action can have any effect.
+     }
+ 
+@@ -79,6 +86,7 @@
+         is_composing: IsComposing,
+         input_type: InputEventType,
+     ) {
++        self.publish_ime_context(input_type == InputEventType::InsertCompositionText);
+         let element = self.as_element();
+         let target = Trusted::new(element.upcast::<EventTarget>());
+         element
+@@ -458,6 +466,8 @@
+             direction.unwrap_or(SelectionDirection::None),
+         );
+ 
++        self.publish_ime_context(false);
++
+         // Step 6: If the previous steps caused the selection of the text control to be
+         // modified (in either extent or direction), then queue an element task on the
+         // user interaction task source given the element to fire an event named select at
+diff --git a/components/script/dom/html/form_controls/text_input.rs b/components/script/dom/html/form_controls/text_input.rs
+--- a/components/script/dom/html/form_controls/text_input.rs
++++ b/components/script/dom/html/form_controls/text_input.rs
+@@ -124,6 +124,8 @@
+ pub struct TextInput<T: ClipboardProvider> {
+     #[no_trace]
+     rope: Rope,
++    #[no_trace]
++    composition_range: Option<std::ops::Range<usize>>,
+ 
+     /// The type of [`TextInput`] this is. When in multi-line mode, the [`TextInput`] will
+     /// automatically split all inserted text into lines and incorporate them into
+@@ -216,6 +218,7 @@
+     pub fn new(lines: Lines, initial: DOMString, clipboard_provider: T) -> TextInput<T> {
+         Self {
+             rope: Rope::new(initial),
++            composition_range: None,
+             mode: lines,
+             edit_point: Default::default(),
+             selection_origin: None,
+@@ -611,6 +614,7 @@
+ 
+     pub(crate) fn handle_compositionend(&mut self, event: &CompositionEvent) -> KeyReaction {
+         let insertion = event.data().str();
++        self.composition_range = None;
+         if insertion.is_empty() {
+             self.clear_selection();
+             return KeyReaction::RedrawSelection;
+@@ -636,11 +640,45 @@
+             start + event.data().len_utf8(),
+             SelectionDirection::Forward,
+         );
++        self.composition_range = Some(start.0 as usize..start.0 as usize + event.data().str().len());
+         KeyReaction::DispatchInput(
+             Some(insertion),
+             IsComposing::Composing,
+             InputEventType::InsertCompositionText,
+         )
++    }
++
++    pub(crate) fn ime_surrounding_text(&self) -> Option<embedder_traits::ImeSurroundingText> {
++        let mut text = self.get_content().str().to_owned();
++        let mut cursor = self.rope.index_to_utf8_offset(self.edit_point).0 as usize;
++        let mut anchor = self.rope.index_to_utf8_offset(self.selection_origin_or_edit_point()).0 as usize;
++        if let Some(range) = &self.composition_range {
++            if range.end > text.len() || !text.is_char_boundary(range.start) || !text.is_char_boundary(range.end) { return None; }
++            text.replace_range(range.clone(), "");
++            cursor = range.start; anchor = range.start;
++        }
++        embedder_traits::ImeSurroundingText::new(&text, cursor, anchor)
++    }
++
++    /// Validate the advertised view before deleting anything. Preserve the
++    /// selection/preedit: text-input-v3 lengths exclude both of them.
++    pub(crate) fn delete_ime_surrounding(&mut self, expected: &embedder_traits::ImeSurroundingText, before: u32, after: u32) -> bool {
++        if self.ime_surrounding_text().as_ref() != Some(expected) { return false; }
++        let mut text = self.get_content().str().to_owned();
++        let start = self.rope.index_to_utf8_offset(self.selection_start()).0 as usize;
++        let end = self.rope.index_to_utf8_offset(self.selection_end()).0 as usize;
++        let Some(left) = start.checked_sub(before as usize) else { return false; };
++        let Some(right) = end.checked_add(after as usize) else { return false; };
++        if right > text.len() || !text.is_char_boundary(left) || !text.is_char_boundary(right) { return false; }
++        if before as usize > expected.cursor.min(expected.anchor) || after as usize > expected.text.len() - expected.cursor.max(expected.anchor) { return false; }
++        text.replace_range(end..right, "");
++        text.replace_range(left..start, "");
++        let direction = self.selection_direction;
++        let composition = self.composition_range.take();
++        self.set_content(DOMString::from(text));
++        self.set_selection_range_utf8(Utf8CodeUnits(left as u32), Utf8CodeUnits((end-before as usize) as u32), direction);
++        self.composition_range = composition.map(|range| range.start-before as usize..range.end-before as usize);
++        true
+     }
+ 
+     fn edit_point_for_hit_test_result(&self, hit_test_result: &HitTestResult) -> RopeIndex {
+@@ -752,6 +790,8 @@
+     /// Newline stripping only happens for incremental updates to the [`Rope`] as `<input>`
+     /// elements currently need to store unsanitized values while being created.
+     pub fn set_content(&mut self, content: DOMString) {
++        if self.get_content() != content { self.composition_range = None; }
++
+         self.rope = Rope::new(content.str().replace("\r\n", "\n").replace("\r", "\n"));
+         self.was_last_change_by_set_content = true;
+ 
+diff --git a/components/script/dom/html/htmlelement.rs b/components/script/dom/html/htmlelement.rs
+--- a/components/script/dom/html/htmlelement.rs
++++ b/components/script/dom/html/htmlelement.rs
+@@ -1279,6 +1279,21 @@
+ }
+ 
+ impl VirtualMethods for HTMLElement {
++    fn handle_event(&self, cx: &mut JSContext, event: &crate::dom::event::Event) {
++        use script_bindings::codegen::GenericBindings::EventBinding::EventMethods;
++        if let Some(parent)=self.super_type(){parent.handle_event(cx,event);}
++        if !event.IsTrusted(){return;}
++        if event.type_()==stylo_atoms::Atom::from("focus") || event.type_()==stylo_atoms::Atom::from("blur") {
++            if let Some(selection)=self.owner_document().selection(){selection.set_visible_selection_dirty();}
++        }
++        if event.type_()==stylo_atoms::Atom::from("focus") && let Some(host)=self.upcast::<Node>().editing_host_of() && let Some(host)=host.downcast::<HTMLElement>(){self.owner_document().show_editable_ime(cx,host);}
++        if event.type_()==stylo_atoms::Atom::from("blur") && self.is_editing_host(){
++            self.owner_document().embedder_controls().hide_embedder_control(self.upcast());
++            self.owner_document().native_editing().composition_host.set(None);
++            self.owner_document().native_editing().composition_range.set(None);
++        }
++    }
++
+     fn super_type(&self) -> Option<&dyn VirtualMethods> {
+         Some(self.as_element() as &dyn VirtualMethods)
+     }
+diff --git a/components/script/dom/node/layout_dom.rs b/components/script/dom/node/layout_dom.rs
+--- a/components/script/dom/node/layout_dom.rs
++++ b/components/script/dom/node/layout_dom.rs
+@@ -23,6 +23,7 @@
+ use crate::dom::bindings::inheritance::{CharacterDataTypeId, NodeTypeId};
+ use crate::dom::bindings::root::{LayoutDom, ToLayout, ToLayoutOptional};
+ use crate::dom::document::Document;
++use crate::dom::characterdata::CharacterData;
+ use crate::dom::element::Element;
+ use crate::dom::html::form_controls::htmlinputelement::HTMLInputElement;
+ use crate::dom::html::htmlcanvaselement::HTMLCanvasElement;
+@@ -290,11 +291,7 @@
+                 return true;
+             }
+         }
+-        // This is the cases where, if `selection_for_text_node` returns a selection
+-        // it is a document selection.
+-        // For now, never paint a caret for document selection.
+-        // This will change as we improve `contenteditable` support.
+-        false
++        self.downcast::<CharacterData>().is_some_and(|text|text.paints_editable_caret())
+     }
+ 
+     pub(crate) fn replaced_is_selected(&self) -> bool {
+diff --git a/components/script/dom/selection.rs b/components/script/dom/selection.rs
+--- a/components/script/dom/selection.rs
++++ b/components/script/dom/selection.rs
+@@ -378,6 +378,7 @@
+                     // selectionchange, which does not bubble and not cancelable, at
+                     // target.
+                     this.document.upcast::<EventTarget>().fire_event(cx, atom!("selectionchange"));
++                    this.document.publish_editable_context(cx,false);
+                 }),
+             );
+     }
+@@ -1785,6 +1786,10 @@
+         character_data: &CharacterData,
+         range: Option<RangeAny<Utf32CodeUnits>>,
+     ) {
++        let node=character_data.upcast::<Node>();
++        let host=node.editing_host_of();
++        let focused_host=node.owner_document().focus_handler().focused_area().element().and_then(|element|element.upcast::<Node>().editing_host_of());
++        character_data.set_editable_caret(self.no_gc,range.is_some() && host.is_some() && host==focused_host);
+         if character_data.set_text_run_selection(range) {
+             self.needs_new_display_list = true;
+         } else {
+diff --git a/components/servo/lib.rs b/components/servo/lib.rs
+--- a/components/servo/lib.rs
++++ b/components/servo/lib.rs
+@@ -150,3 +150,5 @@
+ // We need to reference this crate, in order for the linker not to remove it.
+ #[cfg(all(feature = "baked-in-resources", not(target_env = "ohos")))]
+ use servo_default_resources as _;
++
++pub use embedder_traits::ImeSurroundingText;
+diff --git a/components/servo/servo.rs b/components/servo/servo.rs
+--- a/components/servo/servo.rs
++++ b/components/servo/servo.rs
+@@ -763,6 +763,11 @@
+                     webview.show_embedder_control(control_id, position, embedder_control_request);
+                 }
+             },
++            EmbedderMsg::ImeContextChanged(id, context, input_method) => {
++                if let Some(webview) = self.get_webview_handle(id.webview_id) {
++                    webview.delegate().ime_context_changed(webview, id, context, input_method);
++                }
++            },
+             EmbedderMsg::HideEmbedderControl(control_id) => {
+                 if let Some(webview) = self.get_webview_handle(control_id.webview_id) {
+                     webview
+diff --git a/components/servo/webview.rs b/components/servo/webview.rs
+--- a/components/servo/webview.rs
++++ b/components/servo/webview.rs
+@@ -819,6 +819,7 @@
+             EmbedderControlRequest::InputMethod(input_method_request) => {
+                 EmbedderControl::InputMethod(InputMethodControl {
+                     id: control_id,
++                    surrounding: input_method_request.surrounding,
+                     input_method_type: input_method_request.input_method_type,
+                     text: input_method_request.text,
+                     insertion_point: input_method_request.insertion_point,
+@@ -1038,6 +1039,11 @@
+ }
+ 
+ impl WebViewTrait for ServoRendererWebView {
++    fn notify_ime_cursor_rect(&self, rect: webrender_api::units::DeviceIntRect) {
++        if let Some(webview) = WebView::from_weak_handle(&self.weak_handle) {
++            webview.delegate().notify_ime_cursor_rect(webview, rect);
++        }
++    }
+     fn id(&self) -> WebViewId {
+         self.id
+     }
+diff --git a/components/servo/webview_delegate.rs b/components/servo/webview_delegate.rs
+--- a/components/servo/webview_delegate.rs
++++ b/components/servo/webview_delegate.rs
+@@ -630,6 +630,7 @@
+ 
+ /// Represents a request to enable the system input method interface.
+ pub struct InputMethodControl {
++    pub(crate) surrounding: Option<embedder_traits::ImeSurroundingText>,
+     pub(crate) id: EmbedderControlId,
+     pub(crate) input_method_type: InputMethodType,
+     pub(crate) text: String,
+@@ -640,6 +641,8 @@
+ }
+ 
+ impl InputMethodControl {
++    pub fn surrounding_text(&self) -> Option<&embedder_traits::ImeSurroundingText> { self.surrounding.as_ref() }
++
+     /// Return the [`EmbedderControlId`] associated with this element.
+     pub fn id(&self) -> EmbedderControlId {
+         self.id
+@@ -916,6 +919,9 @@
+ /// instance. A [`WebView`]'s delegate needs to be set at the time of creation using
+ /// [`WebViewBuilder::delegate`].
+ pub trait WebViewDelegate {
++    /// Painted caret geometry in WebView device pixels, including scroll and CSS transforms.
++    fn notify_ime_cursor_rect(&self, _webview: WebView, _rect: DeviceIntRect) {}
++
+     fn weber_host_bytes(
+         &self,
+         _webview: WebView,
+@@ -1073,6 +1079,10 @@
+     /// already responded to it.
+     ///
+     /// After this point, any further responses to that request will be ignored.
++    /// Current focused editor context changed; no text is exposed for passwords.
++    fn ime_context_changed(&self, _webview: WebView, _id: EmbedderControlId,
++        _context: Option<embedder_traits::ImeSurroundingText>, _input_method: bool) {}
++
+     fn hide_embedder_control(&self, _webview: WebView, _control_id: EmbedderControlId) {}
+ 
+     /// Triggered when this [`WebView`] will load a web (HTTP/HTTPS) resource. The load may be
+diff --git a/components/shared/embedder/embedder_controls.rs b/components/shared/embedder/embedder_controls.rs
+--- a/components/shared/embedder/embedder_controls.rs
++++ b/components/shared/embedder/embedder_controls.rs
+@@ -139,6 +139,7 @@
+ /// `insertion_point` the zero-based index into the string of the insertion point.
+ #[derive(Debug, Deserialize, Serialize)]
+ pub struct InputMethodRequest {
++    pub surrounding: Option<ImeSurroundingText>,
+     pub input_method_type: InputMethodType,
+     pub text: String,
+     pub insertion_point: Option<u32>,
+@@ -228,3 +229,30 @@
+     Ok(String),
+     Cancel,
+ }
++
++/// A bounded UTF-8 view around the caret, excluding preedit. Offsets are bytes.
++#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
++pub struct ImeSurroundingText {
++    pub text: String,
++    pub cursor: usize,
++    pub anchor: usize,
++}
++impl ImeSurroundingText {
++    /// Keep the complete selection and as much adjacent context as fits in tiv3.
++    pub fn new(text: &str, cursor: usize, anchor: usize) -> Option<Self> {
++        if !text.is_char_boundary(cursor) || !text.is_char_boundary(anchor) || text.contains('\0') { return None; }
++        let left = cursor.min(anchor);
++        let right = cursor.max(anchor);
++        if right - left > 4000 { return None; }
++        let spare = 4000 - (right - left);
++        let mut start = left.saturating_sub(spare / 2);
++        while !text.is_char_boundary(start) { start += 1; }
++        let mut end = (start + 4000).min(text.len());
++        while !text.is_char_boundary(end) { end -= 1; }
++        if end < right { return None; }
++        // Fill unused space at the left when the suffix is shorter.
++        start = end.saturating_sub(4000).min(start);
++        while !text.is_char_boundary(start) { start += 1; }
++        Some(Self { text: text[start..end].to_owned(), cursor: cursor-start, anchor: anchor-start })
++    }
++}
+diff --git a/components/shared/embedder/input_events.rs b/components/shared/embedder/input_events.rs
+--- a/components/shared/embedder/input_events.rs
++++ b/components/shared/embedder/input_events.rs
+@@ -393,6 +393,10 @@
+ #[derive(Clone, Debug, Deserialize, Serialize)]
+ pub enum ImeEvent {
+     Composition(CompositionEvent),
++    DeleteSurroundingText {
++        before_length: u32, after_length: u32,
++        text: String, cursor: usize, anchor: usize, replacement: Option<String>,
++    },
+     Dismissed,
+ }
+ 
+diff --git a/components/shared/embedder/lib.rs b/components/shared/embedder/lib.rs
+--- a/components/shared/embedder/lib.rs
++++ b/components/shared/embedder/lib.rs
+@@ -586,6 +586,7 @@
+     ShowEmbedderControl(EmbedderControlId, DeviceIntRect, EmbedderControlRequest),
+     /// Request to the embedder to hide a user interface control.
+     HideEmbedderControl(EmbedderControlId),
++    ImeContextChanged(EmbedderControlId, Option<ImeSurroundingText>, bool),
+     /// Inform the embedding layer that a particular `InputEvent` was handled by Servo
+     /// and the embedder can continue processing it, if necessary.
+     InputEventsHandled(WebViewId, Vec<InputEventOutcome>),
+diff --git a/components/shared/paint/display_list.rs b/components/shared/paint/display_list.rs
+--- a/components/shared/paint/display_list.rs
++++ b/components/shared/paint/display_list.rs
+@@ -1012,6 +1012,8 @@
+     /// If this display list contains a blinking caret, this value will be filled with its animation
+     /// key and original color value so that the painter can animate the caret.
+     pub caret_property_binding: Option<(PropertyBindingKey<ColorF>, ColorF)>,
++    /// Geometry of the painted caret in its scroll/reference frame.
++    pub ime_cursor_rect: Option<(LayoutRect, ScrollTreeNodeId)>,
+ }
+ 
+ impl PaintDisplayListInfo {
+@@ -1065,6 +1067,7 @@
+             paint_timing_report: PaintTimingReport::default(),
+             paint_timing_info: PaintTimingInfo::now(),
+             caret_property_binding: Default::default(),
++            ime_cursor_rect: None,
+         }
+     }
+ 
+diff --git a/components/shared/paint/lib.rs b/components/shared/paint/lib.rs
+--- a/components/shared/paint/lib.rs
++++ b/components/shared/paint/lib.rs
+@@ -776,6 +776,7 @@
+ /// This is to prevent a dependency cycle between the renderer and the embedding
+ /// layer.
+ pub trait WebViewTrait {
++    fn notify_ime_cursor_rect(&self, rect: webrender_api::units::DeviceIntRect);
+     fn id(&self) -> WebViewId;
+     fn screen_geometry(&self) -> Option<ScreenGeometry>;
+     fn set_animating(&self, new_value: bool);

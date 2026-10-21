@@ -2,6 +2,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for path in [
         "src",
         "vendor/stylo",
+        "vendor/winit",
         "native",
         "aot",
         "patches",

@@ -1,6 +1,6 @@
 [package]
 name = "weber-servo"
-version = "0.6.0-alpha.2"
+version = "0.6.0-alpha.3"
 edition = "2024"
 publish = false
 license = "MPL-2.0"
@@ -77,4 +77,5 @@ cxx-build = { version = "1", optional = true }
 atomic_refcell = "0.1.14"
 
 [patch.crates-io]
+winit = { path = "vendor/winit" }
 stylo = { path = "vendor/stylo" }

@@ -1,5 +1,7 @@
 # Korean IME — 0.6.0-alpha.2
 
+This is the historical alpha.2 report. See [alpha.3 native editing](native-editing-alpha3.md) for current surrounding-text, Hanja, contenteditable and Hyprland work.
+
 Korean input is an alpha acceptance requirement. Applications use ordinary HTML
 `input` and `textarea`; no additional Weber text widget or app-specific Hangul
 implementation is required. The default runtime remains Servo/SpiderMonkey JIT.

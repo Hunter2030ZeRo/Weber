@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Developer alpha</strong> · Linux / Wayland · SDK 0.6.0-alpha.2
+  <strong>Developer alpha</strong> · Linux / Wayland · SDK 0.6.0-alpha.3
 </p>
 
 <p align="center">
@@ -162,12 +162,17 @@ The [0.6 developer alpha](docs/linux-alpha-06.md) adds a runnable Workbench and
 application/window/system acceptance gates. See its exact scope and reproduction
 steps before using Weber as a downstream desktop UI foundation.
 
-[0.6.0-alpha.2 Korean IME acceptance](docs/korean-ime.md) adds actual Fcitx5
-Hangul tests through GNOME Wayland: composition/deletion, immediate language
-toggles, selection, field/window handoff and Solid Workbench save/restart.
-Ordinary HTML input/textarea use this path automatically. Physical keyboard and
-other compositor/IME combinations remain separate validation.
+[0.6.0-alpha.3 native editing](docs/native-editing-alpha3.md) adds bounded
+Wayland surrounding text, Hanja replacement, painted-caret candidate positioning
+and native basic `contenteditable` editing with undo/redo. Tests use real Fcitx5
+and OS input in isolated **Hyprland 0.56.2** and GNOME sessions. Ordinary HTML
+controls use these paths automatically. Physical keyboards, full rich-editor
+conformance and a complete downstream desktop remain separate validation.
 
+**Simulacrum uses Hyprland as its compositor.** Weber supplies application UI and
+system integration; it does not implement a replacement compositor. The same
+framework remains intended for ordinary applications and future Windows/macOS
+hosts.
 The local npm workflow has been exercised outside the source checkout, including
 installation, type checking, builds, packaging and relocation. Native tests ran
 the Notes app in isolated GNOME Wayland windows and checked programmatic input,

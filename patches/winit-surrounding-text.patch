@@ -1,0 +1,273 @@
+--- a/src/event.rs
++++ b/src/event.rs
+@@ -792,6 +792,18 @@
+     ///
+     /// Right before this event winit will send empty [`Self::Preedit`] event.
+     Commit(String),
++
++    /// Wayland deletion relative to the most recently advertised surrounding text.
++    /// Byte lengths exclude the selection. The snapshot lets the editor reject
++    /// edits after a document/focus change. Emitted before commit and preedit.
++    DeleteSurroundingText {
++        before_length: u32,
++        after_length: u32,
++        text: String,
++        cursor: usize,
++        anchor: usize,
++        replacement: Option<String>,
++    },
+ 
+     /// Notifies when the IME was disabled.
+     ///
+--- a/src/platform/wayland.rs
++++ b/src/platform/wayland.rs
+@@ -81,9 +81,27 @@
+ pub trait WindowExtWayland {
+     /// Returns `xdg_toplevel` of the window or [`None`] if the window is X11 window.
+     fn xdg_toplevel(&self) -> Option<NonNull<c_void>>;
++
++    /// Publish UTF-8 surrounding text (at most 4000 bytes, excluding preedit).
++    /// Returns false for invalid offsets/text or an unsupported backend.
++    fn set_ime_surrounding_text(&self, text: String, cursor: usize, anchor: usize, input_method: bool) -> bool;
++
+ }
+ 
+ impl WindowExtWayland for Window {
++    fn set_ime_surrounding_text(&self, text: String, cursor: usize, anchor: usize, input_method: bool) -> bool {
++        if text.len() > 4000 || text.contains('\0') || !text.is_char_boundary(cursor) || !text.is_char_boundary(anchor) { return false; }
++        match &self.window {
++            #[cfg(x11_platform)]
++            crate::platform_impl::Window::X(_) => false,
++            #[cfg(wayland_platform)]
++            crate::platform_impl::Window::Wayland(window) => {
++                window.set_ime_surrounding_text(text, cursor as i32, anchor as i32, input_method);
++                true
++            }
++        }
++    }
++
+     #[inline]
+     fn xdg_toplevel(&self) -> Option<NonNull<c_void>> {
+         #[allow(clippy::single_match)]
+--- a/src/platform_impl/linux/wayland/seat/text_input/mod.rs
++++ b/src/platform_impl/linux/wayland/seat/text_input/mod.rs
+@@ -65,6 +65,9 @@
+             TextInputEvent::Enter { surface } => {
+                 let window_id = wayland::make_wid(&surface);
+                 text_input_data.surface = Some(surface);
++                // Window APIs acquire window state before input data. Keep that
++                // order on the event thread too, for cross-thread Window callers.
++                drop(text_input_data);
+ 
+                 let mut window = match windows.get(&window_id) {
+                     Some(window) => window.lock().unwrap(),
+@@ -74,6 +77,12 @@
+                 if window.ime_allowed() {
+                     text_input.enable();
+                     text_input.set_content_type_by_purpose(window.ime_purpose());
++                    let mut text_input_data = data.inner.lock().unwrap();
++                    if let Some((text, cursor, anchor)) = window.ime_surrounding_text() {
++                        text_input.set_surrounding_text(text.clone(), cursor, anchor);
++                        text_input_data.surrounding = Some((text, cursor as usize, anchor as usize));
++                    }
++                    text_input_data.serial = text_input_data.serial.wrapping_add(1);
+                     text_input.commit();
+                     state.events_sink.push_window_event(WindowEvent::Ime(Ime::Enabled), window_id);
+                 }
+@@ -85,7 +94,11 @@
+ 
+                 // Always issue a disable.
+                 text_input.disable();
++                text_input_data.surrounding = None;
++                text_input_data.pending_delete = None;
++                text_input_data.serial = text_input_data.serial.wrapping_add(1);
+                 text_input.commit();
++                drop(text_input_data);
+ 
+                 let window_id = wayland::make_wid(&surface);
+ 
+@@ -115,15 +128,34 @@
+                 text_input_data.pending_preedit = None;
+                 text_input_data.pending_commit = text;
+             },
+-            TextInputEvent::Done { .. } => {
++            TextInputEvent::Done { serial } => {
+                 let window_id = match text_input_data.surface.as_ref() {
+                     Some(surface) => wayland::make_wid(surface),
+                     None => return,
+                 };
+ 
++                let has_delete = text_input_data.pending_delete.is_some();
++                if let Some((before_length, after_length)) = text_input_data.pending_delete.take() {
++                    // A stale deletion and its replacement must be rejected as one edit.
++                    if serial != text_input_data.serial {
++                        text_input_data.pending_commit = None;
++                        text_input_data.pending_preedit = None;
++                        return;
++                    }
++                    if let Some((text, cursor, anchor)) = text_input_data.surrounding.clone() {
++                        state.events_sink.push_window_event(WindowEvent::Ime(Ime::DeleteSurroundingText {
++                            before_length, after_length, text, cursor, anchor, replacement: text_input_data.pending_commit.take(),
++                        }), window_id);
++                    } else {
++                        text_input_data.pending_commit = None;
++                        text_input_data.pending_preedit = None;
++                        return;
++                    }
++                }
++
+                 // Clear preedit, unless all we'll be doing next is sending a new preedit.
+-                if text_input_data.pending_commit.is_some()
+-                    || text_input_data.pending_preedit.is_none()
++                if !has_delete && (text_input_data.pending_commit.is_some()
++                    || text_input_data.pending_preedit.is_none())
+                 {
+                     state.events_sink.push_window_event(
+                         WindowEvent::Ime(Ime::Preedit(String::new(), None)),
+@@ -149,8 +181,8 @@
+                     );
+                 }
+             },
+-            TextInputEvent::DeleteSurroundingText { .. } => {
+-                // Not handled.
++            TextInputEvent::DeleteSurroundingText { before_length, after_length } => {
++                text_input_data.pending_delete = Some((before_length, after_length));
+             },
+             _ => {},
+         }
+@@ -159,9 +191,26 @@
+ 
+ pub trait ZwpTextInputV3Ext {
+     fn set_content_type_by_purpose(&self, purpose: ImePurpose);
++    fn commit_ime_state(&self);
++    fn store_ime_surrounding_text(&self, text: String, cursor: usize, anchor: usize);
++    fn clear_ime_surrounding_text(&self);
+ }
+ 
+ impl ZwpTextInputV3Ext for ZwpTextInputV3 {
++    fn commit_ime_state(&self) {
++        let mut data = self.data::<TextInputData>().unwrap().inner.lock().unwrap();
++        data.serial = data.serial.wrapping_add(1);
++        self.commit();
++    }
++    fn store_ime_surrounding_text(&self, text: String, cursor: usize, anchor: usize) {
++        self.data::<TextInputData>().unwrap().inner.lock().unwrap().surrounding = Some((text, cursor, anchor));
++    }
++    fn clear_ime_surrounding_text(&self) {
++        let mut data = self.data::<TextInputData>().unwrap().inner.lock().unwrap();
++        data.surrounding = None;
++        data.pending_delete = None;
++    }
++
+     fn set_content_type_by_purpose(&self, purpose: ImePurpose) {
+         let (hint, purpose) = match purpose {
+             ImePurpose::Normal => (ContentHint::None, ContentPurpose::Normal),
+@@ -183,6 +232,10 @@
+     /// The `WlSurface` we're performing input to.
+     surface: Option<WlSurface>,
+ 
++    serial: u32,
++    surrounding: Option<(String, usize, usize)>,
++    pending_delete: Option<(u32, u32)>,
++
+     /// The commit to submit on `done`.
+     pending_commit: Option<String>,
+ 
+--- a/src/platform_impl/linux/wayland/window/mod.rs
++++ b/src/platform_impl/linux/wayland/window/mod.rs
+@@ -621,6 +621,10 @@
+     }
+ 
+     #[inline]
++    pub fn set_ime_surrounding_text(&self, text: String, cursor: i32, anchor: i32, input_method: bool) {
++        self.window_state.lock().unwrap().set_ime_surrounding_text(text, cursor, anchor, input_method);
++    }
++
+     pub fn set_ime_purpose(&self, purpose: ImePurpose) {
+         self.window_state.lock().unwrap().set_ime_purpose(purpose);
+     }
+--- a/src/platform_impl/linux/wayland/window/state.rs
++++ b/src/platform_impl/linux/wayland/window/state.rs
+@@ -108,6 +108,7 @@
+ 
+     /// Whether the IME input is allowed for that window.
+     ime_allowed: bool,
++    ime_surrounding_text: Option<(String, i32, i32)>,
+ 
+     /// The current IME purpose.
+     ime_purpose: ImePurpose,
+@@ -199,6 +200,7 @@
+             seat_focus: Default::default(),
+             has_pending_move: None,
+             ime_allowed: false,
++            ime_surrounding_text: None,
+             ime_purpose: ImePurpose::Normal,
+             last_configure: None,
+             max_inner_size: None,
+@@ -568,6 +570,10 @@
+ 
+     /// Whether the IME is allowed.
+     #[inline]
++    pub fn ime_surrounding_text(&self) -> Option<(String, i32, i32)> {
++        self.ime_surrounding_text.clone()
++    }
++
+     pub fn ime_allowed(&self) -> bool {
+         self.ime_allowed
+     }
+@@ -1016,6 +1022,22 @@
+     }
+ 
+     /// Returns `true` if the requested state was applied.
++    pub fn set_ime_surrounding_text(&mut self, text: String, cursor: i32, anchor: i32, input_method: bool) {
++        self.ime_surrounding_text = Some((text, cursor, anchor));
++        for text_input in &self.text_inputs {
++            if self.ime_allowed { self.send_ime_surrounding_text(text_input, input_method); text_input.commit_ime_state(); }
++        }
++    }
++
++    pub fn send_ime_surrounding_text(&self, text_input: &ZwpTextInputV3, input_method: bool) {
++        use sctk::reexports::protocols::wp::text_input::zv3::client::zwp_text_input_v3::ChangeCause;
++        if let Some((text, cursor, anchor)) = &self.ime_surrounding_text {
++            text_input.set_surrounding_text(text.clone(), *cursor, *anchor);
++            text_input.set_text_change_cause(if input_method { ChangeCause::InputMethod } else { ChangeCause::Other });
++            text_input.store_ime_surrounding_text(text.clone(), *cursor as usize, *anchor as usize);
++        }
++    }
++
+     pub fn set_ime_allowed(&mut self, allowed: bool) -> bool {
+         self.ime_allowed = allowed;
+ 
+@@ -1025,10 +1047,12 @@
+             if allowed {
+                 text_input.enable();
+                 text_input.set_content_type_by_purpose(self.ime_purpose);
++                self.send_ime_surrounding_text(text_input, false);
+             } else {
+                 text_input.disable();
+-            }
+-            text_input.commit();
++                text_input.clear_ime_surrounding_text();
++            }
++            text_input.commit_ime_state();
+         }
+ 
+         applied
+@@ -1043,7 +1067,7 @@
+         let (width, height) = (size.width as i32, size.height as i32);
+         for text_input in self.text_inputs.iter() {
+             text_input.set_cursor_rectangle(x, y, width, height);
+-            text_input.commit();
++            text_input.commit_ime_state();
+         }
+     }
+ 
+@@ -1053,7 +1077,7 @@
+ 
+         for text_input in &self.text_inputs {
+             text_input.set_content_type_by_purpose(purpose);
+-            text_input.commit();
++            text_input.commit_ime_state();
+         }
+     }
+ 

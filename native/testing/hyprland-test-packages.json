@@ -1,0 +1,68 @@
+[
+  {
+    "name": "hyprutils",
+    "version": "0.14.2-1.1",
+    "url": "https://cdn77.cachyos.org/repo/x86_64_v3/cachyos-extra-v3/hyprutils-0.14.2-1.1-x86_64_v3.pkg.tar.zst",
+    "sha256": "a8e173b90cc4411fea7ff898592b47dbf5c8e9b9f2ffea442bb2b39e292e327b"
+  },
+  {
+    "name": "aquamarine",
+    "version": "0.15.1-1.1",
+    "url": "https://cdn77.cachyos.org/repo/x86_64_v3/cachyos-extra-v3/aquamarine-0.15.1-1.1-x86_64_v3.pkg.tar.zst",
+    "sha256": "a7258cbabad081858177dd04bad4be9c3ee0af984ca2deacec2c0d7fa5847ce8"
+  },
+  {
+    "name": "hyprlang",
+    "version": "0.6.8-5.1",
+    "url": "https://cdn77.cachyos.org/repo/x86_64_v3/cachyos-extra-v3/hyprlang-0.6.8-5.1-x86_64_v3.pkg.tar.zst",
+    "sha256": "3d896adf5dd72466ccd636b196ef6421cb4b7065534d4dcbd0458af2c12bc165"
+  },
+  {
+    "name": "tomlplusplus",
+    "version": "3.4.0-2.1",
+    "url": "https://cdn77.cachyos.org/repo/x86_64_v3/cachyos-extra-v3/tomlplusplus-3.4.0-2.1-x86_64_v3.pkg.tar.zst",
+    "sha256": "9682a6e7fc6478aba117fa95581b012a1ace3b3769671d6e79a3668ac10ebf08"
+  },
+  {
+    "name": "hyprcursor",
+    "version": "0.1.13-7.1",
+    "url": "https://cdn77.cachyos.org/repo/x86_64_v3/cachyos-extra-v3/hyprcursor-0.1.13-7.1-x86_64_v3.pkg.tar.zst",
+    "sha256": "e92845cce5d5c3277f65f2f94684c7d7d227f9a1e12648d56b53462b5a7172c5"
+  },
+  {
+    "name": "hyprgraphics",
+    "version": "0.5.1-4.1",
+    "url": "https://cdn77.cachyos.org/repo/x86_64_v3/cachyos-extra-v3/hyprgraphics-0.5.1-4.1-x86_64_v3.pkg.tar.zst",
+    "sha256": "b5b64f0f5ba760e99900e4b0d0f8a921606481f7211ef8a66b3796c45ce9d6f6"
+  },
+  {
+    "name": "hyprtoolkit",
+    "version": "0.6.0-1.1",
+    "url": "https://cdn77.cachyos.org/repo/x86_64_v3/cachyos-extra-v3/hyprtoolkit-0.6.0-1.1-x86_64_v3.pkg.tar.zst",
+    "sha256": "a3616f9974eeafd940a98858253f8fc3adace66a527cb0d3261234b7d09c09c4"
+  },
+  {
+    "name": "hyprland-guiutils",
+    "version": "0.2.2-4.1",
+    "url": "https://cdn77.cachyos.org/repo/x86_64_v3/cachyos-extra-v3/hyprland-guiutils-0.2.2-4.1-x86_64_v3.pkg.tar.zst",
+    "sha256": "db9292fd2aa4227159c44ebf89a43d4c60f8ba001fbb1c3eb54e48934f6d5c08"
+  },
+  {
+    "name": "hyprwire",
+    "version": "0.3.1-3.1",
+    "url": "https://cdn77.cachyos.org/repo/x86_64_v3/cachyos-extra-v3/hyprwire-0.3.1-3.1-x86_64_v3.pkg.tar.zst",
+    "sha256": "b5c39ce96af0f57927c8143c6554c7cd829eea6ead7baf4b47be4ea3aa46c4f0"
+  },
+  {
+    "name": "muparser",
+    "version": "2.3.5-2.1",
+    "url": "https://cdn77.cachyos.org/repo/x86_64_v3/cachyos-extra-v3/muparser-2.3.5-2.1-x86_64_v3.pkg.tar.zst",
+    "sha256": "8ac4aa3bdeb855abe083867b6d6a4e0f4c8191c8810d5676b0c0b3a6adca83bc"
+  },
+  {
+    "name": "hyprland",
+    "version": "0.56.2-4.1",
+    "url": "https://cdn77.cachyos.org/repo/x86_64_v3/cachyos-extra-v3/hyprland-0.56.2-4.1-x86_64_v3.pkg.tar.zst",
+    "sha256": "09892e6220efc469d7f757f3e5713b35028ee5e2759aee14e93367d9e37c954e"
+  }
+]

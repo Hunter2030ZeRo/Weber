@@ -62,7 +62,8 @@ export async function launch({ binary = 'target/debug/weber-servo', engine = 'ao
 export class NativeKeys {
   constructor(child, ready, pending) { this.child = child; this.ready = ready; this.pending = pending; this.app = null; }
   static async open() {
-    const child = spawn('/usr/bin/python3', [resolve('scripts/wayland-input.py')], { stdio: ['pipe', 'pipe', 'inherit'] });
+    const hyprland=process.env.WEBER_TEST_DISPLAY?.startsWith('isolated Hyprland');
+    const child = spawn(hyprland?resolve('target/test-tools/input/weber-wayland-keyboard'):'/usr/bin/python3', hyprland?[]:[resolve('scripts/wayland-input.py')], { stdio: ['pipe', 'pipe', 'inherit'] });
     const pending = [];
     const ready = new Promise((resolveReady, reject) => {
       const lines = createInterface({ input: child.stdout });
@@ -95,6 +96,13 @@ export class NativeKeys {
       await this.command({ keycode: 1, pressed: false });
       await delay(300);
       if (await focused()) return;
+    }
+    if (process.env.WEBER_TEST_DISPLAY?.startsWith('isolated Hyprland')) {
+      const clients=JSON.parse((await execute(process.env.WEBER_TEST_HYPRCTL,['-j','clients'])).stdout);
+      const own=clients.find(client=>Number(client.pid)===this.app.child.pid);
+      if (!own || !/^0x[0-9a-f]+$/i.test(own.address)) throw Error('Owned Hyprland window missing');
+      await execute(process.env.WEBER_TEST_HYPRCTL,['dispatch',`hl.dsp.focus({window='address:${own.address}'})`]);
+      await waitFor(focused,'Owned Hyprland activation',5000);return;
     }
     // The compositor owns Alt-Tab. No text/control keys go to another application.
     await this.command({ keycode: 56, pressed: true });

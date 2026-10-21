@@ -23,6 +23,10 @@ impl Input {
         deliver_composition(view, events);
         changed
     }
+    pub fn focus_lost(&mut self, view: &WebView) {
+        self.finish_ime_batch(view);
+        deliver_composition(view, self.composition.commit_on_blur());
+    }
     pub fn forward(&mut self, view: &WebView, event: WindowEvent) {
         if !matches!(event, WindowEvent::Ime(_)) {
             self.finish_ime_batch(view);
@@ -107,6 +111,31 @@ impl Input {
                 InputEvent::Keyboard(keyboard)
             }
             WindowEvent::Ime(ime) => {
+                if let Ime::DeleteSurroundingText {
+                    before_length,
+                    after_length,
+                    text,
+                    cursor,
+                    anchor,
+                    replacement,
+                } = ime
+                {
+                    if replacement.is_some() {
+                        self.composition.active = false;
+                        self.composition.clear_pending = false;
+                    }
+                    view.notify_input_event(InputEvent::Ime(
+                        servo::ImeEvent::DeleteSurroundingText {
+                            before_length,
+                            after_length,
+                            text,
+                            cursor,
+                            anchor,
+                            replacement,
+                        },
+                    ));
+                    return;
+                }
                 deliver_composition(view, self.composition.handle(ime));
                 return;
             }
@@ -120,6 +149,7 @@ impl Input {
 struct Composition {
     active: bool,
     clear_pending: bool,
+    preedit: String,
 }
 fn composition(state: servo::CompositionState, data: String) -> servo::CompositionEvent {
     servo::CompositionEvent { state, data }
@@ -133,11 +163,12 @@ impl Composition {
     fn handle(&mut self, ime: Ime) -> Vec<servo::CompositionEvent> {
         use servo::CompositionState::{End, Start, Update};
         match ime {
-            Ime::Enabled => Vec::new(),
+            Ime::Enabled | Ime::DeleteSurroundingText { .. } => Vec::new(),
             Ime::Disabled => {
                 // Backend context acknowledgement, never a request to blur DOM.
                 self.active = false;
                 self.clear_pending = false;
+                self.preedit.clear();
                 Vec::new()
             }
             Ime::Preedit(text, _) if text.is_empty() => {
@@ -146,6 +177,7 @@ impl Composition {
             }
             Ime::Preedit(text, _) => {
                 self.clear_pending = false;
+                self.preedit.clone_from(&text);
                 let mut events = Vec::with_capacity(2);
                 if !self.active {
                     self.active = true;
@@ -161,16 +193,28 @@ impl Composition {
                 }
                 self.active = false;
                 self.clear_pending = false;
+                self.preedit.clear();
                 events.push(composition(End, text));
                 events
             }
         }
+    }
+    fn commit_on_blur(&mut self) -> Vec<servo::CompositionEvent> {
+        if !std::mem::take(&mut self.active) {
+            return Vec::new();
+        }
+        self.clear_pending = false;
+        vec![composition(
+            servo::CompositionState::End,
+            std::mem::take(&mut self.preedit),
+        )]
     }
     fn finish(&mut self) -> Vec<servo::CompositionEvent> {
         if !std::mem::take(&mut self.clear_pending) {
             return Vec::new();
         }
         self.active = false;
+        self.preedit.clear();
         vec![
             composition(servo::CompositionState::Update, String::new()),
             composition(servo::CompositionState::End, String::new()),
@@ -180,6 +224,30 @@ impl Composition {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_focus_loss_commits_the_existing_preedit_once() {
+        let mut ime = Composition::default();
+        ime.handle(Ime::Preedit("나".into(), None));
+        let events = ime.commit_on_blur();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0].state, servo::CompositionState::End));
+        assert_eq!(events[0].data, "나");
+        assert!(ime.commit_on_blur().is_empty());
+        assert!(!ime.active);
+    }
+    #[test]
+    fn surrounding_context_keeps_utf8_boundaries_and_the_full_selection() {
+        let text = "🙂한".repeat(900);
+        let context = servo::ImeSurroundingText::new(&text, 3500, 3507).unwrap();
+        assert!(context.text.len() <= 4000);
+        assert!(context.text.is_char_boundary(context.cursor));
+        assert!(context.text.is_char_boundary(context.anchor));
+        assert_eq!(&context.text[context.cursor..context.anchor], "🙂한");
+        assert!(servo::ImeSurroundingText::new(&text, 1, 1).is_none());
+        assert!(servo::ImeSurroundingText::new(&text, 0, text.len()).is_none());
+        assert!(servo::ImeSurroundingText::new("a\0b", 1, 1).is_none());
+        assert_eq!(servo::ImeSurroundingText::new("", 0, 0).unwrap().text, "");
+    }
     #[test]
     fn ime_clear_and_commit_share_one_composition() {
         let mut ime = Composition::default();

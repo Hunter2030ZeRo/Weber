@@ -1,4 +1,3 @@
-#[cfg(feature = "aot")]
 use std::cell::RefCell;
 use std::{cell::Cell, rc::Rc, sync::Arc};
 
@@ -15,7 +14,7 @@ use winit::{
     event::WindowEvent,
     event_loop::{ActiveEventLoop, EventLoopProxy},
     platform::startup_notify::{WindowAttributesExtStartupNotify, WindowExtStartupNotify},
-    platform::wayland::WindowAttributesExtWayland,
+    platform::wayland::{WindowAttributesExtWayland, WindowExtWayland},
     raw_window_handle::{HasDisplayHandle, HasWindowHandle},
     window::{ActivationToken, Fullscreen, Window, WindowId},
 };
@@ -61,6 +60,8 @@ struct Delegate {
     active: Cell<bool>,
     telemetry: Rc<crate::telemetry::Telemetry>,
     ime: Cell<Option<servo::EmbedderControlId>>,
+    ime_context: RefCell<Option<servo::ImeSurroundingText>>,
+    ime_cursor_rect: Cell<Option<(i32, i32, i32, i32)>>,
 }
 
 struct Clipboard {
@@ -455,7 +456,18 @@ impl WebViewDelegate for Delegate {
     }
     fn show_embedder_control(&self, _: WebView, control: servo::EmbedderControl) {
         if let servo::EmbedderControl::InputMethod(input) = control {
-            self.ime.set(Some(input.id()));
+            self.ime_cursor_rect.set(None);
+            if self.ime.replace(Some(input.id())) != Some(input.id()) {
+                self.window.set_ime_allowed(false);
+            }
+            let context = input.surrounding_text().cloned();
+            *self.ime_context.borrow_mut() = context.clone();
+            let (text, cursor, anchor) = context
+                .map(|c| (c.text, c.cursor, c.anchor))
+                .unwrap_or_default();
+            self.window
+                .set_ime_surrounding_text(text, cursor, anchor, false);
+
             self.window.set_ime_purpose(
                 if input.input_method_type() == servo::InputMethodType::Password {
                     winit::window::ImePurpose::Password
@@ -470,6 +482,43 @@ impl WebViewDelegate for Delegate {
             );
             self.window.set_ime_allowed(true);
         }
+    }
+    fn notify_ime_cursor_rect(&self, _: WebView, rect: servo::DeviceIntRect) {
+        if self.ime.get().is_none() || !self.window.has_focus() {
+            return;
+        }
+        // Keep the protocol rectangle within the surface; winit 0.30 uses unsigned coordinates.
+        let size = self.window.inner_size();
+        let x = rect.min.x.clamp(0, size.width.saturating_sub(1) as i32);
+        let y = rect.min.y.clamp(0, size.height.saturating_sub(1) as i32);
+        let width = rect.width().max(1);
+        let height = rect.height().max(1);
+        let geometry = (x, y, width, height);
+        if self.ime_cursor_rect.replace(Some(geometry)) == Some(geometry) {
+            return;
+        }
+        self.window.set_ime_cursor_area(
+            winit::dpi::PhysicalPosition::new(x, y),
+            winit::dpi::PhysicalSize::new(width as u32, height as u32),
+        );
+        self.telemetry.emit(serde_json::json!({"stage":"ime-caret-rect","windowId":self.id,"x":x,"y":y,"width":width,"height":height,"scaleFactor":self.window.scale_factor()}));
+    }
+    fn ime_context_changed(
+        &self,
+        _: WebView,
+        id: servo::EmbedderControlId,
+        context: Option<servo::ImeSurroundingText>,
+        input_method: bool,
+    ) {
+        if self.ime.get() != Some(id) || *self.ime_context.borrow() == context {
+            return;
+        }
+        *self.ime_context.borrow_mut() = context.clone();
+        let (text, cursor, anchor) = context
+            .map(|c| (c.text, c.cursor, c.anchor))
+            .unwrap_or_default();
+        self.window
+            .set_ime_surrounding_text(text, cursor, anchor, input_method);
     }
     fn hide_embedder_control(&self, _: WebView, id: servo::EmbedderControlId) {
         if self.ime.get() == Some(id) {
@@ -570,6 +619,8 @@ impl Running {
                 active: Cell::new(false),
                 telemetry: telemetry.clone(),
                 ime: Cell::new(None),
+                ime_context: RefCell::new(None),
+                ime_cursor_rect: Cell::new(None),
             }))
             .hidpi_scale_factor(scale(&window))
             .build();
@@ -622,6 +673,9 @@ impl Running {
             WindowEvent::Focused(focused) => {
                 self.telemetry
                     .emit(serde_json::json!({ "stage": "window-focus", "windowId":self.id, "focused": focused }));
+                if !focused {
+                    self.input.focus_lost(&self.webview);
+                }
                 self.webview.set_focused(focused);
             }
             other => self.input.forward(&self.webview, other),
@@ -1037,6 +1091,7 @@ impl ApplicationHandler<Wake> for App {
                 })
                 .preferences(servo::Preferences {
                     dom_composition_event_enabled: true,
+                    dom_exec_command_enabled: true,
                     layout_threads: std::env::var("WEBER_LAYOUT_THREADS")
                         .ok()
                         .and_then(|value| value.parse::<i64>().ok())

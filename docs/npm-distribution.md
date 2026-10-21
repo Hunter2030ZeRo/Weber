@@ -1,4 +1,4 @@
-# Local npm distribution, SDK 0.6.0-alpha.2
+# Local npm distribution, SDK 0.6.0-alpha.3
 
 Weber has two distribution layers: the JS/TS SDK and CLI are npm development
 dependencies; the native Servo/SpiderMonkey runtime is platform-specific.
@@ -9,8 +9,8 @@ need Node/npm/Bun for a JIT app without a Bun backend.
 
 These are local developer alpha artifacts, not published registry packages:
 
-- `target/npm/weber-sdk-0.6.0-alpha.2.tgz`: SDK, CLI, six templates and pinned defaults.
-- `target/npm/weber-runtime-linux-x64-0.6.0-alpha.2.tgz`: JIT executable, private native
+- `target/npm/weber-sdk-0.6.0-alpha.3.tgz`: SDK, CLI, six templates and pinned defaults.
+- `target/npm/weber-runtime-linux-x64-0.6.0-alpha.3.tgz`: JIT executable, private native
   libraries, existing notices and Servo patches. No Hermes or install scripts.
 - `target/npm/release.json`: artifact hashes, sizes, file lists and native build
   identity. Native protocol versions are independent of the SDK package version.
@@ -27,12 +27,12 @@ It may be relative to the new project (the distribution test uses sibling
 tarballs), allowing the complete project and tarballs to move together.
 
 ```sh
-WEBER_SDK_SPEC=file:/absolute/path/weber/target/npm/weber-sdk-0.6.0-alpha.2.tgz \
-  npm exec --package=/absolute/path/weber/target/npm/weber-sdk-0.6.0-alpha.2.tgz -- \
+WEBER_SDK_SPEC=file:/absolute/path/weber/target/npm/weber-sdk-0.6.0-alpha.3.tgz \
+  npm exec --package=/absolute/path/weber/target/npm/weber-sdk-0.6.0-alpha.3.tgz -- \
   weber init /path/my-notes notes
 cd /path/my-notes
 npm install
-npm install --save-dev /absolute/path/weber/target/npm/weber-runtime-linux-x64-0.6.0-alpha.2.tgz
+npm install --save-dev /absolute/path/weber/target/npm/weber-runtime-linux-x64-0.6.0-alpha.3.tgz
 npm run dev
 npm run build
 npm run package
@@ -107,5 +107,5 @@ To run the normal Notes package from the Weber checkout:
 ./target/package/weber-notes-npm/weber --app ./target/package/weber-notes-npm/application
 ```
 
-SDK/runtime 0.6.0-alpha.2 adds the [Korean IME gate](korean-ime.md); local alpha
+SDK/runtime 0.6.0-alpha.3 adds the [native editing and Hyprland gates](native-editing-alpha3.md); local alpha
 archives also include `ime-validation.json`.

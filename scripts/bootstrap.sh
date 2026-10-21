@@ -10,7 +10,8 @@ if [[ "$actual" != "$revision" ]]; then
   printf 'Servo revision mismatch: %s\n' "$actual" >&2
   exit 1
 fi
-for patch_name in servo-transient-observers servo-sync-host servo-time-origin servo-keyboard-click servo-binary-host servo-small-dom-scheduling servo-safe-cut servo-document-envelope servo-font-lifecycle servo-ime-composition; do
+if ! python3 scripts/check-servo-patches.py; then
+for patch_name in servo-transient-observers servo-sync-host servo-time-origin servo-keyboard-click servo-binary-host servo-small-dom-scheduling servo-safe-cut servo-document-envelope servo-font-lifecycle servo-ime-composition servo-native-editing; do
   # The envelope extension supersedes contexts in both host-call patches.
   if [[ "$patch_name" == servo-sync-host || "$patch_name" == servo-binary-host ]] && git -C vendor/servo apply --reverse --check "$PWD/patches/servo-document-envelope.patch" 2>/dev/null; then
     continue
@@ -27,7 +28,10 @@ for patch_name in servo-transient-observers servo-sync-host servo-time-origin se
     git -C vendor/servo apply "$patch_path"
   fi
 done
+  python3 scripts/check-servo-patches.py
+fi
 python3 scripts/prepare-stylo.py
+python3 scripts/prepare-winit.py
 pnpm --dir app install --frozen-lockfile
 pnpm --dir app run build
 if [[ "${1:-}" == "--aot" ]]; then
