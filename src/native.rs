@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     rc::Rc,
     sync::OnceLock,
 };
@@ -28,6 +28,8 @@ pub struct Options {
     pub title: String,
     pub width: u32,
     pub height: u32,
+    pub decorations: bool,
+    pub resizable: bool,
 }
 impl Default for Options {
     fn default() -> Self {
@@ -35,6 +37,8 @@ impl Default for Options {
             title: "Weber".into(),
             width: 960,
             height: 720,
+            decorations: true,
+            resizable: true,
         }
     }
 }
@@ -62,6 +66,11 @@ pub enum Command {
     Maximize(u64, bool),
     Fullscreen(u64, bool),
     Resizable(u64, bool),
+    Decorations(u64, bool),
+    Minimize(u64),
+    Attention(u64),
+    Drag(u64, Option<winit::window::ResizeDirection>),
+    RefreshSystem(u64),
 }
 #[derive(Default)]
 struct Watch {
@@ -88,6 +97,10 @@ pub struct Control {
     close_serial: u64,
     wake_queued: bool,
     documents: BTreeMap<u64, u64>,
+    pub system: Value,
+    pub system_completed: u64,
+    pub pointer_down: BTreeSet<u64>,
+    system_requested: u64,
 }
 pub type Shared = Rc<RefCell<Control>>;
 impl Control {
@@ -108,7 +121,14 @@ impl Control {
             self.revision += 1;
         }
     }
+    pub fn update_system(&mut self, system: Value) {
+        if self.system != system {
+            self.system = system;
+            self.revision += 1;
+        }
+    }
     pub fn remove(&mut self, id: u64) {
+        self.pointer_down.remove(&id);
         self.documents.remove(&id);
         self.portal_parents.remove(&id);
         self.watches.remove(&id);
@@ -128,7 +148,7 @@ impl Control {
         {
             return Vec::new();
         }
-        let snapshot = json!({ "revision": revision, "windows": self.windows.values().filter(|w| w["state"] != "failed").collect::<Vec<_>>() });
+        let snapshot = json!({ "revision": revision, "windows": self.windows.values().filter(|w| w["state"] != "failed").collect::<Vec<_>>(), "system":self.system });
         self.watches
             .iter_mut()
             .filter_map(|(id, watch)| {
@@ -160,6 +180,7 @@ impl Control {
         }
     }
     pub fn detach(&mut self, id: u64) {
+        self.pointer_down.remove(&id);
         if let Some(generation) = self.documents.get_mut(&id) {
             *generation = generation.wrapping_add(1);
         }
@@ -265,7 +286,9 @@ fn exchange_request(
             ensure!(bytes <= 65_536, "Native request too large");
         }
         if !request["op"].as_str().is_some_and(|op| {
-            op.starts_with("clipboard.") || op.starts_with("files.") || op == "storage.start"
+            op.starts_with("clipboard.")
+                || op.starts_with("files.")
+                || matches!(op, "storage.start" | "system.start")
         }) {
             ensure!(bytes <= 16_000, "Native request too large");
         }
@@ -286,6 +309,41 @@ fn exchange_request(
                 .ok_or_else(|| anyhow!("Window id must be a positive integer"))?,
         };
         match request["op"].as_str() {
+            Some("system.info") => {
+                Ok(json!({"completed":control.system_completed,"info":control.system}))
+            }
+            Some("system.refresh") => {
+                ensure!(control.commands.len() < 64, "Native command queue full");
+                control.system_requested += 1;
+                let serial = control.system_requested;
+                control.commands.push_back(Command::RefreshSystem(serial));
+                Ok(json!({"serial":serial}))
+            }
+            Some("system.start") => {
+                if request["action"] == "open" {
+                    ensure!(
+                        control
+                            .windows
+                            .get(&source)
+                            .is_some_and(|w| w["focused"] == true),
+                        "System action requires the calling window to have focus"
+                    );
+                }
+                crate::system::submit(
+                    source,
+                    request,
+                    control
+                        .portal_parents
+                        .get(&source)
+                        .cloned()
+                        .unwrap_or_default(),
+                )
+            }
+            Some("system.poll") => crate::system::poll(source, &request),
+            Some("system.cancel") => {
+                crate::system::cancel(source, &request)?;
+                Ok(Value::Null)
+            }
             Some("close.watch") => {
                 ensure!(
                     !control.close_watches.contains_key(&source),
@@ -460,7 +518,10 @@ fn exchange_request(
                 });
                 Ok(json!({ "id": id }))
             }
-            Some("close" | "title" | "resize" | "maximize" | "fullscreen" | "resizable") => {
+            Some(
+                "close" | "title" | "resize" | "maximize" | "fullscreen" | "resizable"
+                | "decorations" | "minimize" | "attention" | "drag" | "drag-resize",
+            ) => {
                 ensure!(
                     control.windows.contains_key(&id),
                     "Unknown or closed window"
@@ -468,6 +529,39 @@ fn exchange_request(
                 ensure!(control.commands.len() < 64, "Native command queue full");
                 let command = match request["op"].as_str() {
                     Some("close") => Command::Close(id),
+                    Some("minimize") => Command::Minimize(id),
+                    Some("attention") => Command::Attention(id),
+                    Some("drag" | "drag-resize") => {
+                        ensure!(
+                            id == source
+                                && control
+                                    .windows
+                                    .get(&source)
+                                    .is_some_and(|w| w["focused"] == true),
+                            "Dragging requires the focused calling window"
+                        );
+                        ensure!(
+                            control.pointer_down.contains(&source),
+                            "Dragging requires a held native left pointer button"
+                        );
+                        let direction = if request["op"] == "drag-resize" {
+                            use winit::window::ResizeDirection as D;
+                            Some(match request["direction"].as_str() {
+                                Some("north") => D::North,
+                                Some("south") => D::South,
+                                Some("east") => D::East,
+                                Some("west") => D::West,
+                                Some("north-east") => D::NorthEast,
+                                Some("north-west") => D::NorthWest,
+                                Some("south-east") => D::SouthEast,
+                                Some("south-west") => D::SouthWest,
+                                _ => return Err(anyhow!("Invalid resize direction")),
+                            })
+                        } else {
+                            None
+                        };
+                        Command::Drag(id, direction)
+                    }
                     Some("resize") => {
                         let size: Options = serde_json::from_value(
                             json!({ "width": request["width"], "height": request["height"] }),
@@ -475,13 +569,14 @@ fn exchange_request(
                         size.validate()?;
                         Command::Resize(id, size.width, size.height)
                     }
-                    Some(op @ ("maximize" | "fullscreen" | "resizable")) => {
+                    Some(op @ ("maximize" | "fullscreen" | "resizable" | "decorations")) => {
                         let value = request["value"]
                             .as_bool()
                             .ok_or_else(|| anyhow!("Boolean value required"))?;
                         match op {
                             "maximize" => Command::Maximize(id, value),
                             "fullscreen" => Command::Fullscreen(id, value),
+                            "decorations" => Command::Decorations(id, value),
                             _ => Command::Resizable(id, value),
                         }
                     }
@@ -516,6 +611,84 @@ fn exchange_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn alpha_controls_require_native_pointer_and_validate_creation_options() {
+        let control = shared();
+        control
+            .borrow_mut()
+            .update(1, json!({"id":1,"state":"ready","focused":true}));
+        assert_eq!(call(&control, json!({"op":"drag"}))["ok"], false);
+        control.borrow_mut().pointer_down.insert(1);
+        assert_eq!(
+            call(&control, json!({"op":"drag-resize","direction":"sideways"}))["ok"],
+            false
+        );
+        assert_eq!(
+            call(
+                &control,
+                json!({"op":"drag-resize","direction":"south-east"})
+            )["ok"],
+            true
+        );
+        assert!(matches!(
+            control.borrow_mut().commands.pop_front(),
+            Some(Command::Drag(
+                1,
+                Some(winit::window::ResizeDirection::SouthEast)
+            ))
+        ));
+        control.borrow_mut().detach(1);
+        assert!(!control.borrow().pointer_down.contains(&1));
+        for op in ["visibility", "position", "always-on-top"] {
+            assert_eq!(call(&control, json!({"op":op,"value":true}))["ok"], false);
+        }
+        assert_eq!(
+            call(&control, json!({"op":"decorations","value":"false"}))["ok"],
+            false
+        );
+        let created = call(
+            &control,
+            json!({"op":"open","options":{"decorations":false,"resizable":false}}),
+        );
+        assert_eq!(created["ok"], true);
+        match control.borrow_mut().commands.pop_front() {
+            Some(Command::Open { options, .. }) => {
+                assert!(!options.decorations && !options.resizable)
+            }
+            _ => panic!("Expected open"),
+        };
+    }
+
+    #[test]
+    fn platform_changes_share_coalesced_window_watch_lifetime() {
+        let control = shared();
+        call(&control, json!({"op":"watch"}));
+        control
+            .borrow_mut()
+            .update_system(json!({"displays":[{"width":960}]}));
+        let first = control.borrow_mut().deliveries();
+        assert_eq!(first.len(), 1);
+        assert_eq!(
+            first[0].2["snapshot"]["system"]["displays"][0]["width"],
+            960
+        );
+        for width in 1000..2000 {
+            control
+                .borrow_mut()
+                .update_system(json!({"displays":[{"width":width}]}));
+        }
+        assert!(control.borrow_mut().deliveries().is_empty());
+        control.borrow_mut().acknowledge(1, first[0].1, true);
+        let next = control.borrow_mut().deliveries();
+        assert_eq!(next.len(), 1);
+        assert_eq!(
+            next[0].2["snapshot"]["system"]["displays"][0]["width"],
+            1999
+        );
+        control.borrow_mut().detach(1);
+        assert!(control.borrow_mut().deliveries().is_empty());
+    }
 
     #[test]
     fn queued_opens_keep_document_generation_and_failed_documents_retire() {

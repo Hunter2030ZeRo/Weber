@@ -80,7 +80,7 @@ export async function atomicOutput(destination, marker, work) {
   } finally { await rm(staging, { recursive: true, force: true }); }
 }
 export async function init(project, template) {
-  if (!['solid', 'dom', 'node', 'windows', 'notes'].includes(template)) throw new Error('Template must be solid, dom, node, windows or notes');
+  if (!['solid', 'dom', 'node', 'windows', 'notes', 'workbench'].includes(template)) throw new Error('Template must be solid, dom, node, windows, notes or workbench');
   if (existsSync(project)) throw new Error('Project directory already exists');
   if (!checkout && !process.env.WEBER_SDK_SPEC) throw new Error(`This SDK preview is not published: set WEBER_SDK_SPEC=file:/absolute/path/to/weber-sdk-${sdkVersion}.tgz before init`);
   await cp(join(checkout ? root : sdk, checkout ? 'examples' : 'templates', template), project, { recursive: true, filter: source => !['dist', 'node_modules'].includes(source.split(sep).at(-1)) });

@@ -52,6 +52,7 @@ try {
   const child = (await app.waitEvent(event => event.data.stage === 'activation-created', 'child creation')).data.child;
   await app.waitEvent(event => event.data.stage === 'activation-applied' && event.data.id === child, 'child receives activation token');
   await waitFor(() => latestFocus(child), 'child token gains actual native focus');
+  await app.waitEvent(event => event.data.stage === 'activation-ready' && event.data.id === child, 'child shortcut handlers installed');
   await keys.key(68); // F10 closes the focused child.
   await app.waitEvent(event => event.data.stage === 'window-closed' && event.data.id === child, 'child closes');
   await waitFor(() => latestFocus(1), 'parent regains focus');

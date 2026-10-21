@@ -19,6 +19,7 @@ export async function weber(options = {}) {
     { find: '@weber/sdk/storage', replacement: join(sdk, 'storage.ts') },
     { find: '@weber/sdk/clipboard', replacement: join(sdk, 'clipboard.ts') },
     { find: '@weber/sdk/files', replacement: join(sdk, 'files.ts') },
+    { find: '@weber/sdk/system', replacement: join(sdk, 'system.ts') },
   ];
   // SDK modules live outside the user's project; resolve them against the same
   // Solid installation so signals, stores and the renderer share one instance.

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Developer preview</strong> · Linux / Wayland · SDK 0.5.0
+  <strong>Developer alpha</strong> · Linux / Wayland · SDK 0.6.0-alpha.1
 </p>
 
 <p align="center">
@@ -36,16 +36,17 @@ Linux foundation, web compatibility, responsiveness and resource use.
 | Area | Available in the current prototype |
 | --- | --- |
 | Web UI | Vite, SolidJS, TypeScript, development HMR, CSS animation and `requestAnimationFrame` |
-| Windows | Multiple windows for the same app, titles, resizing, maximize, fullscreen and state subscriptions |
+| Windows | Multiple windows for the same app, titles, decorations, native drag/resize, minimize, maximize, fullscreen and state subscriptions |
 | Storage | App-scoped directories and asynchronous persistent JSON storage shared across app windows |
 | Clipboard | System text clipboard through the SDK and Servo's standard copy/cut/paste in textarea/input controls on focused Wayland windows |
 | Text files | Desktop file chooser, UTF-8 open/save and cancellation through `@weber/sdk/files` |
 | App lifecycle | Visible script errors and async close decisions for unsaved changes |
+| System | Display/theme snapshots, desktop notifications and cancellable external URL handoff |
 | Backend | Optional Bun process with named calls, subscriptions, cancellation and bounded IPC |
-| Distribution | Local npm SDK/runtime packages and relocatable Linux application bundles |
+| Distribution | Local npm SDK/runtime packages and relocatable Linux application bundles with generated desktop launchers |
 
 **Platform status:** Linux x64 on Wayland is the implemented and tested target.
-Windows and macOS are planned. Weber is a developer preview, not a released beta;
+Windows and macOS are planned. Weber is a developer alpha, not a released beta;
 the SDK and runtime packages are not published to npm.
 
 Contenteditable editing, accessibility and broader platform integration remain
@@ -81,10 +82,10 @@ a development server.
 
 ### 2. Create an application
 
-From the Weber checkout, create a Notes app in a sibling directory:
+From the Weber checkout, create a Workbench app in a sibling directory:
 
 ```sh
-node sdk/cli.mjs init ../weber-notes notes
+node sdk/cli.mjs init ../weber-notes workbench
 cd ../weber-notes
 npm install
 npm run dev
@@ -110,6 +111,7 @@ npm start
 
 Templates: [`solid`](examples/solid) · [`dom`](examples/dom) ·
 [`notes`](examples/notes) · [`node`](examples/node) · [`windows`](examples/windows).
+[`workbench`](examples/workbench) combines documents, window controls and system integration.
 The `windows` template demonstrates multiple app windows; it is not a Windows OS port.
 
 ### 3. Package for distribution
@@ -130,6 +132,9 @@ npm run package
 
 The bundle contains the native executable, private libraries, notices and app
 resources. A JIT app without a backend runs without Node.js, npm or Bun installed.
+Packaging also generates `<app-id>.desktop`; after moving the bundle, regenerate
+it with `weber launcher /absolute/bundle /output/app.desktop` before installing
+it in your desktop application directory. Weber does not install it automatically.
 A compatible system glibc loader, Wayland compositor, GPU/EGL drivers and fonts
 are still required; this is not a universal Linux binary.
 
@@ -152,6 +157,10 @@ the JIT host. See the [AOT performance gate](docs/beta-plan.md#aot-product-gate)
 and [measured comparison](docs/beta-foundation-validation.md).
 
 ## Validation
+
+The [0.6 developer alpha](docs/linux-alpha-06.md) adds a runnable Workbench and
+application/window/system acceptance gates. See its exact scope and reproduction
+steps before using Weber as a downstream desktop UI foundation.
 
 The local npm workflow has been exercised outside the source checkout, including
 installation, type checking, builds, packaging and relocation. Native tests ran
@@ -178,6 +187,7 @@ memory or startup advantage over Electron or native GUI frameworks is claimed.
 | Persistent data | [Storage API and Notes example](docs/app-storage.md) |
 | Clipboard | [Native text clipboard API and validation](docs/clipboard.md) |
 | Files and lifecycle | [Text files, close decisions and diagnostics](docs/files-and-lifecycle.md) |
+| Linux alpha | [Workbench, system APIs and acceptance](docs/linux-alpha-06.md) |
 | Linux preview | [Document and lifecycle foundation](docs/linux-foundation-05.md) · [Initial acceptance](docs/linux-preview-milestone.md) |
 | Optional backend | [Bun integration](docs/bun-backend.md) · [Backend validation](docs/bun-backend-validation.md) |
 | Web compatibility | [Locked test profile](docs/compatibility-target.md) · [Profile validation](docs/profile-validation.md) |

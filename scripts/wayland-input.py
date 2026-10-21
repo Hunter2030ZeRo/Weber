@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """GNOME compositor input injection for the owned Weber test window, never DOM events."""
 import json
+import os
 import sys
 import xml.etree.ElementTree as ET
 from gi.repository import Gio, GLib
@@ -22,7 +23,9 @@ def call(method, *values):
     return request(session, session_interface, method, GLib.Variant(signature, values))
 
 pressed_keys = set()
+pressed_buttons = set()
 idle_cookie = None
+pointer_stream = None
 try:
     if "--describe" in sys.argv:
         print(xml, flush=True)
@@ -32,6 +35,16 @@ try:
                 GLib.Variant("(susu)", ("weber.native-tests", 0, "Temporary Weber native input verification", 8)), None, Gio.DBusCallFlags.NO_AUTO_START, 3000, None).unpack()[0]
         except GLib.Error:
             pass
+        if os.environ.get("WEBER_TEST_ABSOLUTE_POINTER") == "1":
+            if not os.environ.get("WEBER_TEST_DISPLAY", "").startswith("isolated GNOME"):
+                raise RuntimeError("Absolute pointer setup requires the private test display")
+            identity = connection.call_sync(destination, session, "org.freedesktop.DBus.Properties", "Get",
+                GLib.Variant("(ss)", (session_interface, "SessionId")), None, Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
+            screen = "org.gnome.Mutter.ScreenCast"
+            cast = connection.call_sync(screen, "/org/gnome/Mutter/ScreenCast", screen, "CreateSession",
+                GLib.Variant("(a{sv})", ({"remote-desktop-session-id": GLib.Variant("s", identity)},)), None, Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
+            pointer_stream = connection.call_sync(screen, cast, screen + ".Session", "RecordMonitor",
+                GLib.Variant("(sa{sv})", ("", {})), None, Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
         call("Start")
         print(json.dumps({"ready": True, "backend": "GNOME Mutter RemoteDesktop; OS input injection"}), flush=True)
         for line in sys.stdin:
@@ -48,10 +61,27 @@ try:
                 call("NotifyKeyboardKeysym", int(command["keysym"]), bool(command["pressed"]))
             elif "axis" in command:
                 call("NotifyPointerAxis", float(command["axis"][0]), float(command["axis"][1]), 1)
+            elif "motion" in command:
+                call("NotifyPointerMotionRelative", float(command["motion"][0]), float(command["motion"][1]))
+            elif "point" in command:
+                if pointer_stream is None:
+                    raise ValueError("Absolute pointer stream was not initialized")
+                call("NotifyPointerMotionAbsolute", pointer_stream, float(command["point"][0]), float(command["point"][1]))
+            elif "button" in command:
+                call("NotifyPointerButton", int(command["button"]), bool(command["pressed"]))
+                if command["pressed"]:
+                    pressed_buttons.add(int(command["button"]))
+                else:
+                    pressed_buttons.discard(int(command["button"]))
             else:
                 raise ValueError("Unsupported compositor input command")
             print(json.dumps({"ok": True, "command": command}), flush=True)
 finally:
+    for button in pressed_buttons:
+        try:
+            call("NotifyPointerButton", button, False)
+        except GLib.Error:
+            pass
     for code in pressed_keys:
         try:
             call("NotifyKeyboardKeycode", code, False)

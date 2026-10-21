@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {openSync,closeSync} from 'node:fs';
-import {mkdir,readFile,writeFile,rm} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,rm,mkdtemp} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 const root=resolve('artifacts/preview');await mkdir(root,{recursive:true});
 async function run(name,program,args,cwd=process.cwd(),extra={}){
@@ -21,7 +21,9 @@ await writeFile(entry,`import {defineApp} from '@weber/runtime';import{openTextF
 try{await run('close-build',process.execPath,[cli,'build',project,join(project,'dist-close')],project);}finally{await writeFile(entry,original);}
 await writeFile(entry,`import{defineApp}from'@weber/runtime';defineApp({mount(){throw new Error('Visible startup failure');}});setTimeout(()=>{(window as any).weberHostCall(JSON.stringify({action:'telemetry',data:{stage:'preview-error-capture',visible:!!document.getElementById('weber-error-overlay')}}));location.href='weber://close';},700);`);
 try{await run('error-build',process.execPath,[cli,'build',project,join(project,'dist-error')],project);}finally{await writeFile(entry,original);}
-const input=join(root,'input.txt'),output=join(root,'output.txt'),invalid=join(root,'invalid.txt'),oversized=join(root,'oversized.txt');
+// Fresh chooser files avoid stale GTK completion candidates from a failed run.
+const files=await mkdtemp(join(root,'files-'));
+const input=join(files,'input.txt'),output=join(files,'output.txt'),invalid=join(files,'invalid.txt'),oversized=join(files,'oversized.txt');
 await writeFile(input,'Open 한글 😀\nSecond line');await rm(output,{force:true});await writeFile(invalid,Buffer.from([0xff]));await writeFile(oversized,'x'.repeat(262145));
 await writeFile('artifacts/preview-workflow.json',JSON.stringify({passed:true,installed,sdkVersion,project,application:join(project,'dist-native'),closingApplication:join(project,'dist-close'),errorApplication:join(project,'dist-error'),production:join(project,'dist'),input,output,invalid,oversized},null,2));
 console.log('Linux preview fixtures built');

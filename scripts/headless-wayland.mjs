@@ -19,13 +19,17 @@ if (env.WEBER_TEST_FILE_CHOOSER === 'gtk') {
   await writeFile(join(directory,'gnome-portals.conf'),'[preferred]\ndefault=gnome;gtk;\norg.freedesktop.impl.portal.FileChooser=gtk\n');
 }
 await promisify(execFile)('dbus-update-activation-environment', [
-  ...['GDK_BACKEND', 'GSK_RENDERER', 'GTK_IM_MODULE', 'GTK_A11Y', 'NO_AT_BRIDGE', 'GIO_USE_VFS', 'GIO_USE_VOLUME_MONITOR', 'XDG_RUNTIME_DIR', 'WAYLAND_DISPLAY', 'XDG_CURRENT_DESKTOP', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME'].map(key => `${key}=${env[key]}`),
+  ...['GDK_BACKEND', 'GSK_RENDERER', 'GTK_IM_MODULE', 'GTK_A11Y', 'NO_AT_BRIDGE', 'GIO_USE_VFS', 'GIO_USE_VOLUME_MONITOR', 'XDG_RUNTIME_DIR', 'WAYLAND_DISPLAY', 'XDG_CURRENT_DESKTOP', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'WEBER_TEST_DISPLAY'].map(key => `${key}=${env[key]}`),
   'DISPLAY=', 'XDG_ACTIVATION_TOKEN=', 'DESKTOP_STARTUP_ID=',
 ], { env });
 // A fresh profile otherwise opens Welcome over our windows and steals focus.
 // This dconf write belongs only to this temporary profile and private bus.
 const version = (await promisify(execFile)('gnome-shell', ['--version'], { env })).stdout.trim().split(' ').at(-1);
 await promisify(execFile)('gsettings', ['set', 'org.gnome.shell', 'welcome-dialog-last-shown-version', version], { env });
+// Pointer tests reset to a display edge before moving to the owned window.
+// Disable Shell's hot corner only in this disposable profile.
+await promisify(execFile)('gsettings', ['set', 'org.gnome.desktop.interface', 'enable-hot-corners', 'false'], { env });
+await promisify(execFile)('gsettings', ['set', 'org.gnome.desktop.peripherals.mouse', 'accel-profile', 'flat'], { env });
 const log = openSync(resolve('artifacts/headless-wayland.log'), 'w');
 const compositor = spawn('gnome-shell', ['--headless', '--wayland', '--no-x11', '--wayland-display=weber-test', '--virtual-monitor=960x720@60'], { env, stdio: ['ignore', log, log] }); closeSync(log);
 const exit = new Promise(resolveExit => compositor.once('exit', (code, signal) => resolveExit({ code, signal })));

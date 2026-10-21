@@ -1,4 +1,4 @@
-# Weber SDK (local preview)
+# Weber SDK 0.6.0-alpha.1 (local developer alpha)
 
 The SDK is an npm development dependency. Vite compiles the HTML/CSS/JS UI;
 the separate native runtime embeds Servo and SpiderMonkey. Node/npm are build
@@ -7,7 +7,7 @@ tools, not prerequisites for the packaged JIT application.
 This version is not published to npm. Install the local SDK tarball and, on
 Linux x64, the local `@weber/runtime-linux-x64` tarball. No install scripts or
 runtime downloads are used. `WEBER_SDK_SPEC=file:/absolute/path/to/sdk.tgz`
-must select that tarball when creating a project with `weber init PROJECT notes`.
+must select that tarball when creating a project with `weber init PROJECT workbench`.
 Generated TypeScript paths resolve from that project's `node_modules`.
 
 `@weber/sdk/clipboard` exports asynchronous `readText()` and `writeText(text)`.
@@ -53,9 +53,44 @@ from that directory. Packaging verifies the runtime and application hashes.
 
 Runtime packages currently support Linux x64 with a compatible glibc loader,
 Wayland compositor, system GPU/EGL drivers and fonts. Windows and macOS
-packaging are not implemented. This local distribution is not a beta release;
+packaging are not implemented. This local distribution is a developer alpha, not a beta release;
 clean-machine compatibility and a complete third-party license audit remain.
 
 Static Hermes AOT is experimental and requires the Weber source checkout and
 its native toolchain. It still uses Servo's SpiderMonkey DOM adapter; a
 Hermes-only DOM engine is not included. The local npm SDK defaults to JIT.
+
+`@weber/sdk/system` exports `getSystemInfo()`, `refreshSystemInfo()`,
+`onSystemChanged(listener)`, `openExternal(url, options?)`,
+`showNotification(title, body?, options?)` and `dismissNotification(handle)`.
+These require native `appIntegrationProtocol: 1`. System snapshots include
+OS/architecture, displays and explicit capabilities; watches coalesce changes
+without an idle timer. Refresh explicitly after an unused display is hotplugged.
+Display names/coordinates are compositor metadata, not stable IDs or window
+position permissions. Notification/external-URL capabilities describe host API
+support; the desktop service must also exist.
+
+`openExternal` allows http/https/mailto, rejects credentials and requires a focused
+window. `true` means successful portal handoff, `null` user cancellation; it does
+not prove a page loaded. `{ ask: true, signal }` requests a chooser and supports
+cancellation. Notifications are plain text with no actions: title 1..256 UTF-8
+bytes, body at most 4096 bytes, eight handles/window, 64/app. Requested expiry is
+10s; handles are pruned after 30s on subsequent service work. Dismiss and
+window-close cleanup are best effort; expired handles may reject dismissal.
+Each service has eight pending slots and its own lazy worker, so a URL chooser
+does not block notifications. Aborting cannot undo an already issued action.
+
+Window additions: `setWindowDecorations`, `minimizeWindow`,
+`requestWindowAttention`, `beginWindowDrag` and `beginWindowResize`.
+Drag/resize must run in a real left-mouse-down handler on the focused window;
+synthetic DOM events do not grant permission. The compositor ultimately decides
+whether to honor requests. Wayland provides no reliable minimized query here
+(`minimized: null`), force restore, arbitrary show/hide, absolute positioning or
+always-on-top. `openWindow({ decorations, resizable })` applies creation options.
+
+`workbench` is the integrated app template. It includes notes, text open/save,
+clipboard, unsaved-close decisions, Ctrl+S/Ctrl+Shift+S/Ctrl+O/Ctrl+N, window
+controls and a system inspector. Packaged apps include `<app-id>.desktop`.
+After moving a bundle, run `weber launcher /absolute/bundle /output/app.desktop`
+to generate a new launcher; the output must not already exist. Install it yourself
+using the app ID filename. This command does not modify your desktop profile.

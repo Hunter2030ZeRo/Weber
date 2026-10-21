@@ -1,4 +1,4 @@
-# Local npm distribution, SDK 0.3.2
+# Local npm distribution, SDK 0.6.0-alpha.1
 
 Weber has two distribution layers: the JS/TS SDK and CLI are npm development
 dependencies; the native Servo/SpiderMonkey runtime is platform-specific.
@@ -7,10 +7,10 @@ dependencies; the native Servo/SpiderMonkey runtime is platform-specific.
 compiled app into a relocatable application directory. The end user does not
 need Node/npm/Bun for a JIT app without a Bun backend.
 
-These are local preview artifacts, not published registry packages:
+These are local developer alpha artifacts, not published registry packages:
 
-- `target/npm/weber-sdk-0.3.2.tgz`: SDK, CLI, five templates and pinned defaults.
-- `target/npm/weber-runtime-linux-x64-0.3.2.tgz`: JIT executable, private native
+- `target/npm/weber-sdk-0.6.0-alpha.1.tgz`: SDK, CLI, six templates and pinned defaults.
+- `target/npm/weber-runtime-linux-x64-0.6.0-alpha.1.tgz`: JIT executable, private native
   libraries, existing notices and Servo patches. No Hermes or install scripts.
 - `target/npm/release.json`: artifact hashes, sizes, file lists and native build
   identity. Native protocol versions are independent of the SDK package version.
@@ -27,12 +27,12 @@ It may be relative to the new project (the distribution test uses sibling
 tarballs), allowing the complete project and tarballs to move together.
 
 ```sh
-WEBER_SDK_SPEC=file:/absolute/path/weber/target/npm/weber-sdk-0.3.2.tgz \
-  npm exec --package=/absolute/path/weber/target/npm/weber-sdk-0.3.2.tgz -- \
+WEBER_SDK_SPEC=file:/absolute/path/weber/target/npm/weber-sdk-0.6.0-alpha.1.tgz \
+  npm exec --package=/absolute/path/weber/target/npm/weber-sdk-0.6.0-alpha.1.tgz -- \
   weber init /path/my-notes notes
 cd /path/my-notes
 npm install
-npm install --save-dev /absolute/path/weber/target/npm/weber-runtime-linux-x64-0.3.2.tgz
+npm install --save-dev /absolute/path/weber/target/npm/weber-runtime-linux-x64-0.6.0-alpha.1.tgz
 npm run dev
 npm run build
 npm run package
@@ -63,7 +63,7 @@ node scripts/npm-distribution-smoke.mjs
 dbus-run-session -- node scripts/headless-wayland.mjs scripts/npm-distribution-native.mjs
 ```
 
-The first creates a fresh external project, extracts all five SDK templates,
+The first creates a fresh external project, extracts the five original SDK templates,
 installs local tarballs, checks/builds/packages Notes, moves the project and
 rebuilds. It tests missing runtime, unsupported installed-SDK AOT, type errors,
 application/runtime hash mismatches, overlapping paths and unrelated output.
@@ -80,8 +80,12 @@ not establish clean-machine compatibility, a complete license audit, physical
 keyboard/IME behavior, Windows/macOS support or new performance measurements.
 The native engine and CPU policy have not changed in this SDK work.
 
-SDK 0.3.2 adds the [native text clipboard](clipboard.md). The current npm runtime
-requires `clipboardProtocol: 1`; use a newly built JIT host.
+SDK 0.6.0-alpha.1 adds the integrated `workbench` template, system APIs, native
+window controls and generated desktop launchers. The separate
+`alpha-workflow.mjs` / `alpha-native.mjs` gates exercise this sixth template.
+Packaging requires `appIntegrationProtocol: 1` as well as the preceding clipboard,
+file and lifecycle protocols. See [the alpha guide](linux-alpha-06.md).
+The earlier SDK 0.3.2 introduced [native text clipboard](clipboard.md).
 
 ## Previous SDK 0.3.1 result
 

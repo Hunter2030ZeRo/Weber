@@ -8,7 +8,7 @@ Use the [Linux beta acceptance checklist](linux-beta-checklist.md) to distinguis
 implemented paths from remaining implementation and verification. Previous
 informal percentage estimates were not derived from a fixed weighted checklist.
 
-## Current priority — 2026-10-20
+## Current priority — 2026-10-21
 
 Prioritize Servo/SpiderMonkey JIT for beta compatibility, platform work and CPU /
 startup / memory optimization. Further Static Hermes integration and the
@@ -49,6 +49,13 @@ lifecycle APIs](files-and-lifecycle.md). The [Linux preview milestone](linux-pre
 records the 0.4.0 acceptance scope. The [0.5.0 foundation increment](linux-foundation-05.md)
 extends document limits, portal parenting and repeated lifecycle validation. Richer clipboard formats, contenteditable,
 broader platform APIs and process/renderer recovery remain subsequent work.
+
+The [0.6.0-alpha.1 application/window/system milestone](linux-alpha-06.md) adds
+a real Workbench, notifications, external URLs, native drag/resize/minimize,
+display snapshots and desktop launchers. This is the developer alpha foundation
+for starting downstream UI/configuration apps. Simulacrum layer-shell/Hyprland
+integration and desktop services remain separate work, and must preserve Weber
+as a general-purpose application framework.
 
 ## Active resource and Linux usability sequence
 

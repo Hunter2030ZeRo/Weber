@@ -61,6 +61,9 @@ impl Application {
     pub fn id(&self) -> &str {
         &self.manifest.id
     }
+    pub fn name(&self) -> &str {
+        &self.manifest.name
+    }
 }
 pub fn checked_backend(path: &Path, hash: &str) -> Result<PathBuf> {
     use std::io::Read;

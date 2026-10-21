@@ -7,7 +7,7 @@ import {fingerprint} from './source-fingerprint.mjs';
 const read=async path=>JSON.parse(await readFile(path,'utf8'));
 const hash=async path=>createHash('sha256').update(await readFile(path)).digest('hex');
 const source=await fingerprint(),release=await read('target/npm/release.json');
-assert.equal(release.sdkVersion,'0.5.0');assert.equal(release.runtime.sourceHash,source.sourceHash);
+assert.equal(release.sdkVersion,'0.6.0-alpha.1');assert.equal(release.runtime.sourceHash,source.sourceHash);
 for(const name of ['fileDialogProtocol','closeRequestProtocol','safeCutProtocol','diagnosticsProtocol','fileDialogParentProtocol'])assert.equal(release.runtime[name],1);
 const stylo=await read('artifacts/stylo-patches.json');assert.equal(stylo.passed,true);assert.equal(stylo.preparedSourceMatches,true);assert.equal(release.runtime.revisions.stylo,stylo.version);
 assert.equal(release.runtime.aotAvailable,false);assert.equal(release.runtime.uiEngine,'spidermonkey');

@@ -5,10 +5,12 @@ import { init, check, command, host } from './project.mjs';
 import { build, packageApp } from './build.mjs';
 import { dev } from './dev.mjs';
 import { sdkVersion } from './toolchain.mjs';
+import { launcher } from './launcher.mjs';
 
 async function main() {
   const [action, location, ...flags] = process.argv.slice(2);
-  if (action === 'init') { if (!location || flags.length > 1) throw new Error('Usage: init PROJECT [solid|dom|node|windows|notes]'); await init(resolve(location), flags[0] ?? 'solid'); return; }
+  if (action === 'launcher') { if (!location || flags.length !== 1) throw new Error('Usage: launcher PACKAGE OUTPUT.desktop'); await launcher(resolve(location), resolve(flags[0])); return; }
+  if (action === 'init') { if (!location || flags.length > 1) throw new Error('Usage: init PROJECT [solid|dom|node|windows|notes|workbench]'); await init(resolve(location), flags[0] ?? 'solid'); return; }
   if (action === 'dev') { if (!location || flags.length) throw new Error('Usage: dev PROJECT'); await dev(resolve(location)); return; }
   if (action === 'build') {
     if (!location || flags.some(flag => flag.startsWith('--') && flag !== '--aot') || flags.filter(flag => flag !== '--aot').length > 1) throw new Error('Usage: build PROJECT [OUTPUT] [--aot]');
@@ -21,7 +23,7 @@ async function main() {
     await command(host(Boolean(manifest.nativeUnit)), ['--app', resolve(location), ...flags], { cwd: process.cwd() }); return;
   }
   if (action === 'package') { if (!location || flags.length !== 1) throw new Error('Usage: package APPLICATION OUTPUT'); await packageApp(resolve(location), resolve(flags[0])); return; }
-  console.log(`Weber SDK ${sdkVersion} (local preview)\ninit PROJECT [solid|dom|node|windows|notes]\ndev PROJECT\ncheck PROJECT\nbuild PROJECT [OUTPUT] [--aot]\nrun APPLICATION [--web]\npackage APPLICATION OUTPUT`);
+  console.log(`Weber SDK ${sdkVersion} (Linux developer alpha)\ninit PROJECT [solid|dom|node|windows|notes|workbench]\ndev PROJECT\ncheck PROJECT\nbuild PROJECT [OUTPUT] [--aot]\nrun APPLICATION [--web]\npackage APPLICATION OUTPUT\nlauncher PACKAGE OUTPUT.desktop`);
   if (action && action !== '--help') throw new Error('Unknown SDK command');
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1; });

@@ -19,6 +19,7 @@ mod memory;
 mod native;
 mod portal_parent;
 mod storage;
+mod system;
 mod telemetry;
 #[cfg(feature = "aot")]
 mod wire;
@@ -40,13 +41,14 @@ fn main() -> Result<()> {
         } else {
             serde_json::Value::Null
         };
-        info["frameworkVersion"] = "0.5.0".into();
-        info["sdkWorkflowVersion"] = "0.5.0".into();
+        info["frameworkVersion"] = "0.6.0-alpha.1".into();
+        info["sdkWorkflowVersion"] = "0.6.0-alpha.1".into();
         info["bunBackendProtocol"] = 1.into();
         info["aotAvailable"] = cfg!(feature = "aot").into();
         info["layerShellProbe"] = cfg!(feature = "layer-shell").into();
         info["windowProtocol"] = 2.into();
         info["activationProtocol"] = 1.into();
+        info["appIntegrationProtocol"] = 1.into();
         info["storageProtocol"] = 1.into();
         info["clipboardProtocol"] = 1.into();
         info["browserClipboardProtocol"] = 1.into();

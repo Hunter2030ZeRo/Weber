@@ -6,6 +6,7 @@ import { root, checkout, sdkVersion } from './toolchain.mjs';
 import { copyRuntime } from './runtime-package.mjs';
 import { metadata, check, withTarget, viteConfig, atomicOutput, inside, digest, command, host } from './project.mjs';
 import { buildBackend } from './backend-build.mjs';
+import { desktopEntry } from './launcher.mjs';
 
 async function list(directory) {
   const files = [];
@@ -75,12 +76,14 @@ export async function packageApp(source, output) {
     const binary = host(Boolean(manifest.nativeUnit));
     const info = JSON.parse((await promisify(execFile)(binary, ['--build-info'])).stdout);
     if (manifest.nativeUnit && info.aotAvailable === false) throw new Error('Selected host has no AOT runtime; set WEBER_HOST to an AOT-enabled host');
+    if (info.appIntegrationProtocol !== 1) throw new Error('This SDK alpha requires appIntegrationProtocol 1; select the matching alpha runtime');
     if (!manifest.nativeUnit && !info.sdkWorkflowVersion) throw new Error('Selected host does not support JIT-only app packages; rebuild Weber or set WEBER_HOST');
     if (manifest.backend && info.bunBackendProtocol !== 1) throw new Error('Selected host does not support the Bun backend protocol; rebuild Weber or set WEBER_HOST');
     await copyRuntime(binary, staging, info);
     const app = join(staging, 'application'); await mkdir(app, { recursive: true });
     for (const file of ['app.json', ...files.keys()]) { await mkdir(dirname(join(app, file)), { recursive: true }); await cp(join(source, file), join(app, file)); }
     await writeFile(join(staging, 'APPLICATION.txt'), `Run ./weber --app ./application\n${manifest.nativeUnit ? 'Web comparison: ./weber --app ./application --web\n' : 'SpiderMonkey JIT application; no native AOT module.\n'}`);
+    await writeFile(join(staging, `${manifest.id}.desktop`), desktopEntry(output, manifest));
   });
   console.log(`Relocatable application package: ${output}`);
 }

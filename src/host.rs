@@ -352,6 +352,7 @@ impl WebViewDelegate for Delegate {
             crate::storage::close_window(self.id);
             crate::clipboard::close_window(self.id);
             crate::files::close_window(self.id);
+            crate::system::close_window(self.id);
             self.control.borrow_mut().detach(self.id);
             #[cfg(feature = "aot")]
             if self.active.replace(false)
@@ -499,6 +500,8 @@ impl Running {
         let app_id = crate::assets::application().map_or("dev.weber.Preview", |app| app.id());
         let mut attributes = Window::default_attributes()
             .with_title(&options.title)
+            .with_decorations(options.decorations)
+            .with_resizable(options.resizable)
             .with_name(app_id, app_id)
             .with_inner_size(LogicalSize::new(options.width, options.height));
         let activating = activation.is_some();
@@ -629,7 +632,16 @@ fn window_info(id: u64, window: &Window) -> serde_json::Value {
         "width": window.inner_size().width, "height": window.inner_size().height,
         "scaleFactor": window.scale_factor(), "focused": window.has_focus(),
         "maximized": window.is_maximized(), "fullscreen": window.fullscreen().is_some(),
-        "resizable": window.is_resizable() })
+        "resizable": window.is_resizable(), "decorations":window.is_decorated(),
+        "minimized":window.is_minimized(), "theme":window.theme().map(|theme| match theme { winit::window::Theme::Dark => "dark", winit::window::Theme::Light => "light" }),
+        "display":window.current_monitor().map(display_info) })
+}
+
+fn display_info(display: winit::monitor::MonitorHandle) -> serde_json::Value {
+    let size = display.size();
+    let position = display.position();
+    serde_json::json!({"name":display.name().map(|name|name.chars().take(64).collect::<String>()),"width":size.width,"height":size.height,
+        "x":position.x,"y":position.y,"scaleFactor":display.scale_factor(),"refreshMilliHertz":display.refresh_rate_millihertz()})
 }
 
 pub struct App {
@@ -722,6 +734,7 @@ impl App {
         Ok(())
     }
     fn close(&mut self, id: u64, event_loop: &ActiveEventLoop) {
+        crate::system::close_window(id);
         self.pending_opens.retain(|pending| pending.id != id);
         // An opening window has no native handle yet. It must still be
         // cancellable, including the SDK's creation-timeout close request.
@@ -778,6 +791,10 @@ impl App {
         let commands = std::mem::take(&mut self.control.borrow_mut().commands);
         for command in commands {
             match command {
+                crate::native::Command::RefreshSystem(serial) => {
+                    self.refresh_system(event_loop);
+                    self.control.borrow_mut().system_completed = serial;
+                }
                 crate::native::Command::Open {
                     id,
                     source,
@@ -830,6 +847,10 @@ impl App {
                         | crate::native::Command::Maximize(id, _)
                         | crate::native::Command::Fullscreen(id, _)
                         | crate::native::Command::Resizable(id, _) => *id,
+                        crate::native::Command::Decorations(id, _)
+                        | crate::native::Command::Minimize(id)
+                        | crate::native::Command::Attention(id)
+                        | crate::native::Command::Drag(id, _) => *id,
                         _ => continue,
                     };
                     if let Some((_, running)) = self
@@ -858,6 +879,24 @@ impl App {
                                 .set_fullscreen(value.then_some(Fullscreen::Borderless(None))),
                             crate::native::Command::Resizable(_, value) => {
                                 running.window.set_resizable(value)
+                            }
+                            crate::native::Command::Decorations(_, value) => {
+                                running.window.set_decorations(value)
+                            }
+                            crate::native::Command::Minimize(_) => {
+                                running.window.set_minimized(true)
+                            }
+                            crate::native::Command::Attention(_) => {
+                                running.window.request_user_attention(Some(
+                                    winit::window::UserAttentionType::Informational,
+                                ))
+                            }
+                            crate::native::Command::Drag(_, direction) => {
+                                let result = direction.map_or_else(
+                                    || running.window.drag_window(),
+                                    |direction| running.window.drag_resize_window(direction),
+                                );
+                                self.telemetry.emit(serde_json::json!({"stage":"window-drag","windowId":id,"accepted":result.is_ok(),"error":result.err().map(|error| error.to_string())}));
                             }
                             _ => {}
                         }
@@ -904,9 +943,17 @@ impl App {
             }
         }
     }
+    fn refresh_system(&self, event_loop: &ActiveEventLoop) {
+        self.control.borrow_mut().update_system(serde_json::json!({
+            "os":std::env::consts::OS,"architecture":std::env::consts::ARCH,
+            "displays":event_loop.available_monitors().take(32).map(display_info).collect::<Vec<_>>(),
+            "capabilities":{"minimize":true,"restoreMinimized":false,"visibility":false,"absolutePosition":false,"alwaysOnTop":false,"decorations":true,"drag":true,"externalUrl":true,"notifications":true}
+        }));
+    }
 }
 impl Drop for App {
     fn drop(&mut self) {
+        crate::system::shutdown();
         crate::files::shutdown();
         self.running.clear();
         crate::storage::shutdown();
@@ -950,6 +997,7 @@ impl ApplicationHandler<Wake> for App {
         if self.servo.is_some() {
             return;
         }
+        self.refresh_system(event_loop);
         self._display = Some(event_loop.owned_display_handle());
         if let Err(error) = event_loop
             .display_handle()
@@ -1072,6 +1120,23 @@ impl ApplicationHandler<Wake> for App {
         }
         if let Some((id, running)) = self.running.get_mut(&window) {
             let id = *id;
+            match &event {
+                WindowEvent::MouseInput {
+                    state,
+                    button: winit::event::MouseButton::Left,
+                    ..
+                } => {
+                    if *state == winit::event::ElementState::Pressed {
+                        self.control.borrow_mut().pointer_down.insert(id);
+                    } else {
+                        self.control.borrow_mut().pointer_down.remove(&id);
+                    }
+                }
+                WindowEvent::Focused(false) => {
+                    self.control.borrow_mut().pointer_down.remove(&id);
+                }
+                _ => {}
+            }
             if matches!(event, WindowEvent::CloseRequested) {
                 self.request_close(id, event_loop);
             } else {
@@ -1080,12 +1145,15 @@ impl ApplicationHandler<Wake> for App {
                     WindowEvent::Resized(_)
                         | WindowEvent::ScaleFactorChanged { .. }
                         | WindowEvent::Focused(_)
+                        | WindowEvent::ThemeChanged(_)
+                        | WindowEvent::Moved(_)
                 );
                 running.handle(event);
                 if changed {
                     self.control
                         .borrow_mut()
                         .update(id, window_info(id, &running.window));
+                    self.refresh_system(event_loop);
                 }
             }
         }

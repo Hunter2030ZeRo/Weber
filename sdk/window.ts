@@ -1,5 +1,6 @@
-export interface WindowInfo { id: number; state: 'opening' | 'ready' | 'failed'; title?: string; width?: number; height?: number; scaleFactor?: number; focused?: boolean; maximized?: boolean; fullscreen?: boolean; resizable?: boolean; error?: string }
-export interface WindowOptions { title?: string; width?: number; height?: number }
+import type { SystemInfo, DisplayInfo } from './system';
+export interface WindowInfo { id: number; state: 'opening' | 'ready' | 'failed'; title?: string; width?: number; height?: number; scaleFactor?: number; focused?: boolean; maximized?: boolean; fullscreen?: boolean; resizable?: boolean; decorations?: boolean; minimized?: boolean | null; theme?: 'dark' | 'light' | null; display?: Readonly<DisplayInfo> | null; error?: string }
+export interface WindowOptions { title?: string; width?: number; height?: number; decorations?: boolean; resizable?: boolean }
 declare global { var weberNativeTransport: undefined | ((request: string) => string); }
 function request(value: Record<string, unknown>) {
   let reply: string;
@@ -57,18 +58,34 @@ export function setWindowMaximized(value: boolean, id?: number): void { request(
 /** Borderless fullscreen; this does not enter a browser element's fullscreen mode. */
 export function setWindowFullscreen(value: boolean, id?: number): void { request({ op: 'fullscreen', value, id: id ?? currentWindow().id }); }
 export function setWindowResizable(value: boolean, id?: number): void { request({ op: 'resizable', value, id: id ?? currentWindow().id }); }
+export function setWindowDecorations(value: boolean, id?: number): void { request({ op: 'decorations', value, id: id ?? currentWindow().id }); }
+/** Wayland minimize request; restoration and minimized-state queries are unavailable. */
+export function minimizeWindow(id?: number): void { request({ op: 'minimize', id: id ?? currentWindow().id }); }
+export function requestWindowAttention(id?: number): void { request({ op: 'attention', id: id ?? currentWindow().id }); }
+/** Call from a native left-button pointerdown. Enqueues an interactive compositor request. */
+export function beginWindowDrag(): void { request({ op: 'drag' }); }
+export type ResizeDirection = 'north' | 'south' | 'east' | 'west' | 'north-east' | 'north-west' | 'south-east' | 'south-west';
+export function beginWindowResize(direction: ResizeDirection): void { request({ op: 'drag-resize', direction }); }
 
-export interface WindowSnapshot { readonly revision: number; readonly windows: readonly Readonly<WindowInfo>[] }
-const listeners = new Map<number, (snapshot: WindowSnapshot) => void>();
+export interface WindowSnapshot { readonly revision: number; readonly windows: readonly Readonly<WindowInfo>[]; readonly system: Readonly<SystemInfo> }
+const listeners = new Map<number, { next(snapshot: WindowSnapshot): void; revision: number }>();
 let nextListener = 1, generation: number | undefined, revision = -1;
+let latestSnapshot: WindowSnapshot | undefined;
+function notify(id: number, snapshot: WindowSnapshot) {
+  const listener = listeners.get(id);
+  if (!listener || listener.revision >= snapshot.revision) return;
+  listener.revision = snapshot.revision;
+  try { listener.next(snapshot); } catch (error) { console.error('Window state callback:', error); }
+}
 function deliver(event: { generation: number; snapshot: WindowSnapshot }) {
   if (event.generation !== generation || event.snapshot.revision <= revision) return;
   revision = event.snapshot.revision;
-  const snapshot = Object.freeze({ revision, windows: Object.freeze(event.snapshot.windows.map(info => Object.freeze(info))) });
-  for (const [id, listener] of Array.from(listeners)) {
+  const system = event.snapshot.system;
+  const snapshot = Object.freeze({ revision, windows: Object.freeze(event.snapshot.windows.map(info => Object.freeze({ ...info, display: info.display ? Object.freeze({ ...info.display }) : info.display }))), system: Object.freeze({ ...system, displays: Object.freeze(system.displays.map(display => Object.freeze({ ...display }))), capabilities: Object.freeze({ ...system.capabilities }) }) });
+  latestSnapshot = snapshot;
+  for (const id of Array.from(listeners.keys())) {
     if (event.generation !== generation) break;
-    if (!listeners.has(id)) continue;
-    try { listener(snapshot); } catch (error) { console.error('Window state callback:', error); }
+    notify(id, snapshot);
   }
 }
 Object.assign(globalThis, { weberWindowDeliver: deliver });
@@ -80,8 +97,10 @@ if (typeof globalThis.weberNativeTransport !== 'function') window.addEventListen
 export function onWindowsChanged(listener: (snapshot: WindowSnapshot) => void): () => void {
   if (typeof listener !== 'function') throw new TypeError('Window state callback required');
   if (listeners.size >= 64) throw new RangeError('Window state listener limit reached');
-  if (!listeners.size) { generation = request({ op: 'watch' }).generation; revision = -1; }
-  const id = nextListener++; listeners.set(id, listener);
+  if (!listeners.size) { generation = request({ op: 'watch' }).generation; revision = -1; latestSnapshot = undefined; }
+  const id = nextListener++; listeners.set(id, { next: listener, revision: -1 });
+  const subscribed = generation;
+  if (latestSnapshot) queueMicrotask(() => { if (subscribed === generation && latestSnapshot) notify(id, latestSnapshot); });
   return () => {
     if (!listeners.delete(id) || listeners.size) return;
     const previous = generation; generation = undefined;
