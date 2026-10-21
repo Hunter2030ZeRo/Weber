@@ -41,8 +41,8 @@ fn main() -> Result<()> {
         } else {
             serde_json::Value::Null
         };
-        info["frameworkVersion"] = "0.6.0-alpha.1".into();
-        info["sdkWorkflowVersion"] = "0.6.0-alpha.1".into();
+        info["frameworkVersion"] = "0.6.0-alpha.2".into();
+        info["sdkWorkflowVersion"] = "0.6.0-alpha.2".into();
         info["bunBackendProtocol"] = 1.into();
         info["aotAvailable"] = cfg!(feature = "aot").into();
         info["layerShellProbe"] = cfg!(feature = "layer-shell").into();

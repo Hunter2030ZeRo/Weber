@@ -1,4 +1,4 @@
-# Weber SDK 0.6.0-alpha.1 (local developer alpha)
+# Weber SDK 0.6.0-alpha.2 (local developer alpha)
 
 The SDK is an npm development dependency. Vite compiles the HTML/CSS/JS UI;
 the separate native runtime embeds Servo and SpiderMonkey. Node/npm are build
@@ -94,3 +94,13 @@ controls and a system inspector. Packaged apps include `<app-id>.desktop`.
 After moving a bundle, run `weber launcher /absolute/bundle /output/app.desktop`
 to generate a new launcher; the output must not already exist. Install it yourself
 using the app ID filename. This command does not modify your desktop profile.
+
+## Korean input (0.6.0-alpha.2)
+
+Standard HTML `input` and `textarea` use the compositor's IME through Wayland
+text-input-v3. No Weber-specific text widget or IME API is needed. The runtime
+preserves composition across focus handoff and handles an empty preedit when
+the last Hangul jamo is deleted; readonly fields reject editing. Password fields
+request the password input purpose. App shortcut handlers should respect
+`KeyboardEvent.isComposing`. See [Korean IME acceptance](../docs/korean-ime.md)
+for real-engine coverage and the remaining Hanja/contenteditable limits.

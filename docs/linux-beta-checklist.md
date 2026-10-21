@@ -25,7 +25,7 @@ environment and experimental Hermes AOT are separate deliverables.
 | Distribution | Relocatable Linux bundle and deterministic engine/source/library identities | Clean OS/dependency verification and an installation/update support policy appropriate to the beta |
 | Browser compatibility | Locked profile and app-specific native tests have historical evidence | Re-run affected profile coverage as engine work changes; publish remaining gaps without presenting a full-browser claim |
 
-The current state is a Linux developer alpha (0.6.0-alpha.1). Performance, IME and QoS are only part
+The current state is a Linux developer alpha (0.6.0-alpha.2). Performance, IME and QoS are only part
 of this list. General platform APIs and recovery are still implementation work,
 not merely polishing or adding more tests. Larger-file support and richer
 clipboard APIs must not be implied by passing the current bounded text cases.

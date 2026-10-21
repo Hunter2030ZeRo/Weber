@@ -7,13 +7,14 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
+if (process.env.IBUS_ADDRESS !== undefined || process.env.FCITX_DBUS_ADDRESS !== undefined) throw new Error('Start the private bus with env -u IBUS_ADDRESS -u FCITX_DBUS_ADDRESS dbus-run-session');
 if (!process.argv[2]) throw new Error('Pass a test script and optional arguments');
 if (process.env.DBUS_SESSION_BUS_ADDRESS?.includes('/run/user/')) throw new Error('Use dbus-run-session, not the desktop session bus');
 const temp = await mkdtemp(join(tmpdir(), 'weber-wayland-'));
 const runtime = join(temp, 'runtime'); await mkdir(runtime, { mode: 0o700 });
 const env = { ...process.env, GDK_BACKEND: 'wayland', GSK_RENDERER: 'cairo', GTK_IM_MODULE: 'gtk-im-context-simple', GTK_A11Y: 'none', NO_AT_BRIDGE: '1', GIO_USE_VFS: 'local', GIO_USE_VOLUME_MONITOR: 'unix', XDG_RUNTIME_DIR: runtime, WAYLAND_DISPLAY: 'weber-test', XDG_CURRENT_DESKTOP: 'GNOME',
   XDG_CONFIG_HOME: join(temp, 'config'), XDG_CACHE_HOME: join(temp, 'cache'), XDG_DATA_HOME: join(temp, 'data'), XDG_STATE_HOME: join(temp, 'state'), WEBER_TEST_DISPLAY: 'isolated GNOME headless Wayland; 960x720@60 virtual monitor' };
-for (const key of ['DISPLAY', 'XDG_ACTIVATION_TOKEN', 'DESKTOP_STARTUP_ID']) delete env[key];
+for (const key of ['DISPLAY', 'XDG_ACTIVATION_TOKEN', 'DESKTOP_STARTUP_ID', 'IBUS_ADDRESS', 'FCITX_DBUS_ADDRESS']) delete env[key];
 if (env.WEBER_TEST_FILE_CHOOSER === 'gtk') {
   const directory=join(env.XDG_CONFIG_HOME,'xdg-desktop-portal');await mkdir(directory,{recursive:true});
   await writeFile(join(directory,'gnome-portals.conf'),'[preferred]\ndefault=gnome;gtk;\norg.freedesktop.impl.portal.FileChooser=gtk\n');
@@ -42,6 +43,15 @@ try {
   }
   if (!ready) throw new Error('Test Wayland display did not start');
   await delay(1500);
+  // Dismiss startup Overview through Shell's actual key handler before any
+  // application is mapped. Setting its D-Bus property alone leaves a stale
+  // stage keyboard focus on GNOME 51, even when OverviewActive becomes false.
+  const inputEnv = { ...env }; delete inputEnv.WEBER_TEST_ABSOLUTE_POINTER;
+  const input = spawn('/usr/bin/python3', [resolve('scripts/wayland-input.py')], { env: inputEnv, stdio: ['pipe', 'ignore', 'inherit'] });
+  const inputExit = new Promise((done, reject) => { input.once('error', reject); input.once('exit', done); });
+  input.stdin.end([{keycode:1,pressed:true},{keycode:1,pressed:false},{stop:true}].map(value => JSON.stringify(value)+'\n').join(''));
+  if (await inputExit !== 0) throw new Error('Private Shell startup input failed');
+  await delay(300);
   const child = spawn(process.execPath, process.argv.slice(2), { env, stdio: 'inherit' });
   const code = await new Promise((resolveExit, reject) => { child.once('error', reject); child.once('exit', resolveExit); });
   if (code !== 0) process.exitCode = code ?? 1;

@@ -1,4 +1,4 @@
-# Local npm distribution, SDK 0.6.0-alpha.1
+# Local npm distribution, SDK 0.6.0-alpha.2
 
 Weber has two distribution layers: the JS/TS SDK and CLI are npm development
 dependencies; the native Servo/SpiderMonkey runtime is platform-specific.
@@ -9,8 +9,8 @@ need Node/npm/Bun for a JIT app without a Bun backend.
 
 These are local developer alpha artifacts, not published registry packages:
 
-- `target/npm/weber-sdk-0.6.0-alpha.1.tgz`: SDK, CLI, six templates and pinned defaults.
-- `target/npm/weber-runtime-linux-x64-0.6.0-alpha.1.tgz`: JIT executable, private native
+- `target/npm/weber-sdk-0.6.0-alpha.2.tgz`: SDK, CLI, six templates and pinned defaults.
+- `target/npm/weber-runtime-linux-x64-0.6.0-alpha.2.tgz`: JIT executable, private native
   libraries, existing notices and Servo patches. No Hermes or install scripts.
 - `target/npm/release.json`: artifact hashes, sizes, file lists and native build
   identity. Native protocol versions are independent of the SDK package version.
@@ -27,12 +27,12 @@ It may be relative to the new project (the distribution test uses sibling
 tarballs), allowing the complete project and tarballs to move together.
 
 ```sh
-WEBER_SDK_SPEC=file:/absolute/path/weber/target/npm/weber-sdk-0.6.0-alpha.1.tgz \
-  npm exec --package=/absolute/path/weber/target/npm/weber-sdk-0.6.0-alpha.1.tgz -- \
+WEBER_SDK_SPEC=file:/absolute/path/weber/target/npm/weber-sdk-0.6.0-alpha.2.tgz \
+  npm exec --package=/absolute/path/weber/target/npm/weber-sdk-0.6.0-alpha.2.tgz -- \
   weber init /path/my-notes notes
 cd /path/my-notes
 npm install
-npm install --save-dev /absolute/path/weber/target/npm/weber-runtime-linux-x64-0.6.0-alpha.1.tgz
+npm install --save-dev /absolute/path/weber/target/npm/weber-runtime-linux-x64-0.6.0-alpha.2.tgz
 npm run dev
 npm run build
 npm run package
@@ -80,7 +80,7 @@ not establish clean-machine compatibility, a complete license audit, physical
 keyboard/IME behavior, Windows/macOS support or new performance measurements.
 The native engine and CPU policy have not changed in this SDK work.
 
-SDK 0.6.0-alpha.1 adds the integrated `workbench` template, system APIs, native
+SDK 0.6.0-alpha.1 introduced the integrated `workbench` template, system APIs, native
 window controls and generated desktop launchers. The separate
 `alpha-workflow.mjs` / `alpha-native.mjs` gates exercise this sixth template.
 Packaging requires `appIntegrationProtocol: 1` as well as the preceding clipboard,
@@ -106,3 +106,6 @@ To run the normal Notes package from the Weber checkout:
 ```sh
 ./target/package/weber-notes-npm/weber --app ./target/package/weber-notes-npm/application
 ```
+
+SDK/runtime 0.6.0-alpha.2 adds the [Korean IME gate](korean-ime.md); local alpha
+archives also include `ime-validation.json`.

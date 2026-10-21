@@ -1,5 +1,9 @@
 # Weber 0.6.0-alpha.1 — Linux application/window/system alpha
 
+This report records the original alpha.1 milestone. The current alpha.2 adds
+[Korean IME implementation and acceptance](korean-ime.md); original build identities
+and measurements below remain historical.
+
 This milestone is a usable **developer alpha** for Linux x64 Wayland applications.
 Application authors use HTML/CSS/JS/TS and Vite; Rust implements the framework
 host. Servo's existing SpiderMonkey DOM/JIT path remains the default. Bun is an

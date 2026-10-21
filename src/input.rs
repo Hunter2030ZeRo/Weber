@@ -2,7 +2,6 @@ use servo::{
     InputEvent, Key, KeyState, KeyboardEvent, MouseButtonAction, MouseButtonEvent, MouseMoveEvent,
     NamedKey, WebView, WheelDelta, WheelEvent, WheelMode,
 };
-use std::{cell::Cell, rc::Rc};
 use winit::{
     event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent},
     keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey},
@@ -12,18 +11,22 @@ use winit::{
 pub struct Input {
     point: servo::DevicePoint,
     modifiers: ModifiersState,
-    composing: bool,
-    ime_visible: Rc<Cell<bool>>,
+    composition: Composition,
 }
 
 impl Input {
-    pub fn new(ime_visible: Rc<Cell<bool>>) -> Self {
-        Self {
-            ime_visible,
-            ..Self::default()
-        }
+    /// winit emits clear + commit in one Wayland done batch. Only a clear left
+    /// without a commit cancels composition; it needs no recurring timer.
+    pub fn finish_ime_batch(&mut self, view: &WebView) -> bool {
+        let events = self.composition.finish();
+        let changed = !events.is_empty();
+        deliver_composition(view, events);
+        changed
     }
     pub fn forward(&mut self, view: &WebView, event: WindowEvent) {
+        if !matches!(event, WindowEvent::Ime(_)) {
+            self.finish_ime_batch(view);
+        }
         let input = match event {
             WindowEvent::CursorMoved { position, .. } => {
                 let position = position.cast::<f32>();
@@ -83,7 +86,7 @@ impl Input {
                     winit::keyboard::KeyLocation::Right => servo::Location::Right,
                     winit::keyboard::KeyLocation::Numpad => servo::Location::Numpad,
                 };
-                keyboard.event.is_composing = self.composing;
+                keyboard.event.is_composing = self.composition.active;
                 keyboard.event.repeat = event.repeat;
                 keyboard
                     .event
@@ -104,45 +107,114 @@ impl Input {
                 InputEvent::Keyboard(keyboard)
             }
             WindowEvent::Ime(ime) => {
-                let (state, data) = match ime {
-                    Ime::Enabled => return,
-                    Ime::Preedit(text, _) => {
-                        if !self.composing && text.is_empty() {
-                            return;
-                        }
-                        if !self.composing && !text.is_empty() {
-                            self.composing = true;
-                            view.notify_input_event(InputEvent::Ime(servo::ImeEvent::Composition(
-                                servo::CompositionEvent {
-                                    state: servo::CompositionState::Start,
-                                    data: String::new(),
-                                },
-                            )));
-                        }
-                        (servo::CompositionState::Update, text)
-                    }
-                    Ime::Commit(text) => {
-                        self.composing = false;
-                        (servo::CompositionState::End, text)
-                    }
-                    Ime::Disabled => {
-                        self.composing = false;
-                        // Disabling a context after a focus change is an acknowledgement,
-                        // not a user dismissal of the newly focused element.
-                        if self.ime_visible.replace(false) {
-                            view.notify_input_event(InputEvent::Ime(servo::ImeEvent::Dismissed));
-                        }
-                        return;
-                    }
-                };
-                InputEvent::Ime(servo::ImeEvent::Composition(servo::CompositionEvent {
-                    state,
-                    data,
-                }))
+                deliver_composition(view, self.composition.handle(ime));
+                return;
             }
             _ => return,
         };
         view.notify_input_event(input);
+    }
+}
+
+#[derive(Default)]
+struct Composition {
+    active: bool,
+    clear_pending: bool,
+}
+fn composition(state: servo::CompositionState, data: String) -> servo::CompositionEvent {
+    servo::CompositionEvent { state, data }
+}
+fn deliver_composition(view: &WebView, events: Vec<servo::CompositionEvent>) {
+    for event in events {
+        view.notify_input_event(InputEvent::Ime(servo::ImeEvent::Composition(event)));
+    }
+}
+impl Composition {
+    fn handle(&mut self, ime: Ime) -> Vec<servo::CompositionEvent> {
+        use servo::CompositionState::{End, Start, Update};
+        match ime {
+            Ime::Enabled => Vec::new(),
+            Ime::Disabled => {
+                // Backend context acknowledgement, never a request to blur DOM.
+                self.active = false;
+                self.clear_pending = false;
+                Vec::new()
+            }
+            Ime::Preedit(text, _) if text.is_empty() => {
+                self.clear_pending = self.active;
+                Vec::new()
+            }
+            Ime::Preedit(text, _) => {
+                self.clear_pending = false;
+                let mut events = Vec::with_capacity(2);
+                if !self.active {
+                    self.active = true;
+                    events.push(composition(Start, String::new()));
+                }
+                events.push(composition(Update, text));
+                events
+            }
+            Ime::Commit(text) => {
+                let mut events = Vec::with_capacity(2);
+                if self.clear_pending {
+                    events.push(composition(Update, String::new()));
+                }
+                self.active = false;
+                self.clear_pending = false;
+                events.push(composition(End, text));
+                events
+            }
+        }
+    }
+    fn finish(&mut self) -> Vec<servo::CompositionEvent> {
+        if !std::mem::take(&mut self.clear_pending) {
+            return Vec::new();
+        }
+        self.active = false;
+        vec![
+            composition(servo::CompositionState::Update, String::new()),
+            composition(servo::CompositionState::End, String::new()),
+        ]
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ime_clear_and_commit_share_one_composition() {
+        let mut ime = Composition::default();
+        assert_eq!(ime.handle(Ime::Preedit("한".into(), Some((3, 3)))).len(), 2);
+        assert!(ime.handle(Ime::Preedit(String::new(), None)).is_empty());
+        let end = ime.handle(Ime::Commit("한".into()));
+        assert!(matches!(end[0].state, servo::CompositionState::Update));
+        assert!(end[0].data.is_empty());
+        assert!(matches!(end[1].state, servo::CompositionState::End));
+        assert_eq!(end[1].data, "한");
+        assert!(ime.finish().is_empty());
+        assert!(!ime.active);
+    }
+    #[test]
+    fn deleting_final_jamo_finishes_without_leaving_composing_state() {
+        let mut ime = Composition::default();
+        ime.handle(Ime::Preedit("ㄱ".into(), Some((3, 3))));
+        ime.handle(Ime::Preedit(String::new(), None));
+        let canceled = ime.finish();
+        assert_eq!(canceled.len(), 2);
+        assert!(canceled.iter().all(|event| event.data.is_empty()));
+        assert!(!ime.active);
+        assert!(ime.finish().is_empty());
+        assert!(matches!(
+            ime.handle(Ime::Preedit("ㄴ".into(), None))[0].state,
+            servo::CompositionState::Start
+        ));
+    }
+    #[test]
+    fn disabling_backend_does_not_request_dom_focus_dismissal() {
+        let mut ime = Composition::default();
+        ime.handle(Ime::Preedit("가".into(), None));
+        assert!(ime.handle(Ime::Disabled).is_empty());
+        assert!(!ime.active);
+        assert!(ime.finish().is_empty());
     }
 }
 

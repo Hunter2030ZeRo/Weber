@@ -7,7 +7,7 @@ import {fingerprint} from './source-fingerprint.mjs';
 const read=async path=>JSON.parse(await readFile(path,'utf8'));
 const hash=async path=>createHash('sha256').update(await readFile(path)).digest('hex');
 const source=await fingerprint(),release=await read('target/npm/release.json');
-assert.equal(release.sdkVersion,'0.6.0-alpha.1');assert.equal(release.runtime.sourceHash,source.sourceHash);
+assert.equal(release.sdkVersion,'0.6.0-alpha.2');assert.equal(release.runtime.sourceHash,source.sourceHash);
 for(const name of ['fileDialogProtocol','closeRequestProtocol','safeCutProtocol','diagnosticsProtocol','fileDialogParentProtocol'])assert.equal(release.runtime[name],1);
 const stylo=await read('artifacts/stylo-patches.json');assert.equal(stylo.passed,true);assert.equal(stylo.preparedSourceMatches,true);assert.equal(release.runtime.revisions.stylo,stylo.version);
 assert.equal(release.runtime.aotAvailable,false);assert.equal(release.runtime.uiEngine,'spidermonkey');
@@ -19,7 +19,7 @@ const fixture=await read('artifacts/preview-workflow.json');assert.equal(fixture
 const clipboard=await read('artifacts/clipboard-workflow.json');assert.equal(clipboard.installed,true);
 const lifecycle=await read('artifacts/lifecycle-workflow.json');assert.equal(lifecycle.installed,true);
 const lifecycle200=await read('artifacts/lifecycle-200-workflow.json');assert.equal(lifecycle200.installed,true);
-const patches=await read('artifacts/preview-patches.json');assert.equal(patches.passed,true);assert.equal(patches.patches.length,9);assert.equal(patches.compiledCheckoutMatchesCleanApply,true);
+const patches=await read('artifacts/preview-patches.json');assert.equal(patches.passed,true);assert.equal(patches.patches.length,10);assert.equal(patches.compiledCheckoutMatchesCleanApply,true);
 for(const pkg of release.packages){
   assert.equal(await hash(join('target/npm',pkg.file)),pkg.sha256);
   if(pkg.name==='@weber/sdk')for(const file of pkg.files){

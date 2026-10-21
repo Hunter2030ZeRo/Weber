@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Developer alpha</strong> · Linux / Wayland · SDK 0.6.0-alpha.1
+  <strong>Developer alpha</strong> · Linux / Wayland · SDK 0.6.0-alpha.2
 </p>
 
 <p align="center">
@@ -162,6 +162,12 @@ The [0.6 developer alpha](docs/linux-alpha-06.md) adds a runnable Workbench and
 application/window/system acceptance gates. See its exact scope and reproduction
 steps before using Weber as a downstream desktop UI foundation.
 
+[0.6.0-alpha.2 Korean IME acceptance](docs/korean-ime.md) adds actual Fcitx5
+Hangul tests through GNOME Wayland: composition/deletion, immediate language
+toggles, selection, field/window handoff and Solid Workbench save/restart.
+Ordinary HTML input/textarea use this path automatically. Physical keyboard and
+other compositor/IME combinations remain separate validation.
+
 The local npm workflow has been exercised outside the source checkout, including
 installation, type checking, builds, packaging and relocation. Native tests ran
 the Notes app in isolated GNOME Wayland windows and checked programmatic input,
@@ -187,6 +193,7 @@ memory or startup advantage over Electron or native GUI frameworks is claimed.
 | Persistent data | [Storage API and Notes example](docs/app-storage.md) |
 | Clipboard | [Native text clipboard API and validation](docs/clipboard.md) |
 | Files and lifecycle | [Text files, close decisions and diagnostics](docs/files-and-lifecycle.md) |
+| Korean IME | [Implementation and real-engine acceptance](docs/korean-ime.md) |
 | Linux alpha | [Workbench, system APIs and acceptance](docs/linux-alpha-06.md) |
 | Linux preview | [Document and lifecycle foundation](docs/linux-foundation-05.md) · [Initial acceptance](docs/linux-preview-milestone.md) |
 | Optional backend | [Bun integration](docs/bun-backend.md) · [Backend validation](docs/bun-backend-validation.md) |

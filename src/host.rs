@@ -60,7 +60,7 @@ struct Delegate {
     #[cfg(feature = "aot")]
     active: Cell<bool>,
     telemetry: Rc<crate::telemetry::Telemetry>,
-    ime: Rc<Cell<bool>>,
+    ime: Cell<Option<servo::EmbedderControlId>>,
 }
 
 struct Clipboard {
@@ -455,7 +455,14 @@ impl WebViewDelegate for Delegate {
     }
     fn show_embedder_control(&self, _: WebView, control: servo::EmbedderControl) {
         if let servo::EmbedderControl::InputMethod(input) = control {
-            self.ime.set(true);
+            self.ime.set(Some(input.id()));
+            self.window.set_ime_purpose(
+                if input.input_method_type() == servo::InputMethodType::Password {
+                    winit::window::ImePurpose::Password
+                } else {
+                    winit::window::ImePurpose::Normal
+                },
+            );
             let rect = input.position();
             self.window.set_ime_cursor_area(
                 winit::dpi::LogicalPosition::new(rect.min.x, rect.min.y),
@@ -464,9 +471,11 @@ impl WebViewDelegate for Delegate {
             self.window.set_ime_allowed(true);
         }
     }
-    fn hide_embedder_control(&self, _: WebView, _: servo::EmbedderControlId) {
-        self.ime.set(false);
-        self.window.set_ime_allowed(false);
+    fn hide_embedder_control(&self, _: WebView, id: servo::EmbedderControlId) {
+        if self.ime.get() == Some(id) {
+            self.ime.set(None);
+            self.window.set_ime_allowed(false);
+        }
     }
 }
 
@@ -539,7 +548,6 @@ impl Running {
                 .portal_parents
                 .insert(id, parent.identifier.clone());
         }
-        let ime_visible = Rc::new(Cell::new(false));
         let development_origin = (url.scheme() == "http"
             && url.host_str() == Some("127.0.0.1")
             && std::env::var_os("WEBER_NATIVE_CAPABILITY").is_some())
@@ -561,7 +569,7 @@ impl Running {
                 #[cfg(feature = "aot")]
                 active: Cell::new(false),
                 telemetry: telemetry.clone(),
-                ime: ime_visible.clone(),
+                ime: Cell::new(None),
             }))
             .hidpi_scale_factor(scale(&window))
             .build();
@@ -574,7 +582,7 @@ impl Running {
             context,
             _portal_parent: parent,
             window,
-            input: Input::new(ime_visible),
+            input: Input::default(),
             telemetry,
         })
     }
@@ -964,6 +972,16 @@ impl Drop for App {
 }
 impl ApplicationHandler<Wake> for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let mut ime_changed = false;
+        for (_, running) in self.running.values_mut() {
+            ime_changed |= running.input.finish_ime_batch(&running.webview);
+        }
+        if ime_changed {
+            if let Some(servo) = &self.servo {
+                servo.spin_event_loop();
+            }
+            self.commands(event_loop);
+        }
         let now = std::time::Instant::now();
         let mut index = 0;
         while index < self.pending_opens.len() {

@@ -1,0 +1,90 @@
+diff --git a/components/script/dom/html/form_controls/htmlinputelement.rs b/components/script/dom/html/form_controls/htmlinputelement.rs
+index b4f36fc33..f36c9e43a 100644
+--- a/components/script/dom/html/form_controls/htmlinputelement.rs
++++ b/components/script/dom/html/form_controls/htmlinputelement.rs
+@@ -1984,6 +1984,9 @@ impl HTMLInputElement {
+                 .embedder_controls()
+                 .hide_embedder_control(self.upcast());
+         } else if *event_type == *"focus" {
++            if !self.is_mutable() {
++                return;
++            }
+             let input_type = &*self.input_type();
+             let Ok(input_method_type) = input_type.try_into() else {
+                 return;
+@@ -2325,7 +2328,8 @@ impl VirtualMethods for HTMLInputElement {
+             event.type_() == atom!("compositionupdate") ||
+             event.type_() == atom!("compositionend")) &&
+             self.input_type().is_textual_or_password() &&
+-            event.IsTrusted()
++            event.IsTrusted() &&
++            self.is_mutable()
+         {
+             if let Some(compositionevent) = event.downcast::<CompositionEvent>() {
+                 if event.type_() == atom!("compositionend") {
+diff --git a/components/script/dom/html/form_controls/htmltextareaelement.rs b/components/script/dom/html/form_controls/htmltextareaelement.rs
+index 754cc7f88..a4ec106a0 100644
+--- a/components/script/dom/html/form_controls/htmltextareaelement.rs
++++ b/components/script/dom/html/form_controls/htmltextareaelement.rs
+@@ -172,6 +172,9 @@ impl HTMLTextAreaElement {
+                 .embedder_controls()
+                 .hide_embedder_control(self.upcast());
+         } else if *event_type == *"focus" {
++            if !self.is_mutable() {
++                return;
++            }
+             // If there is a Document selection collapse it. This isn't really specified
+             // and there are quite a few open specification issues about the interaction
+             // of input and Document selection:
+@@ -186,7 +189,7 @@ impl HTMLTextAreaElement {
+                     input_method_type: InputMethodType::Text,
+                     text: String::from(self.Value()),
+                     insertion_point: self.GetSelectionEnd(),
+-                    multiline: false,
++                    multiline: true,
+                     // We follow chromium's heuristic to show the virtual keyboard only if user had interacted before.
+                     allow_virtual_keyboard: self.owner_window().has_sticky_activation(),
+                 }),
+@@ -780,7 +783,8 @@ impl VirtualMethods for HTMLTextAreaElement {
+         if (event.type_() == atom!("compositionstart") ||
+             event.type_() == atom!("compositionupdate") ||
+             event.type_() == atom!("compositionend")) &&
+-            event.IsTrusted()
++            event.IsTrusted() &&
++            self.is_mutable()
+         {
+             if let Some(compositionevent) = event.downcast::<CompositionEvent>() {
+                 if event.type_() == atom!("compositionend") {
+diff --git a/components/script/dom/html/form_controls/text_control.rs b/components/script/dom/html/form_controls/text_control.rs
+index 461cff0b6..5448cf778 100644
+--- a/components/script/dom/html/form_controls/text_control.rs
++++ b/components/script/dom/html/form_controls/text_control.rs
+@@ -58,6 +58,11 @@ pub(crate) trait TextControlElement {
+     }
+ 
+     fn perform_editing_action(&self, cx: &mut JSContext, action: EditingAction) -> bool {
++        // Read-only fields remain selectable, but neither IME fallback keys nor
++        // ordinary keyboard editing may change their contents.
++        if self.read_only_or_disabled() && !matches!(action, EditingAction::MoveCursor(..)) {
++            return false;
++        }
+         let key_reaction = self.text_input_mut().perform_editing_action(action);
+         if key_reaction == KeyReaction::Nothing {
+             return false;
+diff --git a/components/script/dom/html/form_controls/text_input.rs b/components/script/dom/html/form_controls/text_input.rs
+index c6ff96fb6..1c6845c2a 100644
+--- a/components/script/dom/html/form_controls/text_input.rs
++++ b/components/script/dom/html/form_controls/text_input.rs
+@@ -626,10 +626,8 @@ impl<T: ClipboardProvider> TextInput<T> {
+ 
+     pub(crate) fn handle_compositionupdate(&mut self, event: &CompositionEvent) -> KeyReaction {
+         let insertion = event.data().str();
+-        if insertion.is_empty() {
+-            return KeyReaction::Nothing;
+-        }
+-
++        // An empty preedit removes the selected composition, e.g. the last
++        // Hangul jamo after Backspace. It is still an editing operation.
+         let start = self.selection_start_offset();
+         let insertion = insertion.to_string();
+         self.insert(insertion.clone());
