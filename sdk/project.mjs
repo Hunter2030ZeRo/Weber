@@ -5,6 +5,7 @@ import { dirname, resolve, relative, join, isAbsolute, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { importTool, resolveTool, root, sdk, checkout, sdkVersion, installedRuntime, runtimePackageName, packageDirectory } from './toolchain.mjs';
+import { projectDependencies } from './framework.mjs';
 import { weber } from './vite.mjs';
 
 export const digest = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -34,16 +35,17 @@ export async function metadata(project) {
   return { config, entry };
 }
 export async function check(project) {
-  const compiler = resolveTool('typescript/bin/tsc', project);
+  const dependencies = await projectDependencies(project);
+  const compiler = resolveTool(dependencies['vue-tsc'] ? 'vue-tsc/bin/vue-tsc.js' : 'typescript/bin/tsc', project);
   if (existsSync(join(project, 'tsconfig.json'))) {
     await command(process.execPath, [compiler, '--project', join(project, 'tsconfig.json'), '--noEmit'], { cwd: project }); return;
   }
   // Compatibility for SDK 0.2 projects without their own TypeScript config.
   const directory = await mkdtemp(join(tmpdir(), 'weber-sdk-check-'));
-  const solidRoot = packageDirectory('solid-js', project);
-  const config = { compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', jsx: 'preserve', jsxImportSource: 'solid-js', lib: ['ES2022', 'DOM', 'DOM.Iterable'], types: [], skipLibCheck: true,
-    paths: { 'solid-js': [solidRoot], 'solid-js/*': [join(solidRoot, '*')], '@weber/runtime': [join(sdk, 'runtime.ts')], '@weber/solid': [join(sdk, 'solid.ts')], '@weber/dom': [join(sdk, 'dom.d.ts')] } },
-    include: [join(project, '**/*.ts'), join(project, '**/*.tsx')], exclude: [join(project, 'dist'), join(project, 'node_modules')] };
+  const solidRoot = dependencies['solid-js'] ? packageDirectory('solid-js', project) : null;
+  const config = { compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', jsx: dependencies.react ? 'react-jsx' : 'preserve', ...(solidRoot ? { jsxImportSource: 'solid-js' } : {}), lib: ['ES2022', 'DOM', 'DOM.Iterable'], types: [], skipLibCheck: true,
+    paths: { ...(solidRoot ? { 'solid-js': [solidRoot], 'solid-js/*': [join(solidRoot, '*')] } : {}), '@weber/runtime': [join(sdk, 'runtime.ts')], '@weber/solid': [join(sdk, 'solid.ts')], '@weber/dom': [join(sdk, 'dom.d.ts')] } },
+    include: [join(project, '**/*.ts'), join(project, '**/*.tsx'), ...(dependencies['vue-tsc'] ? [join(project, '**/*.vue')] : [])], exclude: [join(project, 'dist'), join(project, 'node_modules')] };
   try { await writeFile(join(directory, 'tsconfig.json'), JSON.stringify(config)); await command(process.execPath, [compiler, '--project', join(directory, 'tsconfig.json')]); }
   finally { await rm(directory, { recursive: true, force: true }); }
 }
@@ -62,7 +64,7 @@ export async function viteConfig(project, action) {
   if (!plugins.some(plugin => plugin.name === 'weber:bindings')) {
     const hasSolid = plugins.some(plugin => plugin.name.startsWith('solid'));
     if (process.env.WEBER_BUILD_ENGINE === 'aot' && hasSolid) throw new Error('For AOT, replace solid() with weber() from @weber/sdk/vite');
-    config.plugins = [...plugins, await weber({ project, solid: !hasSolid })];
+    config.plugins = [...plugins, await weber({ project, ...(hasSolid ? { solid: false } : {}) })];
   } else config.plugins = plugins;
   if (config.root && resolve(project, config.root) !== project) throw new Error('Weber currently requires the Vite root to be the application directory');
   return { vite, config: { ...config, root: project, configFile: false } };
@@ -80,19 +82,28 @@ export async function atomicOutput(destination, marker, work) {
   } finally { await rm(staging, { recursive: true, force: true }); }
 }
 export async function init(project, template) {
-  if (!['solid', 'dom', 'node', 'windows', 'notes', 'workbench'].includes(template)) throw new Error('Template must be solid, dom, node, windows, notes or workbench');
+  if (!['solid', 'dom', 'react', 'vue', 'node', 'windows', 'notes', 'workbench'].includes(template)) throw new Error('Template must be solid, dom, react, vue, node, windows, notes or workbench');
   if (existsSync(project)) throw new Error('Project directory already exists');
   if (!checkout && !process.env.WEBER_SDK_SPEC) throw new Error(`This SDK preview is not published: set WEBER_SDK_SPEC=file:/absolute/path/to/weber-sdk-${sdkVersion}.tgz before init`);
   await cp(join(checkout ? root : sdk, checkout ? 'examples' : 'templates', template), project, { recursive: true, filter: source => !['dist', 'node_modules'].includes(source.split(sep).at(-1)) });
   const spec = JSON.parse(await readFile(join(sdk, 'defaults.json'), 'utf8'));
+  const solid = !['dom', 'react', 'vue'].includes(template);
+  const dependencies = Object.fromEntries((solid ? ['solid-js'] : template === 'react' ? ['react', 'react-dom'] : template === 'vue' ? ['vue'] : []).map(name => [name, spec[name]]));
+  const tools = ['vite', 'typescript', ...(solid ? ['vite-plugin-solid'] : template === 'react' ? ['@vitejs/plugin-react', '@types/react', '@types/react-dom'] : template === 'vue' ? ['@vitejs/plugin-vue', 'vue-tsc'] : [])];
   await writeFile(join(project, 'package.json'), JSON.stringify({ name: 'weber-app', private: true, type: 'module', scripts: {
-    dev: 'weber dev .', check: 'weber check .', build: 'weber build .', 'build:aot': 'weber build . --aot', start: 'weber run dist',
-    package: 'npm run build && weber package dist package', 'package:aot': 'npm run build:aot && weber package dist package',
-  }, dependencies: { 'solid-js': spec['solid-js'] }, devDependencies: { '@weber/sdk': process.env.WEBER_SDK_SPEC ?? `file:${sdk}`, vite: spec.vite, 'vite-plugin-solid': spec['vite-plugin-solid'], typescript: spec.typescript } }, null, 2));
-  await writeFile(join(project, 'vite.config.mjs'), 'import { weber } from "@weber/sdk/vite";\nexport default { plugins: [weber()] };\n');
-  await writeFile(join(project, 'index.html'), '<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="aot-dom-root"></div><script type="module">import "./src/main.' + (template === 'dom' ? 'ts' : 'tsx') + '"; import { mount } from "@weber/sdk/dev"; mount();</script></body></html>\n');
-  await writeFile(join(project, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', jsx: 'preserve', jsxImportSource: 'solid-js', lib: ['ES2022', 'DOM', 'DOM.Iterable'], types: ['vite/client'], skipLibCheck: true,
-    paths: { '@weber/dom': ['./node_modules/@weber/sdk/dom.d.ts'], '@weber/runtime': ['./node_modules/@weber/sdk/runtime.ts'], '@weber/solid': ['./node_modules/@weber/sdk/solid.ts'], 'solid-js': ['./node_modules/solid-js'], 'solid-js/*': ['./node_modules/solid-js/*'] } }, include: ['src'] }, null, 2));
+    dev: 'weber dev .', check: 'weber check .', build: 'weber build .', start: 'weber run dist',
+    package: 'npm run build && weber package dist package',
+    ...(solid || template === 'dom' ? { 'build:aot': 'weber build . --aot', 'package:aot': 'npm run build:aot && weber package dist package' } : {}),
+  }, dependencies, devDependencies: { '@weber/sdk': process.env.WEBER_SDK_SPEC ?? `file:${sdk}`, ...Object.fromEntries(tools.map(name => [name, spec[name]])) } }, null, 2));
+  const plugin = template === 'react' ? 'react' : template === 'vue' ? 'vue' : null;
+  await writeFile(join(project, 'vite.config.mjs'), (plugin ? `import ${plugin} from "@vitejs/plugin-${plugin}";\n` : '') + `import { weber } from "@weber/sdk/vite";\nexport default { plugins: [${plugin ? `${plugin}(), ` : ''}weber()] };\n`);
+  const { config } = await metadata(project);
+  await writeFile(join(project, 'index.html'), `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="aot-dom-root"></div><script type="module">import "./${config.entry}"; import { mount } from "@weber/sdk/dev"; mount();</script></body></html>\n`);
+  await writeFile(join(project, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler',
+    ...(solid ? { jsx: 'preserve', jsxImportSource: 'solid-js' } : template === 'react' ? { jsx: 'react-jsx' } : template === 'vue' ? { jsx: 'preserve' } : {}),
+    lib: ['ES2022', 'DOM', 'DOM.Iterable'], types: ['vite/client'], skipLibCheck: true,
+    paths: { '@weber/dom': ['./node_modules/@weber/sdk/dom.d.ts'], '@weber/runtime': ['./node_modules/@weber/sdk/runtime.ts'],
+      ...(solid ? { '@weber/solid': ['./node_modules/@weber/sdk/solid.ts'], 'solid-js': ['./node_modules/solid-js'], 'solid-js/*': ['./node_modules/solid-js/*'] } : {}) } }, include: ['src'] }, null, 2));
   await writeFile(join(project, '.gitignore'), 'node_modules/\ndist/\npackage/\n');
   console.log(`Created ${template} application: ${project}\nInstall dependencies with npm install, then npm run dev.`);
 }

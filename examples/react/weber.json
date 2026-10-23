@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "dev.weber.react",
+  "name": "Weber React",
+  "version": "0.1.0",
+  "entry": "src/main.tsx"
+}

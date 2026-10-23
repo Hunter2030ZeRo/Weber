@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Developer alpha</strong> · Linux / Wayland · SDK 0.6.0-alpha.3
+  <strong>Developer alpha</strong> · Linux / Wayland · SDK 0.6.0-alpha.4
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@ Linux foundation, web compatibility, responsiveness and resource use.
 
 | Area | Available in the current prototype |
 | --- | --- |
-| Web UI | Vite, SolidJS, TypeScript, development HMR, CSS animation and `requestAnimationFrame` |
+| Web UI | Vite, plain DOM, SolidJS, React, Vue, TypeScript, development HMR, CSS animation and `requestAnimationFrame` |
 | Windows | Multiple windows for the same app, titles, decorations, native drag/resize, minimize, maximize, fullscreen and state subscriptions |
 | Storage | App-scoped directories and asynchronous persistent JSON storage shared across app windows |
 | Text editing | Native input/textarea; basic `contenteditable` with selection and bounded undo/redo; Hangul composition and committed-word Hanja replacement |
@@ -113,8 +113,12 @@ npm start
 | `npm run package` | Bundle the compiled app and a prepared native runtime in `package/` |
 
 Templates: [`solid`](examples/solid) · [`dom`](examples/dom) ·
+[`react`](examples/react) · [`vue`](examples/vue) ·
 [`notes`](examples/notes) · [`node`](examples/node) · [`windows`](examples/windows).
 [`workbench`](examples/workbench) combines documents, window controls and system integration.
+React and Vue use their standard DOM renderers and official Vite plugins. The SDK
+does not install Solid in DOM/React/Vue projects. See [framework integration](docs/frontend-frameworks.md)
+for tested versions, lifecycle integration and limits.
 The `windows` template demonstrates multiple app windows; it is not a Windows OS port.
 
 ### 3. Package for distribution
@@ -196,6 +200,7 @@ memory or startup advantage over Electron or native GUI frameworks is claimed.
 
 | Topic | Guide |
 | --- | --- |
+| UI libraries | [Plain DOM, Solid, React and Vue](docs/frontend-frameworks.md) |
 | Build tools and SDK | [Vite workflow](docs/vite-workflow.md) · [Local npm distribution](docs/npm-distribution.md) |
 | Native windows | [Runtime and ownership](docs/native-runtime.md) · [Window controls and validation](docs/platform-validation.md) |
 | Persistent data | [Storage API and Notes example](docs/app-storage.md) |

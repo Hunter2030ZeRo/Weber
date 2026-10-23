@@ -5,6 +5,7 @@ import { resolve, relative, join, dirname, sep } from 'node:path';
 import { root, checkout, sdkVersion } from './toolchain.mjs';
 import { copyRuntime } from './runtime-package.mjs';
 import { metadata, check, withTarget, viteConfig, atomicOutput, inside, digest, command, host } from './project.mjs';
+import { projectDependencies } from './framework.mjs';
 import { buildBackend } from './backend-build.mjs';
 import { desktopEntry } from './launcher.mjs';
 
@@ -19,6 +20,8 @@ async function list(directory) {
   return files;
 }
 async function buildInto(project, destination, aot) {
+  const dependencies = await projectDependencies(project);
+  if (aot && (dependencies.react || dependencies.vue)) throw new Error('React/Vue use the SpiderMonkey JIT path; experimental AOT is not supported for these renderers');
   if (aot && !checkout) throw new Error('Experimental AOT compilation requires the Weber source checkout and Static Hermes toolchain; the npm SDK provides the SpiderMonkey JIT workflow');
   const { config, entry } = await metadata(project);
   await check(project);
@@ -28,6 +31,9 @@ async function buildInto(project, destination, aot) {
     if (user.build?.watch || user.build?.rollupOptions?.input || user.build?.rollupOptions?.output) throw new Error('Weber owns the bundle input/output; Vite build.watch and custom Rollup input/output are not supported');
     const bundled = vite.mergeConfig(user, {
       base: '/',
+      // Vite library mode leaves this expression untouched. Our output is a
+      // browser application: libraries such as React need a build-time value.
+      define: { 'process.env.NODE_ENV': user.define?.['process.env.NODE_ENV'] ?? JSON.stringify('production') },
       build: { target: user.build?.target ?? 'es2020', minify: user.build?.minify ?? false, outDir: destination, emptyOutDir: false },
     });
     bundled.build.lib = { entry, name: 'WeberApplicationBundle', formats: ['iife'], fileName: () => `${engine}.js`, cssFileName: 'style' };

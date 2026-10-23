@@ -1,56 +1,50 @@
-# Vite and npm workflow — SDK 0.3
+# Vite and npm workflow — SDK 0.6.0-alpha.4
 
-Weber is a general GUI application framework targeting Linux, Windows and macOS.
-The current native implementation and package builder are validated on Linux
-Wayland only. A desktop shell using Weber is a separate downstream application;
-Hyprland-specific APIs do not belong in the common build interface.
-
-JIT is the default cross-platform application path. Native AOT is optional for
-startup/memory-sensitive workloads; its platform-specific compiler/loader support
-is not a prerequisite for a JIT platform release. Both paths retain the common
-application API. The current prepared host still links Hermes and its source
-build needs the AOT toolchain; JIT-only application output does not yet imply an
-AOT-free host build. Making that host build independent is part of the platform
-work. AOT's intended performance benefit remains subject to measured validation.
+Weber is a general GUI application framework. The implemented native host and
+packager currently target Linux x64 / Wayland. Windows/macOS remain future
+hosts; Hyprland integration belongs to downstream desktop applications.
 
 ## Create and develop
 
-In this prepared source checkout:
+From the checkout, select plain DOM, Solid, React or Vue:
 
 ```sh
-node sdk/cli.mjs init /tmp/my-weber-app solid
+node sdk/cli.mjs init /tmp/my-weber-app react
 cd /tmp/my-weber-app
 npm install
 npm run dev
 ```
 
-`init` also accepts `notes` (a [persistent Notes app](app-storage.md)), `windows`, `dom` and `node` (a [Bun backend example](bun-backend.md)). The generated project has package scripts, an editable
-`vite.config.mjs`, `tsconfig.json`, development HTML and app metadata. The SDK
-dependency points to this local checkout; this is not a published or self-contained
-npm SDK. Node runs the tools, not the packaged UI. Bun is not required or verified
-as an alternative tool runner in this milestone.
+Other templates: `dom`, `solid`, `vue`, `workbench`, `notes`, `windows`, `node`.
+Workbench/Notes/Windows/Node use Solid. Node is a Bun backend example, while
+Windows demonstrates multiple app windows rather than a Windows OS port.
+The generated package has normal scripts, Vite/TypeScript config, development
+HTML and `weber.json`. For SDK/runtime tarballs outside a checkout, follow
+[local npm distribution](npm-distribution.md).
 
-The Vite preset includes Solid transforms and the Weber DOM/runtime aliases:
+`weber()` supplies runtime and native SDK aliases. In a Solid project it also
+adds Solid's transform and shared-instance aliases. For other libraries, include
+their usual Vite plugin:
 
 ```js
+import react from '@vitejs/plugin-react';
 import { weber } from '@weber/sdk/vite';
-export default { plugins: [weber()] };
+export default { plugins: [react(), weber()] };
 ```
 
-User `define`, aliases, environment files, additional plugins and public resources
-are processed by Vite. Dependencies resolve from the project. The original SDK
-0.2 examples without package/config files retain a prepared-checkout fallback.
-Do not add a second `solid()` plugin beside this preset. With an existing Solid
-plugin, the automatic JIT adapter can work; AOT requires the Weber preset to select
-its renderer transform.
+The Vue template uses `vue()` from `@vitejs/plugin-vue`. Plain DOM needs only
+`weber()`. React/Vue/DOM projects do not install or resolve Solid. An existing
+Solid plugin can use `weber({ solid: false })` to avoid a duplicate transform.
+When a normal Vite config omits `weber()`, the CLI adds common bindings and, if
+needed, the Solid transform automatically. Very old package-less apps explicitly
+importing `@weber/solid` retain the checkout fallback.
 
-`npm run dev` starts Vite on loopback and opens its URL in the native Servo window
-using SpiderMonkey. Closing the window stops Vite. SIGINT/SIGTERM stop the owned
-host and server; a host launch failure also closes the server. CSS changes use
-Vite HMR. TS/TSX updates use the framework's HMR behavior or page reload where
-there is no accepting boundary; universal state preservation is not promised.
-The generated Solid component has an exported component boundary. This is JIT
-development; it is not hot replacement of native AOT machine code.
+Project dependencies, environment files, `define`, aliases, additional plugins
+and public resources are processed by Vite. `npm run dev` serves on loopback and
+opens a native Servo window using SpiderMonkey. Closing the window stops Vite;
+signals and host launch failures also clean up the server. CSS changes use HMR.
+Component changes use the official plugin's behavior, with ordinary reloads
+where no HMR boundary exists. Universal state preservation is not promised.
 
 ## Build and distribute
 
@@ -58,54 +52,40 @@ development; it is not hot replacement of native AOT machine code.
 npm run check
 npm run build
 npm start
-npm run build:aot
-npm start
 npm run package
-npm run package:aot
+./package/weber --app ./package/application
 ```
 
-- `build` creates a JIT-only app (`web.js`, CSS/resources, `app.json`). It does not
-  invoke the Static Hermes compiler or emit a native app unit.
-- `build:aot` emits both JIT resources and an actual O3 Static Hermes `app.so`.
-  Its manifest records the existing native ABI and module hash. AOT still uses
-  the experimental Servo bridge and SpiderMonkey-owned DOM bindings.
-- `start` runs `dist`; a JIT-only manifest automatically selects SpiderMonkey.
-  A manifest with a native unit selects AOT; `weber run dist --web` selects its
-  JIT comparison. A failed native unit does not silently fall back to JIT.
-- `package` and `package:aot` build then create a relocatable Linux directory in
-  `package/`. Run `./weber --app ./application` there. Node, npm, Vite and the
-  original sources/node_modules are not needed to run that directory.
+- `check` runs TypeScript, or `vue-tsc` when declared by the project, so Vue SFC
+  scripts and templates are checked rather than silently omitted.
+- `build` emits `web.js`, CSS/resources and `app.json` for SpiderMonkey JIT.
+- `start` runs the compiled app in the installed native runtime.
+- `package` builds and creates a relocatable Linux directory with native host,
+  private libraries, app resources, notices and desktop launcher.
 
-The default host prefers `target/package/weber-beta-jit/weber`, then `target/package/weber-vite/weber`, then the debug host,
-then the preceding framework package. `WEBER_HOST` explicitly selects a host.
-JIT-only manifests require the new host; preceding hosts do not understand them.
-Old AOT manifests retain their ABI/hash/path validation, including in web mode.
+The packaged JIT UI needs no Node/npm/Vite/Bun. A compatible glibc loader,
+Wayland compositor, GPU/EGL drivers and fonts remain prerequisites. Bun is
+optional only for apps using its separate backend process. Installed runtime
+packages are preferred; `WEBER_HOST` explicitly selects a prepared host.
 
-Build and package use staging directories. Type errors, bundler failures or
-native compilation errors preserve the previous output. Unrecognized nonempty
-output directories are rejected. Packaging checks declared resources before
-copying, and only the declared app files are shipped.
+Build/package use staging directories. Failed checks/builds preserve the previous
+recognized output; unrecognized nonempty outputs are rejected. Packaging verifies
+declared resource hashes and ships only declared resources.
 
 ## Current boundaries
 
-The SDK currently produces one library entry in a fixed app manifest format;
-this is not arbitrary Vite HTML/multipage output. `weber.json` selects the entry.
-Build root, output location, library format/entry/filenames and app URL base are
-controlled by Weber. Plugins that require a different output contract, SSR or
-Node runtime APIs are not automatically compatible. Vite and its plugins can use
-Node APIs while building; UI imports of Node built-ins are rejected with a
-runtime-compatibility diagnostic. Native desktop APIs and optional backend
-runtimes remain separate work.
+Weber owns a single library entry from `weber.json`, output format/filenames and
+app URL base. Arbitrary HTML/multipage/SSR output is not supported by this
+contract. Build plugins may use Node APIs; UI imports of Node built-ins are
+rejected. Standard DOM rendering does not guarantee every web API or third-party
+component. See [framework integration and native validation](frontend-frameworks.md).
 
-Linux AOT linking and package creation are explicitly platform-specific today.
-The new workflow does not establish Windows/macOS native support. Matching
-Linux loader/glibc, GPU drivers, fonts and an active Wayland compositor remain
-runtime requirements. No install, publication or performance improvement is
-implied by this tooling milestone.
+Static Hermes remains deferred/experimental. Legacy DOM/Solid source-checkout
+`build:aot` scripts require the native toolchain and retain a SpiderMonkey DOM
+adapter. New React/Vue templates expose the JIT workflow and explicitly reject
+AOT requests. They do not add Hermes-only DOM support.
 
-Validation is recorded in `artifacts/vite-workflow.json` (npm/build/package) and
-`artifacts/vite-native-workflow.json` (actual Servo/Wayland execution and editing).
-See [validation](vite-workflow-validation.md) for executed scope and limitations.
-
-Vite integration references: [Vite 7 plugin API](https://v7.vite.dev/guide/api-plugin)
-and [JavaScript API](https://v7.vite.dev/guide/api-javascript).
+References: [Vite plugin API](https://v7.vite.dev/guide/api-plugin),
+[Vite JavaScript API](https://v7.vite.dev/guide/api-javascript),
+[React DOM integration](https://react.dev/learn/add-react-to-an-existing-project),
+[Vue TypeScript tooling](https://vuejs.org/guide/typescript/overview).

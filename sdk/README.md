@@ -1,4 +1,4 @@
-# Weber SDK 0.6.0-alpha.3 (local developer alpha)
+# Weber SDK 0.6.0-alpha.4 (local developer alpha)
 
 The SDK is an npm development dependency. Vite compiles the HTML/CSS/JS UI;
 the separate native runtime embeds Servo and SpiderMonkey. Node/npm are build
@@ -9,6 +9,27 @@ Linux x64, the local `@weber/runtime-linux-x64` tarball. No install scripts or
 runtime downloads are used. `WEBER_SDK_SPEC=file:/absolute/path/to/sdk.tgz`
 must select that tarball when creating a project with `weber init PROJECT workbench`.
 Generated TypeScript paths resolve from that project's `node_modules`.
+
+## UI libraries
+
+`weber init PROJECT dom|solid|react|vue` selects a starting UI. DOM, React and Vue
+projects do not install Solid. React uses `react-dom/client` and the official
+`@vitejs/plugin-react`; Vue uses `createApp`, SFCs, `@vitejs/plugin-vue` and
+`vue-tsc`. All use the same native host, SDK APIs and npm scripts. Solid-based
+Workbench/Notes/Windows/Node templates remain available.
+
+`weber()` provides common runtime bindings and automatically adds Solid's
+transform only when the app declares `solid-js`. `weber({ solid: false })`
+disables that transform for an existing Solid Vite plugin while keeping the
+shared Solid instance aliases. React/Vue plugins belong in the app's Vite config.
+Use `defineApp({ mount(root) { /* mount your renderer; return its disposer */ } })`
+from `@weber/sdk/runtime` to connect another DOM renderer. The older
+`@weber/runtime` alias remains available through the Vite integration.
+
+React/Vue templates target SpiderMonkey JIT. Experimental AOT requests for them
+are rejected. No React/Vue-specific Rust renderer or duplicate DOM is added.
+Other UI libraries, SSR, arbitrary Vite output and arbitrary npm packages remain
+unverified. See the repository's `docs/frontend-frameworks.md` for native tests.
 
 `@weber/sdk/clipboard` exports asynchronous `readText()` and `writeText(text)`.
 It requires native `clipboardProtocol: 1` and a focused app window. Text is
