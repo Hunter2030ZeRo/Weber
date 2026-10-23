@@ -11,12 +11,15 @@ import {NativeKeys,launch,execute,waitFor,delay,memory,distribution} from './nat
 assert.ok(process.env.WEBER_TEST_DISPLAY?.startsWith('isolated Hyprland'));
 assert.ok(!process.env.DBUS_SESSION_BUS_ADDRESS?.includes('/run/user/'));
 const profileOnly=process.env.WEBER_CPU_PERF==='1';
-const output=profileOnly?'artifacts/editing-cpu-profile.json':'artifacts/editing-cpu-native.json';
+const endurance=process.env.WEBER_CPU_ENDURANCE==='1';
+assert.ok(!(profileOnly&&endurance),'Profile and endurance are separate runs');
+const output=profileOnly?'artifacts/editing-cpu-profile.json':endurance?'artifacts/editing-cpu-endurance.json':'artifacts/editing-cpu-native.json';
 const binary=resolve(process.argv[2]??'target/package/weber-clipboard-jit/weber');
 const fixture=JSON.parse(await readFile('artifacts/editing-workflow.json','utf8'));
+if(process.env.WEBER_CPU_APPLICATION)fixture.application=resolve(process.env.WEBER_CPU_APPLICATION);
 const build=JSON.parse((await execute(binary,['--build-info'])).stdout);
 const hz=Number((await execute('getconf',['CLK_TCK'])).stdout);
-const cycles=Number(process.env.WEBER_CPU_CYCLES??(profileOnly?100:50)),periodMs=85;
+const cycles=Number(process.env.WEBER_CPU_CYCLES??(profileOnly||endurance?100:50)),periodMs=85;
 assert.ok(Number.isInteger(cycles)&&cycles>=5&&cycles<=200);
 const results=[],report={passed:false,build,binary,fixture,display:process.env.WEBER_TEST_DISPLAY,
  startedAt:new Date().toISOString(),hardware:{cpu:cpus()[0].model,logicalCpus:cpus().length,kernel:release(),arch:arch()},
@@ -24,7 +27,7 @@ const results=[],report={passed:false,build,binary,fixture,display:process.env.W
  fixtureSha256:createHash('sha256').update(await readFile(join(fixture.application,'web.js'))).digest('hex'),
  methodology:{cpu:'100% = one logical CPU; Weber process tree only; excludes compositor, Fcitx and driver',
  workload:'Hangul r+k, space commit, Backspace space, Backspace syllable; native OS keycodes',
- periodMs,cyclesPerBlock:cycles,order:profileOnly?[]:['observed','quiet','quiet','observed','quiet','observed','observed','quiet'],
+ periodMs,cyclesPerBlock:cycles,order:profileOnly?[]:endurance?Array(8).fill('quiet'):['observed','quiet','quiet','observed','quiet','observed','observed','quiet'],
  boundary:'Quiet disables per-event DOM snapshots/JSON/bridge calls. Cheap event counters and host telemetry remain enabled. Not telemetry-free production CPU or input latency.',
  sampling:'Process CPU from /proc stat at CLK_TCK; thread attribution from schedstat runtime nanoseconds; frame presentation is not inferred from event counts.'},results};
 await writeFile(output,JSON.stringify(report,null,2));
@@ -124,7 +127,7 @@ try{
   await command('enable');report.profile=await block('quiet-profile');await command('disable');
  }else{
   for(const name of report.methodology.order){await mode(name==='observed');results.push(await block(name));await writeFile(output,JSON.stringify(report,null,2));}
-  report.summary=Object.fromEntries(['observed','quiet'].map(mode=>[mode,{cpuPercent:distribution(results.filter(r=>r.mode===mode).map(r=>r.cpuPercent)),cpuMsPerCycle:distribution(results.filter(r=>r.mode===mode).map(r=>r.cpuMs/r.cycles))}]));
+  report.summary=Object.fromEntries([...new Set(report.methodology.order)].map(mode=>[mode,{cpuPercent:distribution(results.filter(r=>r.mode===mode).map(r=>r.cpuPercent)),cpuMsPerCycle:distribution(results.filter(r=>r.mode===mode).map(r=>r.cpuMs/r.cycles))}]));
  }
  await keys.key(88);assert.equal((await app.waitExit()).code,0);report.passed=true;
 }catch(error){report.error=String(error);throw error;}

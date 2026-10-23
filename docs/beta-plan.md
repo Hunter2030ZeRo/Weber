@@ -19,6 +19,9 @@ justify revisiting it; they do not imply a future measured win automatically.
 
 See [the JIT CPU investigation](jit-cpu-analysis.md) for the active performance
 findings and unresolved costs.
+The [current implementation status](implementation-status.md) includes alpha.3
+native editable DOM and Hyprland IME; distinguish basic editing from the wider
+rich-editor requirements still listed below.
 
 ## First implementation bundle
 
@@ -47,7 +50,7 @@ now connects the SDK and normal textarea/input shortcuts to Wayland, with a
 separate Servo safe-cut extension. SDK 0.4.0 adds [text file selection and
 lifecycle APIs](files-and-lifecycle.md). The [Linux preview milestone](linux-preview-milestone.md)
 records the 0.4.0 acceptance scope. The [0.5.0 foundation increment](linux-foundation-05.md)
-extends document limits, portal parenting and repeated lifecycle validation. Richer clipboard formats, contenteditable,
+extends document limits, portal parenting and repeated lifecycle validation. Richer clipboard formats, full rich-editor semantics,
 broader platform APIs and process/renderer recovery remain subsequent work.
 
 The [0.6.0-alpha.1 application/window/system milestone](linux-alpha-06.md) adds
@@ -85,7 +88,7 @@ measures larger DOMs, multiple windows and repeated close/reopen lifetimes on
 both engines, alongside the preceding JIT-only host. See
 [the bundle's validation record](platform-validation.md) for what actually ran.
 
-- Rich clipboard formats, contenteditable editing, remaining window controls,
+- Rich clipboard formats, full rich-editor compatibility, remaining window controls,
   broader activation/focus coverage and physical keyboard/IME verification.
 - General platform event API, renderer navigation/disposal handling, recovery
   policy, dependency-specific Node compatibility and native app trust boundaries.

@@ -502,7 +502,7 @@ diff --git a/components/script/dom/document/native_editing.rs b/components/scrip
 new file mode 100644
 --- /dev/null
 +++ b/components/script/dom/document/native_editing.rs
-@@ -0,0 +1,873 @@
+@@ -0,0 +1,872 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
@@ -803,40 +803,52 @@ new file mode 100644
 +}
 +// Composition replaces only its live range, without invoking the legacy
 +// rich-text deletion command (which adds placeholder BRs on every update).
-+pub(crate) fn insert_editable_text(
++fn insert_editable_text(
 +    cx: &mut JSContext,
 +    document: &Document,
 +    selection: &Selection,
 +    text: &str,
-+) -> bool {
-+    let Some(range) = selection.active_range(cx) else {
-+        return false;
-+    };
-+    if range.DeleteContents(cx).is_err() || selection.CollapseToStart(cx).is_err() {
-+        return false;
++) -> Option<(Point, Point)> {
++    let range = selection.active_range(cx)?;
++    let node = range.start_container();
++    let offset = range.start_offset();
++    let value = DOMString::from(text);
++    let length = value.len_utf16().0;
++    // Keep standard CharacterData live-range adjustment, but replace in one
++    // mutation rather than delete + insert and intermediate selection ranges.
++    // Return rooted insertion endpoints instead of allocating a tracking clone.
++    if node == range.end_container()
++        && let Some(data) = node.downcast::<Text>()
++    {
++        let removed = range.end_offset() - offset;
++        if removed != 0 || !text.is_empty() {
++            data.upcast::<CharacterData>()
++                .ReplaceData(cx, offset, removed, value)
++                .ok()?;
++        }
++        selection.Collapse(cx, Some(&node), offset + length).ok()?;
++        return Some(((node.clone(), offset), (node, offset + length)));
 +    }
-+    let Some(range) = selection.active_range(cx) else {
-+        return false;
-+    };
++    // Structural/multi-node selections still use Servo's normal range editing.
++    if range.DeleteContents(cx).is_err() || selection.CollapseToStart(cx).is_err() {
++        return None;
++    }
++    let range = selection.active_range(cx)?;
 +    let node = range.start_container();
 +    let offset = range.start_offset();
 +    if text.is_empty() {
-+        return true;
++        return Some(((node.clone(), offset), (node, offset)));
 +    }
-+    let value = DOMString::from(text);
-+    let length = value.len_utf16().0;
 +    if let Some(data) = node.downcast::<CharacterData>() {
-+        if data.InsertData(cx, offset, value).is_err() {
-+            return false;
-+        }
-+        selection.Collapse(cx, Some(&node), offset + length).is_ok()
++        data.InsertData(cx, offset, value).ok()?;
++        selection.Collapse(cx, Some(&node), offset + length).ok()?;
++        Some(((node.clone(), offset), (node, offset + length)))
 +    } else {
 +        let text = document.CreateTextNode(cx, value);
-+        let node = text.upcast::<Node>();
-+        if range.InsertNode(cx, node).is_err() {
-+            return false;
-+        }
-+        selection.Collapse(cx, Some(node), length).is_ok()
++        let node = DomRoot::from_ref(text.upcast::<Node>());
++        range.InsertNode(cx, &node).ok()?;
++        selection.Collapse(cx, Some(&node), length).ok()?;
++        Some(((node.clone(), 0), (node, length)))
 +    }
 +}
 +impl Document {
@@ -1245,7 +1257,7 @@ new file mode 100644
 +            };
 +            selection.RemoveAllRanges(cx.no_gc());
 +            selection.AddRange(cx.no_gc(), &range);
-+            if !insert_editable_text(cx, self, &selection, text) {
++            if insert_editable_text(cx, self, &selection, text).is_none() {
 +                return false;
 +            }
 +        } else {
@@ -1336,29 +1348,16 @@ new file mode 100644
 +        if self.editable_selection_host(cx).as_deref() != Some(&*host) {
 +            return;
 +        }
-+        let Some(before) = selection.active_range(cx) else {
++        let Some(((start, start_offset), (end, end_offset))) =
++            insert_editable_text(cx, self, &selection, text)
++        else {
 +            return;
 +        };
-+        let start = before.CloneRange(cx);
-+        start.Collapse(cx.no_gc(), true);
-+        if !insert_editable_text(cx, self, &selection, text) {
-+            return;
-+        }
-+        let Some(after) = selection.active_range(cx) else {
-+            return;
-+        };
-+        let preedit = Range::new(
-+            cx,
-+            self,
-+            &start.start_container(),
-+            start.start_offset(),
-+            &after.end_container(),
-+            after.end_offset(),
-+        );
 +        if matches!(state, End) {
 +            self.native_editing().composition_host.set(None);
 +            self.native_editing().composition_range.set(None);
 +        } else {
++            let preedit = Range::new(cx, self, &start, start_offset, &end, end_offset);
 +            self.native_editing().composition_host.set(Some(&host));
 +            self.native_editing().composition_range.set(Some(&preedit));
 +        }

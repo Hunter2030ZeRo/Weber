@@ -1,5 +1,9 @@
 # Native editing CPU investigation — 2026-10-23
 
+Follow-up: [native composition range optimization](native-editing-range-optimization.md)
+records the subsequent compiled engine change and its longer same-app comparison.
+The shorter observer A/B measurements below remain their original workload.
+
 The alpha.3 6.51% / 6.01% figures were **input-block averages**, where 100% is
 one logical CPU, not peaks or whole-machine percentages. The correctness fixture
 read `textContent`, `innerHTML`, descendant count and Selection state, serialized

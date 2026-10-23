@@ -38,7 +38,8 @@ Linux foundation, web compatibility, responsiveness and resource use.
 | Web UI | Vite, SolidJS, TypeScript, development HMR, CSS animation and `requestAnimationFrame` |
 | Windows | Multiple windows for the same app, titles, decorations, native drag/resize, minimize, maximize, fullscreen and state subscriptions |
 | Storage | App-scoped directories and asynchronous persistent JSON storage shared across app windows |
-| Clipboard | System text clipboard through the SDK and Servo's standard copy/cut/paste in textarea/input controls on focused Wayland windows |
+| Text editing | Native input/textarea; basic `contenteditable` with selection and bounded undo/redo; Hangul composition and committed-word Hanja replacement |
+| Clipboard | System text clipboard through the SDK and standard copy/cut/paste in focused native text controls and basic editable DOM |
 | Text files | Desktop file chooser, UTF-8 open/save and cancellation through `@weber/sdk/files` |
 | App lifecycle | Visible script errors and async close decisions for unsaved changes |
 | System | Display/theme snapshots, desktop notifications and cancellable external URL handoff |
@@ -49,7 +50,7 @@ Linux foundation, web compatibility, responsiveness and resource use.
 Windows and macOS are planned. Weber is a developer alpha, not a released beta;
 the SDK and runtime packages are not published to npm.
 
-Contenteditable editing, accessibility and broader platform integration remain
+Full rich-editor compatibility, accessibility and broader platform integration remain
 on the [beta roadmap](docs/beta-plan.md). Clipboard and text files support
 256 KiB UTF-8; app-store values support 1 MiB encoded JSON with a 16 MiB area
 quota. File choosers receive the calling Wayland window through xdg-foreign
@@ -57,6 +58,8 @@ when the compositor supports it. See the [Linux foundation increment](docs/linux
 and the preceding [preview milestone](docs/linux-preview-milestone.md). Browser compatibility is measured
 against a [selected, locked test profile](docs/compatibility-target.md), rather
 than assumed to cover every web API or arbitrary Electron applications.
+The [implementation status](docs/implementation-status.md) separates available
+application features from beta requirements and downstream desktop-shell work.
 
 ## Get started
 
@@ -204,7 +207,7 @@ memory or startup advantage over Electron or native GUI frameworks is claimed.
 | Optional backend | [Bun integration](docs/bun-backend.md) · [Backend validation](docs/bun-backend-validation.md) |
 | Web compatibility | [Locked test profile](docs/compatibility-target.md) · [Profile validation](docs/profile-validation.md) |
 | Window activation | [Wayland tokens, focus and lifetime checks](docs/window-activation.md) |
-| Performance | [Executable residency](docs/executable-residency.md) · [Font lifetimes](docs/font-lifetime-optimization.md) · [Window resource lifetimes](docs/window-resource-optimization.md) · [Document transfers](docs/native-transfer-optimization.md) · [CPU investigation](docs/jit-cpu-analysis.md) |
+| Performance | [Executable residency](docs/executable-residency.md) · [Font lifetimes](docs/font-lifetime-optimization.md) · [Window resource lifetimes](docs/window-resource-optimization.md) · [Document transfers](docs/native-transfer-optimization.md) · [General CPU](docs/jit-cpu-analysis.md) · [Input CPU](docs/editing-cpu-analysis.md) |
 | Project direction | [Linux beta checklist](docs/linux-beta-checklist.md) · [Beta plan](docs/beta-plan.md) · [Architecture](docs/architecture.md) |
 
 Builds pin Servo to `aac43a3f31a259f04a574f5ec4e959c943ad7cc7` (v0.7.0).
