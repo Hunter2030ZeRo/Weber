@@ -1,4 +1,4 @@
-# Weber SDK 0.6.0-alpha.4 (local developer alpha)
+# Weber SDK 0.6.0-alpha.5 (local developer alpha)
 
 The SDK is an npm development dependency. Vite compiles the HTML/CSS/JS UI;
 the separate native runtime embeds Servo and SpiderMonkey. Node/npm are build
@@ -12,7 +12,7 @@ Generated TypeScript paths resolve from that project's `node_modules`.
 
 ## UI libraries
 
-`weber init PROJECT dom|solid|react|vue` selects a starting UI. DOM, React and Vue
+`weber init PROJECT dom|solid|react|vue|svelte|angular` selects a starting UI. DOM, React, Vue, Svelte and Angular
 projects do not install Solid. React uses `react-dom/client` and the official
 `@vitejs/plugin-react`; Vue uses `createApp`, SFCs, `@vitejs/plugin-vue` and
 `vue-tsc`. All use the same native host, SDK APIs and npm scripts. Solid-based
@@ -26,8 +26,15 @@ Use `defineApp({ mount(root) { /* mount your renderer; return its disposer */ } 
 from `@weber/sdk/runtime` to connect another DOM renderer. The older
 `@weber/runtime` alias remains available through the Vite integration.
 
-React/Vue templates target SpiderMonkey JIT. Experimental AOT requests for them
-are rejected. No React/Vue-specific Rust renderer or duplicate DOM is added.
+Svelte uses its official Vite plugin and `svelte-check`; Angular uses the Analog
+Vite plugin, Angular 21.2.25 and `ngc` with strict template checking. Angular's
+web template compilation emits JavaScript; this is unrelated to Static Hermes.
+Svelte component edits keep the page but reset local sample state. Angular's
+current plugin configuration reloads the page for CSS/template edits. Neither is
+advertised as preserving all component state.
+
+React/Vue/Svelte/Angular templates target SpiderMonkey JIT. Experimental AOT requests for them
+are rejected. No UI-library-specific Rust renderer or duplicate DOM is added.
 Other UI libraries, SSR, arbitrary Vite output and arbitrary npm packages remain
 unverified. See the repository's `docs/frontend-frameworks.md` for native tests.
 
@@ -125,3 +132,26 @@ the last Hangul jamo is deleted; readonly fields reject editing. Password fields
 request the password input purpose. App shortcut handlers should respect
 `KeyboardEvent.isComposing`. See [Korean IME acceptance](../docs/korean-ime.md)
 for the earlier form-control milestone. The [alpha.3 editing report](../docs/native-editing-alpha3.md) records Hyprland/Fcitx reconversion, native selection/clipboard/undo and the remaining rich-editor limits.
+
+## Optional Hyprland shell foundation
+
+`weber init PROJECT shell` creates a plain-DOM shell foundation example with a
+compiled Bun backend. The backend-only `@weber/sdk/hyprland` module exports
+`createHyprlandClient()` for bounded snapshots, event subscriptions, workspace
+selection and window focus. Use the returned `watch` with an `AbortSignal`;
+there is no idle snapshot polling. This module is optional and not imported by
+ordinary UI or app runtimes.
+
+A host built with `--features layer-shell` advertises `layerPanelProtocol: 1`.
+`weber panel dist` or `./weber --panel-app ./application` opens the compiled JIT app
+as a 48px top layer panel with an exclusive zone and pointer input. This first
+panel contract is single-output and never requests keyboard focus. It supports
+the app backend and telemetry, not the ordinary native window/storage/clipboard
+SDK or keyboard/IME on that layer surface. The shell example opens a separate
+normal native window for searchable window selection, where existing IME and
+native APIs work. Its backend can launch only its own fixed app/host argv.
+
+`npm run dev` for the shell template opens the ordinary window view. Panel-mode
+Vite development and a general layer-window SDK are not implemented. A normal
+host without the optional Cargo feature rejects panel hosting explicitly. See
+`docs/shell-foundation.md` in the repository for the validated prototype boundary.

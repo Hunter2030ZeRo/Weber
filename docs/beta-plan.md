@@ -56,9 +56,11 @@ broader platform APIs and process/renderer recovery remain subsequent work.
 The [0.6.0-alpha.1 application/window/system milestone](linux-alpha-06.md) adds
 a real Workbench, notifications, external URLs, native drag/resize/minimize,
 display snapshots and desktop launchers. This is the developer alpha foundation
-for starting downstream UI/configuration apps. Simulacrum layer-shell/Hyprland
-integration and desktop services remain separate work, and must preserve Weber
-as a general-purpose application framework.
+for starting downstream UI/configuration apps. The [alpha.5 shell foundation](shell-foundation.md)
+now adds an actual single-output Hyprland panel and normal IME-capable window
+picker with workspace/window IPC. Further desktop services and broader shell
+roles remain downstream work and must preserve Weber as a general-purpose
+application framework.
 
 ## Active resource and Linux usability sequence
 
@@ -92,9 +94,10 @@ both engines, alongside the preceding JIT-only host. See
   broader activation/focus coverage and physical keyboard/IME verification.
 - General platform event API, renderer navigation/disposal handling, recovery
   policy, dependency-specific Node compatibility and native app trust boundaries.
-- A downstream panel/launcher integrated with actual Hyprland sockets; output
-  scaling/hotplug, focus and input must be tested there. A KWin layer probe alone
-  does not establish Hyprland or desktop-shell support.
+- Broaden the verified single-output Hyprland panel/window picker to app
+  discovery/launching, configurable layer roles, output scaling/hotplug and
+  session supervision. Current validation does not cover layer keyboard/IME or
+  a complete Simulacrum desktop.
 - Fresh environment packaging, deterministic dependency/engine identification,
   crash diagnostics and prolonged lifecycle/resource regression tests.
 - Windows/macOS JIT build and native window/input/package smoke tests early in

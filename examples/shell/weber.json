@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "dev.weber.shell",
+  "name": "Weber Shell Foundation",
+  "version": "0.1.0",
+  "entry": "src/main.ts",
+  "backend": "backend/main.mjs"
+}

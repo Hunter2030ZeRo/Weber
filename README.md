@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Developer alpha</strong> · Linux / Wayland · SDK 0.6.0-alpha.4
+  <strong>Developer alpha</strong> · Linux / Wayland · SDK 0.6.0-alpha.5
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@ Linux foundation, web compatibility, responsiveness and resource use.
 
 | Area | Available in the current prototype |
 | --- | --- |
-| Web UI | Vite, plain DOM, SolidJS, React, Vue, TypeScript, development HMR, CSS animation and `requestAnimationFrame` |
+| Web UI | Vite, plain DOM, SolidJS, React, Vue, Svelte, Angular, TypeScript, development HMR, CSS animation and `requestAnimationFrame` |
 | Windows | Multiple windows for the same app, titles, decorations, native drag/resize, minimize, maximize, fullscreen and state subscriptions |
 | Storage | App-scoped directories and asynchronous persistent JSON storage shared across app windows |
 | Text editing | Native input/textarea; basic `contenteditable` with selection and bounded undo/redo; Hangul composition and committed-word Hanja replacement |
@@ -114,10 +114,13 @@ npm start
 
 Templates: [`solid`](examples/solid) · [`dom`](examples/dom) ·
 [`react`](examples/react) · [`vue`](examples/vue) ·
+[`svelte`](examples/svelte) · [`angular`](examples/angular) ·
 [`notes`](examples/notes) · [`node`](examples/node) · [`windows`](examples/windows).
 [`workbench`](examples/workbench) combines documents, window controls and system integration.
 React and Vue use their standard DOM renderers and official Vite plugins. The SDK
-does not install Solid in DOM/React/Vue projects. See [framework integration](docs/frontend-frameworks.md)
+does not install Solid in DOM/React/Vue/Svelte/Angular projects. Svelte uses its
+official Vite plugin; Angular uses the Analog Vite plugin and strict Angular
+template compilation. See [framework integration](docs/frontend-frameworks.md)
 for tested versions, lifecycle integration and limits.
 The `windows` template demonstrates multiple app windows; it is not a Windows OS port.
 
@@ -176,6 +179,11 @@ and OS input in isolated **Hyprland 0.56.2** and GNOME sessions. Ordinary HTML
 controls use these paths automatically. Physical keyboards, full rich-editor
 conformance and a complete downstream desktop remain separate validation.
 
+The [shell foundation](docs/shell-foundation.md) adds an optional clickable
+layer-shell panel, bounded Hyprland IPC and a separate IME-capable window picker.
+Its native acceptance covers one private Hyprland output at scale 1; it is an
+initial prototype foundation, not a complete desktop environment.
+
 **Simulacrum uses Hyprland as its compositor.** Weber supplies application UI and
 system integration; it does not implement a replacement compositor. The same
 framework remains intended for ordinary applications and future Windows/macOS
@@ -200,7 +208,7 @@ memory or startup advantage over Electron or native GUI frameworks is claimed.
 
 | Topic | Guide |
 | --- | --- |
-| UI libraries | [Plain DOM, Solid, React and Vue](docs/frontend-frameworks.md) |
+| UI libraries | [Plain DOM, Solid, React, Vue, Svelte and Angular](docs/frontend-frameworks.md) |
 | Build tools and SDK | [Vite workflow](docs/vite-workflow.md) · [Local npm distribution](docs/npm-distribution.md) |
 | Native windows | [Runtime and ownership](docs/native-runtime.md) · [Window controls and validation](docs/platform-validation.md) |
 | Persistent data | [Storage API and Notes example](docs/app-storage.md) |
@@ -213,6 +221,7 @@ memory or startup advantage over Electron or native GUI frameworks is claimed.
 | Web compatibility | [Locked test profile](docs/compatibility-target.md) · [Profile validation](docs/profile-validation.md) |
 | Window activation | [Wayland tokens, focus and lifetime checks](docs/window-activation.md) |
 | Performance | [Executable residency](docs/executable-residency.md) · [Font lifetimes](docs/font-lifetime-optimization.md) · [Window resource lifetimes](docs/window-resource-optimization.md) · [Document transfers](docs/native-transfer-optimization.md) · [General CPU](docs/jit-cpu-analysis.md) · [Input CPU](docs/editing-cpu-analysis.md) |
+| Shell foundation | [Optional layer panel, Hyprland IPC and native window picker](docs/shell-foundation.md) |
 | Project direction | [Linux beta checklist](docs/linux-beta-checklist.md) · [Beta plan](docs/beta-plan.md) · [Architecture](docs/architecture.md) |
 
 Builds pin Servo to `aac43a3f31a259f04a574f5ec4e959c943ad7cc7` (v0.7.0).

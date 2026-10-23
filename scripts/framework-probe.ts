@@ -14,8 +14,10 @@ window.addEventListener('keydown', event => {
     if (event.key === 'F7') document.querySelector<HTMLElement>('#counter, #add')?.focus();
     if (event.key === 'F8') {
       const app = (globalThis as any).WeberUserApp;
-      app.unmount();
-      app.mount(document.getElementById('aot-dom-root'));
+      // Also cancel a new mount immediately, before async framework setup runs.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        app.unmount(); app.mount(document.getElementById('aot-dom-root'));
+      }
       remounts++;
     }
     if (event.key === 'F9') {

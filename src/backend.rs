@@ -85,11 +85,16 @@ fn parent_lifetime(command: &mut Command) {
 #[cfg(not(target_os = "linux"))]
 fn parent_lifetime(_: &mut Command) {}
 static WAKE_PENDING: AtomicBool = AtomicBool::new(false);
-static WAKER: Mutex<Option<winit::event_loop::EventLoopProxy<crate::host::Wake>>> =
-    Mutex::new(None);
+type WakeCallback = Box<dyn Fn() + Send>;
+static WAKER: Mutex<Option<WakeCallback>> = Mutex::new(None);
 pub fn set_waker(waker: winit::event_loop::EventLoopProxy<crate::host::Wake>) {
+    set_wake_callback(move || {
+        let _ = waker.send_event(crate::host::Wake::Backend);
+    });
+}
+pub fn set_wake_callback(waker: impl Fn() + Send + 'static) {
     if let Ok(mut slot) = WAKER.lock() {
-        *slot = Some(waker);
+        *slot = Some(Box::new(waker));
     }
 }
 fn notify() {
@@ -97,7 +102,7 @@ fn notify() {
         && let Ok(slot) = WAKER.lock()
         && let Some(waker) = &*slot
     {
-        let _ = waker.send_event(crate::host::Wake::Backend);
+        waker();
     }
 }
 pub fn take_events() -> Vec<(u64, Value)> {
@@ -211,6 +216,7 @@ pub fn start(path: &Path, cwd: &Path, supplied: Option<String>) -> Result<Guard>
     command
         .current_dir(cwd)
         .env("WEBER_APP_DIR", cwd)
+        .env("WEBER_HOST_EXECUTABLE", std::env::current_exe()?)
         .env_remove("XDG_ACTIVATION_TOKEN")
         .env_remove("DESKTOP_STARTUP_ID")
         .stdin(Stdio::piped())

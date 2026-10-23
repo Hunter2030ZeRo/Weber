@@ -1,0 +1,6 @@
+<main><h1>Angular Counter</h1>
+  <button id="counter" (click)="increment()">Count: {{ count() }}</button>
+  <label>Your name <input id="name" [ngModel]="name()" (ngModelChange)="name.set($event)" /></label>
+  <output id="greeting">{{ name() }}</output>
+  <div id="indicator" [style.width.px]="20 + count()" style="height:12px;background-color:tomato"></div>
+</main>

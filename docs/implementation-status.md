@@ -1,7 +1,7 @@
 # Implementation status — 2026-10-23
 
 Weber is a **Linux x64 / Wayland developer alpha**, SDK/runtime
-`0.6.0-alpha.4`. It is past the single-window rendering prototype: ordinary
+`0.6.0-alpha.5`. It is past the single-window rendering prototype: ordinary
 HTML/CSS/JavaScript/TypeScript apps can be developed, run and packaged, including
 the SolidJS Workbench document app. Application authors do not need to write
 Rust; Rust owns the native framework host. This is not a production beta,
@@ -11,7 +11,7 @@ arbitrary Electron compatibility or a completed desktop shell.
 
 | Area | Implemented path | Evidence and limits |
 | --- | --- | --- |
-| Development | Installed local SDK/runtime, Vite/plain DOM/Solid/React/Vue/TypeScript, HMR, `npm run check/build/start/package` | Installed-SDK and relocation acceptance; packages are local tarballs, not published to npm |
+| Development | Installed local SDK/runtime, Vite/plain DOM/Solid/React/Vue/Svelte/Angular/TypeScript, HMR, `npm run check/build/start/package` | Installed-SDK and relocation acceptance; packages are local tarballs, not published to npm |
 | Web UI | Servo HTML/CSS/DOM and SpiderMonkey JIT, input, scrolling, animation/rAF | Locked selected compatibility profile and app tests; not whole-browser conformance |
 | Native windows | Multiple owned windows, title/size, decorations, drag/resize, maximize/fullscreen/minimize, state subscriptions and close decisions | Native compositor tests; Wayland policies apply, no arbitrary positioning/always-on-top or force-restore API |
 | Text and IME | Native form controls and basic contenteditable, grapheme selection, plain-text clipboard, bounded undo/redo, Hangul and committed-word Hanja | Actual Fcitx plus OS key injection in isolated Hyprland/GNOME; physical keyboard and full rich editing remain unverified |
@@ -21,7 +21,7 @@ arbitrary Electron compatibility or a completed desktop shell.
 | Errors and distribution | Visible script/startup errors, unsaved-close decisions, relocatable app/private-library bundle | Clean-machine certification, renderer/GPU recovery and installation/update policy remain work |
 
 The [framework integration report](frontend-frameworks.md) records the installed-SDK
-and native DOM/Solid/React/Vue scope. The [alpha.3 report](native-editing-alpha3.md) records the native editing/IME
+and native DOM/Solid/React/Vue/Svelte/Angular scope. The [alpha.3 report](native-editing-alpha3.md) records the native editing/IME
 build and verification boundary. The [alpha.1 report](linux-alpha-06.md) records
 the earlier app/window/system milestone. Historical tests are not automatically
 fresh certification of every later runtime or operating-system image.
@@ -42,10 +42,13 @@ APIs, unverified behavior and large missing subsystems and would misstate progre
 ## Simulacrum and other platforms
 
 Simulacrum uses **Hyprland** as its compositor. Its ordinary windowed settings/UI
-apps can begin against this alpha. Stable public layer-shell hosting, actual
-Hyprland IPC integration, panel/launcher/tray behavior and desktop-service
-integration remain work. An experimental layer-shell probe is not an integrated
-desktop shell; that probe does not yet handle keyboard/IME or multi-output policy.
+apps can begin against this alpha. An optional [shell foundation](shell-foundation.md) now provides an actual
+clickable 48px layer panel, Hyprland state/events/workspace/window focus, and a
+normal native window picker with tested Hangul input. This is enough to start a
+single-output panel/window-switching prototype. A general layer-window API,
+keyboard/IME on layer surfaces, app discovery/launching, tray, global shortcuts,
+multi-output policy, session supervision and desktop-service integration remain
+work. It is not an integrated production desktop shell.
 Hyprland must remain downstream integration rather than a mandatory
 dependency of ordinary Weber apps.
 

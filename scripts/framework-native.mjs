@@ -83,7 +83,8 @@ try {
     dev = spawn('npm', ['run', 'dev'], { cwd: project, detached: true, env: { ...process.env, WEBER_TELEMETRY: telemetry }, stdio: ['ignore', log, log] }); closeSync(log);
     const completion = new Promise((done, reject) => { dev.once('error', reject); dev.once('close', (code, signal) => done({ code, signal })); }); completion.catch(() => {});
     const cssPath = join(project, 'src/style.css'), css = await readFile(cssPath, 'utf8');
-    const componentPath = ['react', 'vue'].includes(template) ? join(project, 'src', template === 'react' ? 'App.tsx' : 'App.vue') : null;
+    const componentFile = { react: 'App.tsx', vue: 'App.vue', svelte: 'App.svelte', angular: 'app.html' }[template];
+    const componentPath = componentFile ? join(project, 'src', componentFile) : null;
     const component = componentPath ? await readFile(componentPath, 'utf8') : null;
     try {
       const pid = await waitFor(async () => {
@@ -96,20 +97,30 @@ try {
       if (template !== 'dom') { await keys.key(65); await keys.key(57); await expect(s => s.count === 'Count: 1', 'development native button'); }
       await writeFile(cssPath, css + '\n#counter, #add { color: rgb(12, 34, 56); }\n');
       const styled = await expect(s => s.color === 'rgb(12, 34, 56)', template + ' CSS HMR');
-      assert.equal(styled.page, first.page);
-      if (template !== 'dom') assert.equal(styled.count, 'Count: 1');
-      let refreshed;
+      const cssPreservesPageAndState = styled.page === first.page && (template === 'dom' || styled.count === 'Count: 1');
+      if (template !== 'angular') assert.equal(cssPreservesPageAndState, true);
+      else if (styled.page !== first.page) {
+        assert.equal(styled.count, 'Count: 0');
+        await keys.key(65); await keys.key(57); await expect(s => s.count === 'Count: 1', 'Angular remains interactive after reload');
+      }
+      let refreshed, interactiveAfterUpdate;
       if (componentPath) {
         await writeFile(componentPath, component.replace('Counter</h1>', 'Updated Counter</h1>'));
         refreshed = await expect(s => s.heading?.includes('Updated Counter'), template + ' official component HMR');
-        assert.equal(refreshed.page, first.page); assert.equal(refreshed.count, 'Count: 1');
+        if (['react', 'vue'].includes(template)) { assert.equal(refreshed.page, first.page); assert.equal(refreshed.count, 'Count: 1'); }
+      }
+      if (refreshed) {
+        const count = Number(refreshed.count?.match(/^Count: (\d+)$/)?.[1]);
+        assert.ok(Number.isSafeInteger(count));
+        await keys.key(65); await keys.key(57);
+        interactiveAfterUpdate = await expect(s => s.count === `Count: ${count + 1}`, template + ' remains interactive after source update');
       }
       await keys.key(68);
       const exit = await waitFor(async () => dev.exitCode !== null ? await completion : null, 'Vite exits with native window');
       assert.equal(exit.code, 0);
       const output = await readFile(logPath, 'utf8');
       const url = output.match(/Weber development \(SpiderMonkey\): (http:\/\/\S+)/)?.[1]; assert.ok(url); await assert.rejects(fetch(url));
-      results.push({ template, mode: 'npm-run-dev', passed: true, first, styled, refreshed, cssPreservesPageAndState: true, componentHmrPreservesPageAndState: Boolean(refreshed), serverClosedWithWindow: true, trace: telemetry });
+      results.push({ template, mode: 'npm-run-dev', passed: true, first, styled, refreshed, interactiveAfterUpdate, cssPreservesPageAndState, cssReloadedPage: styled.page !== first.page, componentHmrPreservesPageAndState: Boolean(refreshed && refreshed.page === first.page && refreshed.count === 'Count: 1'), componentReloadedPage: Boolean(refreshed && refreshed.page !== first.page), serverClosedWithWindow: true, trace: telemetry });
       console.log(template + ': native Vite CSS' + (refreshed ? '/component' : '') + ' HMR and cleanup passed');
     } finally {
       if (dev.exitCode === null) { process.kill(-dev.pid, 'SIGTERM'); await completion; }

@@ -10,7 +10,7 @@ environment and experimental Hermes AOT are separate deliverables.
 
 | Area | Current evidence | Remaining acceptance work |
 | --- | --- | --- |
-| SDK and build workflow | Local installed SDK/runtime tarballs; Vite/Solid/type checking, HMR, relocation, packaged execution without Node/Bun on PATH | Fresh-machine reproduction and an explicit supported toolchain/dependency matrix |
+| SDK and build workflow | Local installed SDK/runtime tarballs; Vite/DOM/Solid/React/Vue/Svelte/Angular type checking, HMR/reload, relocation, packaged execution without Node/Bun on PATH | Fresh-machine reproduction and an explicit supported toolchain/dependency matrix |
 | Windows | Multi-window ownership, bounds, resize/maximize/fullscreen, coalesced state subscriptions, close decisions | Alpha adds decorations, real pointer drag/resize, minimize and attention; modal/focus behavior on more compositors remains |
 | Activation | Native GTK token → initial Weber window; focused-source child token and observed native focus | Forced token timeout, missing-protocol fallback, navigation races and other compositor policies |
 | Editing and clipboard | Bounded text SDK clipboard, input/textarea and basic native contenteditable Ctrl+C/X/V, grapheme selection and undo/redo; external GTK exchange | Full rich-editor semantics, richer clipboard formats and app-driven browser gaps |
@@ -25,7 +25,7 @@ environment and experimental Hermes AOT are separate deliverables.
 | Distribution | Relocatable Linux bundle and deterministic engine/source/library identities | Clean OS/dependency verification and an installation/update support policy appropriate to the beta |
 | Browser compatibility | Locked profile and app-specific native tests have historical evidence | Re-run affected profile coverage as engine work changes; publish remaining gaps without presenting a full-browser claim |
 
-The current state is a Linux developer alpha (0.6.0-alpha.3). See [native editing and Hyprland](native-editing-alpha3.md) for the added scope. Performance, IME and QoS are only part
+The current state is a Linux developer alpha (0.6.0-alpha.5). See [native editing and Hyprland](native-editing-alpha3.md) for the added scope. Performance, IME and QoS are only part
 of this list. General platform APIs and recovery are still implementation work,
 not merely polishing or adding more tests. Larger-file support and richer
 clipboard APIs must not be implied by passing the current bounded text cases.
@@ -41,3 +41,12 @@ Alpha scope: [0.6 application/window/system milestone](linux-alpha-06.md).
 Evidence and current sequence: [beta plan](beta-plan.md),
 [foundation limits](linux-foundation-05.md), [activation](window-activation.md),
 [residency investigation](executable-residency.md).
+
+
+The [alpha.5 shell foundation](shell-foundation.md) now verifies a real single-output
+Hyprland layer panel, workspace/window IPC, and a separate IME-capable window
+picker. Multimonitor/scaling, layer-surface keyboard/IME, application discovery,
+global shortcuts/tray, session recovery and long-session resource budgets remain.
+The [UI library report](frontend-frameworks.md) distinguishes stateful HMR from
+Svelte state reset and Angular page reload; broader component compatibility is
+still workload-specific.

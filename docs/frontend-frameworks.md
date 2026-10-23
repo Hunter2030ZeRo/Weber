@@ -1,7 +1,7 @@
-# UI library integration — SDK 0.6.0-alpha.4
+# UI library integration — SDK 0.6.0-alpha.5
 
 Weber's application boundary is an HTML element and a mount/dispose function.
-The native host does not require Solid. React and Vue use their normal DOM
+The native host does not require Solid. React, Vue, Svelte and Angular use their normal DOM
 renderers against Servo's SpiderMonkey-owned DOM; no custom renderer, Weber-maintained DOM
 mirror, Node global shim or Rust application component is introduced.
 
@@ -12,6 +12,8 @@ From the Weber checkout:
 ```sh
 node sdk/cli.mjs init /tmp/react-app react
 node sdk/cli.mjs init /tmp/vue-app vue
+node sdk/cli.mjs init /tmp/svelte-app svelte
+node sdk/cli.mjs init /tmp/angular-app angular
 node sdk/cli.mjs init /tmp/plain-app dom
 ```
 
@@ -28,9 +30,11 @@ The templates pin these versions:
 | Solid | solid-js 1.9.9 | vite-plugin-solid 2.11.10 | TypeScript 5.9.3 |
 | React | react/react-dom 19.2.9 | @vitejs/plugin-react 5.2.0 | TypeScript 5.9.3, @types/react and @types/react-dom 19.3.0 |
 | Vue | vue 3.5.44 | @vitejs/plugin-vue 6.0.10 | vue-tsc 3.3.13 / TypeScript 5.9.3, including SFC template expressions |
+| Svelte | svelte 5.57.2 | @sveltejs/vite-plugin-svelte 6.2.4 | svelte-check 4.7.7 / TypeScript 5.9.3 |
+| Angular | @angular/core/common/forms/platform-browser 21.2.25, RxJS 7.8.2 | @analogjs/vite-plugin-angular 2.9.2 / @angular/build 21.2.25 | ngc 21.2.25, strict templates / TypeScript 5.9.3 |
 
 All use Vite 7.1.12. Only Solid projects install Solid and its Vite plugin.
-Both are optional SDK peers; React/Vue and their plugins are app dependencies.
+Both are optional SDK peers; other UI libraries and their plugins are app dependencies.
 `weber()` detects the app's direct Solid dependency, rather than finding Solid
 in the Weber checkout and imposing it on other apps. Existing Solid plugins
 can disable the automatic transform with `weber({ solid: false })` while
@@ -67,6 +71,37 @@ an explicit project `define` value. This fixed an actual packaged React startup
 failure (`process is not defined`) and also removes runtime environment accesses
 from Vue. No `process` object or Node compatibility layer is injected into the UI.
 
+## Svelte and Angular
+
+Svelte 5 uses `mount`/`unmount` and a normal `.svelte` component with runes.
+`svelte-check` checks component scripts and expressions. Angular uses an
+unmodified standalone `@Component` with an external template and FormsModule.
+`ngc` checks scripts and strict template expressions before every build. Analog's
+Vite plugin explicitly receives `tsconfig.app.json`, including when Weber builds
+its IIFE library entry. Common bindings transpile the SDK's external TypeScript
+modules, which are outside Angular's compilation unit.
+
+Angular uses `createApplication`/`createComponent` with an explicit host element.
+A disposed flag destroys a late application result instead of letting an old
+async bootstrap attach to a newer mount. Angular 21's default zoneless path is
+used; ZoneJS is not installed by this template. Angular's template AOT produces
+JavaScript for SpiderMonkey; it is not native machine code or Static Hermes.
+
+Native file-change results are deliberately distinguished:
+
+- React/Vue samples retain page and counter state for their tested component edits.
+- Svelte's tested component edit retains the page and resets local sample state;
+  CSS HMR retains page and state.
+- Angular's current Analog configuration reloads the page for the tested CSS and
+  external-template edits, resetting local state. Editing works, but stateful
+  component HMR is not claimed. The app remains interactive after the update.
+
+New-template checks include negative component/template type errors, rejection
+of UI Node imports and native-AOT requests, real OS button input/Fcitx Hangul,
+SDK window/storage calls, immediate mount cancellation/remount and post-update
+interaction. Runtime AOT requests for all four new renderer templates are
+explicitly rejected.
+
 ## Validation
 
 Reproduce against a prepared JIT host:
@@ -92,13 +127,13 @@ The native suite uses isolated Hyprland 0.56.2, nested under private GNOME, at
 Hangul engine; it does not synthesize DOM input/composition events. Each
 relocated package launches with an empty executable search path, then exercises
 buttons, Hangul input, common window/storage APIs and disposal/remount. Development
-tests run `npm run dev`, edit CSS and React/Vue component files, and check HMR
+tests run `npm run dev`, edit CSS and component/template files, and check HMR
 and shutdown of Vite with the native window. Probe modules exist only in generated
 acceptance fixtures, not in the shipped templates.
 
 Machine-readable records: `artifacts/framework-workflow.json` and
 `artifacts/framework-native.json`, with individual build/dev/telemetry logs.
-The final 2026-10-23 pass completed against SDK/runtime `0.6.0-alpha.4`:
+The preceding alpha.4 pass (historical, before Svelte/Angular) completed against SDK/runtime `0.6.0-alpha.4`:
 
 | Template | Installed SDK check/build/package | Native OS input / Hangul / SDK / remount | Native Vite CSS HMR | Component HMR with page/state retained |
 | --- | --- | --- | --- | --- |
@@ -137,13 +172,13 @@ observations. These are functional checks rather than a performance benchmark.
 ## Boundaries
 
 These samples do not certify every React/Vue component, every npm package,
-Svelte/Angular, SSR, hydration, rich editors or arbitrary Vite HTML/multipage output.
+SvelteKit, SSR, hydration, rich editors or arbitrary Vite HTML/multipage output.
 Weber still owns a single browser application entry and manifest. Missing web
 APIs remain Servo/Weber compatibility work; normal DOM renderers cannot supply
 missing host APIs automatically. Physical-human keyboard acceptance, accessibility,
 Windows/macOS and production desktop-shell integration remain separate gates.
 
-The normal runtime is SpiderMonkey JIT. React/Vue AOT is explicitly rejected;
+The normal runtime is SpiderMonkey JIT. React/Vue/Svelte/Angular native AOT is explicitly rejected;
 Static Hermes and Hermes-only DOM are deferred. No startup, CPU or memory gain
 is inferred from these observer-instrumented functional tests.
 
@@ -151,3 +186,17 @@ References: [React DOM integration](https://react.dev/learn/add-react-to-an-exis
 [Vue application mounting](https://vuejs.org/guide/essentials/application),
 [Vue TypeScript/SFC checking](https://vuejs.org/guide/typescript/overview),
 [Vite library environment behavior](https://v7.vite.dev/guide/build#library-mode).
+
+Additional primary references: [Svelte imperative API](https://svelte.dev/docs/svelte/imperative-component-api),
+[Svelte TypeScript tooling](https://svelte.dev/docs/svelte/typescript),
+[Analog Vite integration](https://analogjs.org/docs/packages/vite-plugin-angular/overview),
+[Angular zoneless mode](https://angular.dev/guide/zoneless).
+
+
+## Current alpha.5 result
+
+The final pass contains six installed-template build/package results and twelve
+native package/development scenario groups, all passed. The [shell foundation
+report](shell-foundation.md) records the
+matching source fingerprint, local SDK tarball hash and native build checks.
+The alpha.4 hashes above are historical and do not identify this new build.

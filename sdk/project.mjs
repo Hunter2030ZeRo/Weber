@@ -36,6 +36,16 @@ export async function metadata(project) {
 }
 export async function check(project) {
   const dependencies = await projectDependencies(project);
+  if (dependencies['svelte-check']) {
+    const directory = packageDirectory('svelte-check', project);
+    const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
+    await command(process.execPath, [join(directory, typeof pkg.bin === 'string' ? pkg.bin : pkg.bin['svelte-check']), '--tsconfig', join(project, 'tsconfig.json'), '--fail-on-warnings'], { cwd: project }); return;
+  }
+  if (dependencies['@angular/compiler-cli']) {
+    const directory = packageDirectory('@angular/compiler-cli', project);
+    const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
+    await command(process.execPath, [join(directory, pkg.bin.ngc), '--project', join(project, existsSync(join(project, 'tsconfig.app.json')) ? 'tsconfig.app.json' : 'tsconfig.json'), '--noEmit'], { cwd: project }); return;
+  }
   const compiler = resolveTool(dependencies['vue-tsc'] ? 'vue-tsc/bin/vue-tsc.js' : 'typescript/bin/tsc', project);
   if (existsSync(join(project, 'tsconfig.json'))) {
     await command(process.execPath, [compiler, '--project', join(project, 'tsconfig.json'), '--noEmit'], { cwd: project }); return;
@@ -82,28 +92,48 @@ export async function atomicOutput(destination, marker, work) {
   } finally { await rm(staging, { recursive: true, force: true }); }
 }
 export async function init(project, template) {
-  if (!['solid', 'dom', 'react', 'vue', 'node', 'windows', 'notes', 'workbench'].includes(template)) throw new Error('Template must be solid, dom, react, vue, node, windows, notes or workbench');
+  if (!['solid', 'dom', 'react', 'vue', 'svelte', 'angular', 'shell', 'node', 'windows', 'notes', 'workbench'].includes(template)) throw new Error('Template must be solid, dom, react, vue, svelte, angular, shell, node, windows, notes or workbench');
   if (existsSync(project)) throw new Error('Project directory already exists');
   if (!checkout && !process.env.WEBER_SDK_SPEC) throw new Error(`This SDK preview is not published: set WEBER_SDK_SPEC=file:/absolute/path/to/weber-sdk-${sdkVersion}.tgz before init`);
   await cp(join(checkout ? root : sdk, checkout ? 'examples' : 'templates', template), project, { recursive: true, filter: source => !['dist', 'node_modules'].includes(source.split(sep).at(-1)) });
   const spec = JSON.parse(await readFile(join(sdk, 'defaults.json'), 'utf8'));
-  const solid = !['dom', 'react', 'vue'].includes(template);
-  const dependencies = Object.fromEntries((solid ? ['solid-js'] : template === 'react' ? ['react', 'react-dom'] : template === 'vue' ? ['vue'] : []).map(name => [name, spec[name]]));
-  const tools = ['vite', 'typescript', ...(solid ? ['vite-plugin-solid'] : template === 'react' ? ['@vitejs/plugin-react', '@types/react', '@types/react-dom'] : template === 'vue' ? ['@vitejs/plugin-vue', 'vue-tsc'] : [])];
+  const framework = template === 'shell' ? 'dom' : ['dom', 'react', 'vue', 'svelte', 'angular'].includes(template) ? template : 'solid';
+  const solid = framework === 'solid';
+  const packages = {
+    solid: ['solid-js'], dom: [], react: ['react', 'react-dom'], vue: ['vue'], svelte: ['svelte'],
+    angular: ['@angular/core', '@angular/common', '@angular/platform-browser', '@angular/forms', 'rxjs', 'tslib'],
+  }[framework];
+  const dependencies = Object.fromEntries(packages.map(name => [name, spec[name]]));
+  const tools = ['vite', 'typescript', ...{
+    solid: ['vite-plugin-solid'], dom: [], react: ['@vitejs/plugin-react', '@types/react', '@types/react-dom'],
+    vue: ['@vitejs/plugin-vue', 'vue-tsc'], svelte: ['@sveltejs/vite-plugin-svelte', 'svelte-check'],
+    angular: ['@analogjs/vite-plugin-angular', '@angular/build', '@angular/compiler', '@angular/compiler-cli'],
+  }[framework]];
   await writeFile(join(project, 'package.json'), JSON.stringify({ name: 'weber-app', private: true, type: 'module', scripts: {
     dev: 'weber dev .', check: 'weber check .', build: 'weber build .', start: 'weber run dist',
     package: 'npm run build && weber package dist package',
     ...(solid || template === 'dom' ? { 'build:aot': 'weber build . --aot', 'package:aot': 'npm run build:aot && weber package dist package' } : {}),
   }, dependencies, devDependencies: { '@weber/sdk': process.env.WEBER_SDK_SPEC ?? `file:${sdk}`, ...Object.fromEntries(tools.map(name => [name, spec[name]])) } }, null, 2));
-  const plugin = template === 'react' ? 'react' : template === 'vue' ? 'vue' : null;
-  await writeFile(join(project, 'vite.config.mjs'), (plugin ? `import ${plugin} from "@vitejs/plugin-${plugin}";\n` : '') + `import { weber } from "@weber/sdk/vite";\nexport default { plugins: [${plugin ? `${plugin}(), ` : ''}weber()] };\n`);
+  const plugins = {
+    react: { name: 'react', module: '@vitejs/plugin-react', named: false },
+    vue: { name: 'vue', module: '@vitejs/plugin-vue', named: false },
+    svelte: { name: 'svelte', module: '@sveltejs/vite-plugin-svelte', named: true },
+    angular: { name: 'angular', module: '@analogjs/vite-plugin-angular', named: false },
+  };
+  const plugin = plugins[framework];
+  const angularConfig = framework === 'angular' ? 'import { fileURLToPath } from "node:url";\n' : '';
+  const pluginCall = framework === 'angular' ? `angular({ tsconfig: fileURLToPath(new URL('./tsconfig.app.json', import.meta.url)) })` : plugin ? `${plugin.name}()` : '';
+  const pluginImport = plugin ? `import ${plugin.named ? `{ ${plugin.name} }` : plugin.name} from "${plugin.module}";\n` : '';
+  await writeFile(join(project, 'vite.config.mjs'), angularConfig + pluginImport + `import { weber } from "@weber/sdk/vite";\nexport default { ${framework === 'angular' ? 'resolve: { mainFields: ["module"] }, ' : ''}plugins: [${plugin ? `${pluginCall}, ` : ''}weber()] };\n`);
   const { config } = await metadata(project);
   await writeFile(join(project, 'index.html'), `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="aot-dom-root"></div><script type="module">import "./${config.entry}"; import { mount } from "@weber/sdk/dev"; mount();</script></body></html>\n`);
   await writeFile(join(project, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler',
     ...(solid ? { jsx: 'preserve', jsxImportSource: 'solid-js' } : template === 'react' ? { jsx: 'react-jsx' } : template === 'vue' ? { jsx: 'preserve' } : {}),
-    lib: ['ES2022', 'DOM', 'DOM.Iterable'], types: ['vite/client'], skipLibCheck: true,
+    lib: ['ES2022', 'DOM', 'DOM.Iterable'], types: ['vite/client', ...(framework === 'svelte' ? ['svelte'] : [])], skipLibCheck: true,
+    ...(framework === 'angular' ? { experimentalDecorators: true, useDefineForClassFields: false, importHelpers: true } : {}),
     paths: { '@weber/dom': ['./node_modules/@weber/sdk/dom.d.ts'], '@weber/runtime': ['./node_modules/@weber/sdk/runtime.ts'],
       ...(solid ? { '@weber/solid': ['./node_modules/@weber/sdk/solid.ts'], 'solid-js': ['./node_modules/solid-js'], 'solid-js/*': ['./node_modules/solid-js/*'] } : {}) } }, include: ['src'] }, null, 2));
-  await writeFile(join(project, '.gitignore'), 'node_modules/\ndist/\npackage/\n');
+  if (framework === 'angular') await writeFile(join(project, 'tsconfig.app.json'), JSON.stringify({ extends: './tsconfig.json', compilerOptions: { noEmit: false, outDir: './.angular/out' }, angularCompilerOptions: { strictTemplates: true, strictInjectionParameters: true, strictInputAccessModifiers: true }, include: ['src/**/*.ts'] }, null, 2));
+  await writeFile(join(project, '.gitignore'), 'node_modules/\ndist/\npackage/\n.angular/\n');
   console.log(`Created ${template} application: ${project}\nInstall dependencies with npm install, then npm run dev.`);
 }

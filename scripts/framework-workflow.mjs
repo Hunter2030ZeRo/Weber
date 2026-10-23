@@ -25,7 +25,7 @@ async function run(name, args, cwd, expected = 0) {
 const bootstrap = join(directory, 'bootstrap');
 await rm(bootstrap, { recursive: true, force: true }); await mkdir(bootstrap);
 await run('unpack', ['tar', '-xzf', resolve('target/npm', sdk.file), '-C', bootstrap], directory);
-for (const template of ['dom', 'solid', 'react', 'vue']) {
+for (const template of (process.env.WEBER_FRAMEWORKS ?? 'dom,solid,react,vue,svelte,angular').split(',')) {
   const project = join(directory, template), moved = join(directory, template + '-relocated');
   await rm(project, { recursive: true, force: true }); await rm(moved, { recursive: true, force: true });
   await run(template + '-init', [process.execPath, join(bootstrap, 'package/cli.mjs'), 'init', project, template], directory);
@@ -33,7 +33,7 @@ for (const template of ['dom', 'solid', 'react', 'vue']) {
   const lock = JSON.parse(await readFile(join(project, 'package-lock.json'), 'utf8'));
   const solidInstalled = Object.keys(lock.packages).some(name => /node_modules\/(solid-js|vite-plugin-solid)$/.test(name));
   assert.equal(solidInstalled, template === 'solid');
-  const dependencies = Object.fromEntries(Object.entries(lock.packages).filter(([name]) => ['react','react-dom','vue','vite','typescript','vue-tsc','@vitejs/plugin-react','@vitejs/plugin-vue','solid-js'].some(pkg => name === 'node_modules/' + pkg)).map(([name, pkg]) => [name.slice(13), pkg.version]));
+  const dependencies = Object.fromEntries(Object.entries(lock.packages).filter(([name]) => ['react','react-dom','vue','vite','typescript','vue-tsc','svelte','svelte-check','@angular/core','@angular/build','@analogjs/vite-plugin-angular','@sveltejs/vite-plugin-svelte','@vitejs/plugin-react','@vitejs/plugin-vue','solid-js'].some(pkg => name === 'node_modules/' + pkg)).map(([name, pkg]) => [name.slice(13), pkg.version]));
   const entry = JSON.parse(await readFile(join(project, 'weber.json'))).entry;
   await cp('scripts/framework-probe.ts', join(project, 'src/framework-probe.ts'));
   const main = join(project, entry);
@@ -46,14 +46,14 @@ for (const template of ['dom', 'solid', 'react', 'vue']) {
       await run(template + '-check-no-tsconfig', ['npm', 'run', 'check'], project);
     } finally { await writeFile(tsconfigPath, tsconfig); }
   }
-  if (['react', 'vue'].includes(template)) {
-    const component = join(project, 'src', template === 'vue' ? 'App.vue' : 'App.tsx');
+  if (['react', 'vue', 'svelte', 'angular'].includes(template)) {
+    const component = join(project, 'src', { react: 'App.tsx', vue: 'App.vue', svelte: 'App.svelte', angular: 'app.html' }[template]);
     const source = await readFile(component, 'utf8');
     try {
-      await writeFile(component, source.replace(template === 'vue' ? 'count++' : 'setCount(previous => previous + 1)', 'count.missingMethod()'));
+      await writeFile(component, source.replace({ vue: 'count++', react: 'setCount(previous => previous + 1)', svelte: 'count++', angular: 'increment()' }[template], template === 'angular' ? 'count().missingMethod()' : 'count.missingMethod()'));
       assert.match(await run(template + '-type-error', ['npm', 'run', 'check'], project, 1), /missingMethod/);
     } finally { await writeFile(component, source); }
-    assert.match(await run(template + '-aot-rejected', [process.execPath, join(project, 'node_modules/@weber/sdk/cli.mjs'), 'build', '.', 'aot-rejected', '--aot'], project, 1), /React\/Vue use the SpiderMonkey JIT path/);
+    assert.match(await run(template + '-aot-rejected', [process.execPath, join(project, 'node_modules/@weber/sdk/cli.mjs'), 'build', '.', 'aot-rejected', '--aot'], project, 1), /React\/Vue\/Svelte\/Angular use the SpiderMonkey JIT path/);
   }
   // Existing Vite configs need not include Weber's plugin explicitly.
   const configPath = join(project, 'vite.config.mjs'), config = await readFile(configPath, 'utf8');
@@ -74,7 +74,7 @@ for (const template of ['dom', 'solid', 'react', 'vue']) {
   assert.deepEqual(info, release.runtime);
   const manifest = JSON.parse(await readFile(join(moved, 'application/app.json')));
   assert.equal(manifest.nativeUnit, undefined); assert.equal(manifest.backend, undefined);
-  results.push({ template, project, package: moved, dependencies, solidInstalled, typeCheck: true, packaged: true, automaticBindings: true, ...(template === 'react' || template === 'vue' ? { componentTypeErrorRejected: true, aotRejected: true } : {}) });
+  results.push({ template, project, package: moved, dependencies, solidInstalled, typeCheck: true, packaged: true, automaticBindings: true, ...(['react', 'vue', 'svelte', 'angular'].includes(template) ? { componentTypeErrorRejected: true, aotRejected: true } : {}) });
   console.log(template + ': installed SDK, type check, build, package passed');
 }
 await writeFile('artifacts/framework-workflow.json', JSON.stringify({ passed: true, sdkVersion: release.sdkVersion, sdkSha256: sdk.sha256, runtime: release.runtime, results }, null, 2));

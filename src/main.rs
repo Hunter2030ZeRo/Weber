@@ -46,6 +46,7 @@ fn main() -> Result<()> {
         info["bunBackendProtocol"] = 1.into();
         info["aotAvailable"] = cfg!(feature = "aot").into();
         info["layerShellProbe"] = cfg!(feature = "layer-shell").into();
+        info["layerPanelProtocol"] = if cfg!(feature = "layer-shell") { 1 } else { 0 }.into();
         info["windowProtocol"] = 2.into();
         info["activationProtocol"] = 1.into();
         info["appIntegrationProtocol"] = 1.into();
@@ -96,7 +97,11 @@ fn main() -> Result<()> {
         );
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let application = args.first().is_some_and(|arg| arg == "--app");
+    let panel = args.first().is_some_and(|arg| arg == "--panel-app");
+    let application = panel || args.first().is_some_and(|arg| arg == "--app");
+    if panel && !cfg!(feature = "layer-shell") {
+        anyhow::bail!("Panel hosting requires a host built with --features layer-shell");
+    }
     if application {
         let path = args
             .get(1)
@@ -106,6 +111,10 @@ fn main() -> Result<()> {
             "Unknown application option"
         );
         assets::configure_application(std::path::Path::new(path))?;
+        anyhow::ensure!(
+            !panel || assets::application().is_some_and(|app| app.unit_path.is_none()),
+            "Panel hosting requires a JIT-only application"
+        );
     }
     let argument = if application {
         if args.get(2).is_some_and(|arg| arg == "--web")
@@ -168,6 +177,10 @@ fn main() -> Result<()> {
         matches!(url.scheme(), "http" | "https" | "file" | "weber-app"),
         "unsupported URL scheme"
     );
+    #[cfg(feature = "layer-shell")]
+    if panel {
+        return layer::run_panel(url.to_string());
+    }
     let event_loop = EventLoop::<Wake>::with_user_event()
         .with_wayland()
         .build()?;

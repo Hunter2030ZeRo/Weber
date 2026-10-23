@@ -1,4 +1,4 @@
-# Vite and npm workflow — SDK 0.6.0-alpha.4
+# Vite and npm workflow — SDK 0.6.0-alpha.5
 
 Weber is a general GUI application framework. The implemented native host and
 packager currently target Linux x64 / Wayland. Windows/macOS remain future
@@ -6,7 +6,7 @@ hosts; Hyprland integration belongs to downstream desktop applications.
 
 ## Create and develop
 
-From the checkout, select plain DOM, Solid, React or Vue:
+From the checkout, select plain DOM, Solid, React, Vue, Svelte or Angular:
 
 ```sh
 node sdk/cli.mjs init /tmp/my-weber-app react
@@ -15,7 +15,7 @@ npm install
 npm run dev
 ```
 
-Other templates: `dom`, `solid`, `vue`, `workbench`, `notes`, `windows`, `node`.
+Other templates: `dom`, `solid`, `vue`, `svelte`, `angular`, `shell`, `workbench`, `notes`, `windows`, `node`.
 Workbench/Notes/Windows/Node use Solid. Node is a Bun backend example, while
 Windows demonstrates multiple app windows rather than a Windows OS port.
 The generated package has normal scripts, Vite/TypeScript config, development
@@ -33,7 +33,7 @@ export default { plugins: [react(), weber()] };
 ```
 
 The Vue template uses `vue()` from `@vitejs/plugin-vue`. Plain DOM needs only
-`weber()`. React/Vue/DOM projects do not install or resolve Solid. An existing
+`weber()`. React/Vue/Svelte/Angular/DOM projects do not install or resolve Solid. An existing
 Solid plugin can use `weber({ solid: false })` to avoid a duplicate transform.
 When a normal Vite config omits `weber()`, the CLI adds common bindings and, if
 needed, the Solid transform automatically. Very old package-less apps explicitly
@@ -57,7 +57,8 @@ npm run package
 ```
 
 - `check` runs TypeScript, or `vue-tsc` when declared by the project, so Vue SFC
-  scripts and templates are checked rather than silently omitted.
+  scripts and templates are checked rather than silently omitted. Svelte uses
+  `svelte-check`; Angular uses `ngc` with strict template checking.
 - `build` emits `web.js`, CSS/resources and `app.json` for SpiderMonkey JIT.
 - `start` runs the compiled app in the installed native runtime.
 - `package` builds and creates a relocatable Linux directory with native host,
@@ -82,7 +83,7 @@ component. See [framework integration and native validation](frontend-frameworks
 
 Static Hermes remains deferred/experimental. Legacy DOM/Solid source-checkout
 `build:aot` scripts require the native toolchain and retain a SpiderMonkey DOM
-adapter. New React/Vue templates expose the JIT workflow and explicitly reject
+adapter. New React/Vue/Svelte/Angular templates expose the JIT workflow and explicitly reject
 AOT requests. They do not add Hermes-only DOM support.
 
 References: [Vite plugin API](https://v7.vite.dev/guide/api-plugin),

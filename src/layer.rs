@@ -1,5 +1,5 @@
-//! First layer-shell renderer slice. Deliberately separate from the window SDK.
-//! No keyboard/IME, multi-output policy or AOT support is claimed by this probe.
+//! Optional single-output panel host. Keyboard/IME belongs to a separate normal
+//! launcher window; layer panels deliberately never request keyboard focus.
 use anyhow::{Result, anyhow, ensure};
 use calloop::{EventLoop, channel};
 use calloop_wayland_source::WaylandSource;
@@ -16,7 +16,7 @@ use std::{
 use wayland_client::{
     Connection, Dispatch, Proxy, QueueHandle, delegate_noop,
     globals::{GlobalListContents, registry_queue_init},
-    protocol::{wl_callback, wl_compositor, wl_registry, wl_surface},
+    protocol::{wl_callback, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_surface},
 };
 use wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1 as shell, zwlr_layer_surface_v1 as layer,
@@ -35,6 +35,8 @@ enum Wake {
     Frame,
     Title(String),
     Captured(Result<(), String>),
+    Backend,
+    Close,
 }
 #[derive(Clone)]
 struct Waker(channel::Sender<Wake>);
@@ -49,9 +51,41 @@ impl servo::EventLoopWaker for Waker {
 struct Delegate {
     sender: channel::Sender<Wake>,
     frame: Cell<bool>,
+    telemetry: Rc<crate::telemetry::Telemetry>,
+    panel: bool,
+    url: url::Url,
 }
 impl WebViewDelegate for Delegate {
+    fn weber_host_call(
+        &self,
+        _: WebView,
+        payload: String,
+        _: servo::WeberDomQuery,
+    ) -> Option<String> {
+        if !self.panel || payload.len() > 65536 {
+            return None;
+        }
+        let message: serde_json::Value = serde_json::from_str(&payload).ok()?;
+        match message["action"].as_str() {
+            Some("backend") if crate::backend::authorized(message["capability"].as_str().unwrap_or("")) => Some(crate::backend::exchange(&message["request"].to_string())),
+            Some("telemetry") if message["data"].is_object() => {
+                self.telemetry.report(message["data"].clone()); Some("{}".into())
+            }
+            _ => Some(r#"{"ok":false,"error":{"name":"PanelCapabilityError","message":"Panel supports its app backend; native window APIs require a normal window"}}"#.into()),
+        }
+    }
+    fn request_navigation(&self, _: WebView, request: servo::NavigationRequest) {
+        if self.panel && request.url != self.url {
+            let close = request.url.as_str() == "weber://close";
+            request.deny();
+            if close {
+                let _ = self.sender.send(Wake::Close);
+            }
+        }
+    }
+
     fn notify_new_frame_ready(&self, _: WebView) {
+        self.telemetry.frame();
         self.frame.set(true);
         let _ = self.sender.send(Wake::Frame);
     }
@@ -79,6 +113,10 @@ struct State {
     url: url::Url,
     connection: Connection,
     sender: channel::Sender<Wake>,
+    panel: bool,
+    pointer: Option<wl_pointer::WlPointer>,
+    seat: Option<wl_seat::WlSeat>,
+    point: servo::DevicePoint,
 }
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for State {
     fn event(
@@ -135,6 +173,86 @@ impl Dispatch<wl_callback::WlCallback, ()> for State {
         }
     }
 }
+impl Dispatch<wl_seat::WlSeat, ()> for State {
+    fn event(
+        state: &mut Self,
+        seat: &wl_seat::WlSeat,
+        event: wl_seat::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        if let wl_seat::Event::Capabilities { capabilities } = event {
+            let pointer = matches!(capabilities, wayland_client::WEnum::Value(value) if value.contains(wl_seat::Capability::Pointer));
+            if pointer && state.pointer.is_none() {
+                state.pointer = Some(seat.get_pointer(qh, ()));
+            }
+            if !pointer && let Some(pointer) = state.pointer.take() {
+                pointer.release();
+            }
+        }
+    }
+}
+impl Dispatch<wl_pointer::WlPointer, ()> for State {
+    fn event(
+        state: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use servo::{InputEvent, MouseButtonAction, MouseButtonEvent, MouseMoveEvent};
+        let Some(view) = &state.view else {
+            return;
+        };
+        let input = match event {
+            wl_pointer::Event::Enter {
+                surface,
+                surface_x,
+                surface_y,
+                ..
+            } if surface == state.surface => {
+                state.point = servo::DevicePoint::new(surface_x as f32, surface_y as f32);
+                InputEvent::MouseMove(MouseMoveEvent::new(state.point.into()))
+            }
+            wl_pointer::Event::Motion {
+                surface_x,
+                surface_y,
+                ..
+            } => {
+                state.point = servo::DevicePoint::new(surface_x as f32, surface_y as f32);
+                InputEvent::MouseMove(MouseMoveEvent::new(state.point.into()))
+            }
+            wl_pointer::Event::Leave { .. } => InputEvent::MouseLeftViewport(Default::default()),
+            wl_pointer::Event::Button {
+                button,
+                state: value,
+                ..
+            } => {
+                let button = match button {
+                    0x110 => servo::MouseButton::Primary,
+                    0x111 => servo::MouseButton::Secondary,
+                    0x112 => servo::MouseButton::Auxiliary,
+                    _ => return,
+                };
+                let action = match value {
+                    wayland_client::WEnum::Value(wl_pointer::ButtonState::Pressed) => {
+                        MouseButtonAction::Down
+                    }
+                    wayland_client::WEnum::Value(wl_pointer::ButtonState::Released) => {
+                        MouseButtonAction::Up
+                    }
+                    _ => return,
+                };
+                InputEvent::MouseButton(MouseButtonEvent::new(action, button, state.point.into()))
+            }
+            _ => return,
+        };
+        state.delegate.telemetry.input("pointer");
+        view.notify_input_event(input);
+    }
+}
 delegate_noop!(State: ignore wl_compositor::WlCompositor);
 delegate_noop!(State: ignore wl_surface::WlSurface);
 delegate_noop!(State: ignore shell::ZwlrLayerShellV1);
@@ -177,7 +295,15 @@ impl State {
                 context
                     .make_current()
                     .map_err(|error| anyhow!("Layer make current: {error:?}"))?;
+                let mut registry = servo::protocol_handler::ProtocolRegistry::default();
+                registry
+                    .register(
+                        "weber-app",
+                        crate::assets::DesktopAssets { benchmark: false },
+                    )
+                    .map_err(|error| anyhow!("Panel protocol: {error:?}"))?;
                 let servo = ServoBuilder::default()
+                    .protocol_registry(registry)
                     .event_loop_waker(Box::new(Waker(self.sender.clone())))
                     .build();
                 servo.setup_logging();
@@ -207,8 +333,10 @@ impl State {
             view.paint();
             let _ = self.surface.frame(&self.queue, ());
             context.present();
+            self.delegate.telemetry.present();
         }
-        if self.passed
+        if !self.panel
+            && self.passed
             && self.frames > 0
             && !self.capturing
             && let Some(view) = &self.view
@@ -233,15 +361,35 @@ impl Drop for State {
         self.view.take();
         self.servo.take();
         self.context.take();
+        if self.panel {
+            crate::backend::close_window(1);
+        }
+        if let Some(pointer) = self.pointer.take() {
+            pointer.release();
+        }
+        if let Some(seat) = self.seat.take() {
+            seat.release();
+        }
+        self.delegate.telemetry.finish();
         self.layer.destroy();
         self.surface.destroy();
         let _ = self.connection.flush();
     }
 }
 pub fn run(url: String) -> Result<()> {
+    run_surface(url, false)
+}
+pub fn run_panel(url: String) -> Result<()> {
+    run_surface(url, true)
+}
+fn run_surface(url: String, panel: bool) -> Result<()> {
     let url = url::Url::parse(&url)?;
     ensure!(
-        matches!(url.scheme(), "file" | "http" | "https"),
+        if panel {
+            url.scheme() == "weber-app" && url.host_str() == Some("application")
+        } else {
+            matches!(url.scheme(), "file" | "http" | "https")
+        },
         "Unsupported layer probe URL"
     );
     let connection = Connection::connect_to_env()?;
@@ -256,7 +404,11 @@ pub fn run(url: String) -> Result<()> {
         &surface,
         None,
         shell::Layer::Top,
-        "weber-layer-probe".into(),
+        if panel {
+            "weber-panel".into()
+        } else {
+            "weber-layer-probe".into()
+        },
         &qh,
         (),
     );
@@ -270,6 +422,12 @@ pub fn run(url: String) -> Result<()> {
         .insert(event_loop.handle())
         .map_err(|error| anyhow!("Layer event source: {error}"))?;
     let (sender, receiver) = channel::channel();
+    if panel {
+        let wake = sender.clone();
+        crate::backend::set_wake_callback(move || {
+            let _ = wake.send(Wake::Backend);
+        });
+    }
     event_loop
         .handle()
         .insert_source(receiver, |event, _, state| {
@@ -283,6 +441,14 @@ pub fn run(url: String) -> Result<()> {
                         );
                     }
                     Wake::Captured(result) => state.captured = Some(result),
+                    Wake::Backend => {
+                        if let Some(view) = &state.view {
+                            for (owner, event) in crate::backend::take_events() {
+                                view.evaluate_javascript(format!("window.dispatchEvent(new CustomEvent('weber:backend-events', {{detail:[{}]}}))", event), move |_| crate::backend::acknowledge(owner));
+                            }
+                        }
+                    }
+                    Wake::Close => state.closed = true,
                     Wake::Frame | Wake::Servo => {}
                 }
             }
@@ -295,6 +461,9 @@ pub fn run(url: String) -> Result<()> {
         delegate: Rc::new(Delegate {
             sender: sender.clone(),
             frame: Cell::new(false),
+            telemetry: Rc::new(crate::telemetry::Telemetry::new(Instant::now())),
+            panel,
+            url: url.clone(),
         }),
         layer,
         surface,
@@ -304,19 +473,30 @@ pub fn run(url: String) -> Result<()> {
         capturing: false,
         closed: false,
         captured: None,
-        queue: qh,
+        queue: qh.clone(),
         url,
         connection,
         sender,
+        panel,
+        pointer: None,
+        seat: if panel {
+            Some(globals.bind(&qh, 5..=7, ())?)
+        } else {
+            None
+        },
+        point: servo::DevicePoint::new(0.0, 0.0),
     };
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
         let timeout = deadline.saturating_duration_since(Instant::now());
+        if panel && state.closed {
+            return Ok(());
+        }
         ensure!(
-            !timeout.is_zero(),
+            panel || !timeout.is_zero(),
             "Layer probe timed out before DOM/frame/capture proof"
         );
-        event_loop.dispatch(Some(timeout), &mut state)?;
+        event_loop.dispatch(if panel { None } else { Some(timeout) }, &mut state)?;
         state.pump()?;
         if let Some(result) = state.captured.take() {
             result.map_err(anyhow::Error::msg)?;
@@ -324,6 +504,9 @@ pub fn run(url: String) -> Result<()> {
                 "{}",
                 serde_json::json!({ "stage": "layer-passed", "frames": state.frames })
             );
+            return Ok(());
+        }
+        if panel && state.closed {
             return Ok(());
         }
         ensure!(

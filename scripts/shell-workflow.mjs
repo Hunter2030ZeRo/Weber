@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import { readFile, writeFile, mkdir, rm, cp } from 'node:fs/promises';
+import { openSync, closeSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { join, resolve } from 'node:path';
+const release = JSON.parse(await readFile('target/npm/release.json'));
+assert.equal(release.runtime.layerPanelProtocol, 1);
+const sdk = release.packages.find(p => p.name === '@weber/sdk'), runtime = release.packages.find(p => p.name !== '@weber/sdk');
+const root = resolve('artifacts/shell'), project = join(root, 'app'), moved = join(root, 'relocated');
+await mkdir(root, { recursive: true });
+async function run(name, args, cwd) {
+  const path = join(root, name + '.log'), fd = openSync(path, 'w');
+  const child = spawn(args[0], args.slice(1), { cwd, env: { ...process.env, WEBER_SDK_SPEC: `file:${resolve('target/npm', sdk.file)}` }, stdio: ['ignore', fd, fd] }); closeSync(fd);
+  const code = await new Promise((done, reject) => { child.once('error', reject); child.once('close', done); });
+  const text = await readFile(path, 'utf8'); assert.equal(code, 0, text); return text;
+}
+const bootstrap = join(root, 'bootstrap'); await rm(bootstrap, { recursive: true, force: true }); await mkdir(bootstrap);
+await run('unpack', ['tar', '-xzf', resolve('target/npm', sdk.file), '-C', bootstrap], root);
+await rm(project, { recursive: true, force: true }); await rm(moved, { recursive: true, force: true });
+await run('init', [process.execPath, join(bootstrap, 'package/cli.mjs'), 'init', project, 'shell'], root);
+await run('install', ['npm', 'install', '--offline', '--cache', resolve('artifacts/npm-cache'), '--no-audit', '--no-fund', '--save-dev', `file:${resolve('target/npm', runtime.file)}`], project);
+await cp('scripts/shell-probe.ts', join(project, 'src/shell-probe.ts'));
+const main = join(project, 'src/main.ts'); await writeFile(main, await readFile(main, 'utf8') + '\nimport "./shell-probe";\n');
+await run('check', ['npm', 'run', 'check'], project);
+await run('package', ['npm', 'run', 'package'], project);
+await cp(join(project, 'package'), moved, { recursive: true });
+const manifest = JSON.parse(await readFile(join(moved, 'application/app.json')));
+assert.equal(manifest.backend.runtime, 'bun'); assert.equal(manifest.nativeUnit, undefined);
+await writeFile('artifacts/shell-workflow.json', JSON.stringify({ passed: true, installed: true, sdkVersion: release.sdkVersion, runtime: release.runtime, project, package: moved, manifest }, null, 2));
+console.log('Shell template: installed SDK, type check, compiled Bun backend, package and relocation passed');

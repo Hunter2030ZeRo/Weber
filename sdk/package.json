@@ -1,6 +1,6 @@
 {
   "name": "@weber/sdk",
-  "version": "0.6.0-alpha.4",
+  "version": "0.6.0-alpha.5",
   "private": true,
   "type": "module",
   "bin": {
@@ -11,7 +11,8 @@
     "*.ts",
     "defaults.json",
     "templates",
-    "README.md"
+    "README.md",
+    "*.mts"
   ],
   "exports": {
     "./runtime": "./runtime.ts",
@@ -23,7 +24,11 @@
     "./storage": "./storage.ts",
     "./clipboard": "./clipboard.ts",
     "./files": "./files.ts",
-    "./system": "./system.ts"
+    "./system": "./system.ts",
+    "./hyprland": {
+      "types": "./hyprland.d.mts",
+      "default": "./hyprland.mjs"
+    }
   },
   "peerDependencies": {
     "vite": "^7.1.12",

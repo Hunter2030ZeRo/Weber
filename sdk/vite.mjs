@@ -9,7 +9,7 @@ export async function weber(options = {}) {
   const aot = (options.engine ?? process.env.WEBER_BUILD_ENGINE ?? 'web') === 'aot';
   if (aot && !checkout) throw new Error('Experimental AOT requires the Weber source checkout');
   const dependencies = await projectDependencies(project);
-  if (aot && (dependencies.react || dependencies.vue)) throw new Error('React/Vue use the SpiderMonkey JIT path; experimental AOT is not supported for these renderers');
+  if (aot && (dependencies.react || dependencies.vue || dependencies.svelte || dependencies['@angular/core'])) throw new Error('React/Vue/Svelte/Angular use the SpiderMonkey JIT path; experimental AOT is not supported for these renderers');
   const usesSolid = options.solid === true || Boolean(dependencies['solid-js']);
   const solidRoot = usesSolid ? packageDirectory('solid-js', project) : null;
   const aliases = [
@@ -32,6 +32,15 @@ export async function weber(options = {}) {
     enforce: 'pre',
     resolveId(id) {
       if (id.startsWith('node:') || builtinModules.includes(id)) this.error(`Node.js runtime API "${id}" is not available in Weber UI code. Use a native API or a separate backend runtime.`);
+    },
+    async transform(source, id) {
+      const file = id.split('?')[0];
+      // Angular's compiler plugin disables Vite's general TS transform. SDK
+      // modules are shipped as TS outside the app's Angular compilation unit.
+      if (file.startsWith(sdk) && file.endsWith('.ts') && !file.endsWith('.d.ts')) {
+        const { transformWithEsbuild } = await importTool('vite', project);
+        return transformWithEsbuild(source, file, { loader: 'ts', target: 'es2022' });
+      }
     },
     config(_, env) {
       const dev = !aot && env.command === 'serve';

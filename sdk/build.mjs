@@ -21,7 +21,7 @@ async function list(directory) {
 }
 async function buildInto(project, destination, aot) {
   const dependencies = await projectDependencies(project);
-  if (aot && (dependencies.react || dependencies.vue)) throw new Error('React/Vue use the SpiderMonkey JIT path; experimental AOT is not supported for these renderers');
+  if (aot && (dependencies.react || dependencies.vue || dependencies.svelte || dependencies['@angular/core'])) throw new Error('React/Vue/Svelte/Angular use the SpiderMonkey JIT path; experimental AOT is not supported for these renderers');
   if (aot && !checkout) throw new Error('Experimental AOT compilation requires the Weber source checkout and Static Hermes toolchain; the npm SDK provides the SpiderMonkey JIT workflow');
   const { config, entry } = await metadata(project);
   await check(project);

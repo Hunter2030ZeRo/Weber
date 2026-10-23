@@ -1,0 +1,15 @@
+:root { font: 16px system-ui, sans-serif; color: #eee; background: #20242b; }
+body { margin: 0; }
+button, input { font: inherit; }
+button { padding: .4rem .7rem; color: inherit; background: #343b46; border: 1px solid #66717f; border-radius: 4px; cursor: pointer; }
+button:hover, button[aria-pressed="true"] { background: #526783; }
+header { display: flex; height: 48px; align-items: center; gap: 12px; padding: 0 12px; box-sizing: border-box; }
+nav { display: flex; gap: 4px; }
+#status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel { overflow: hidden; height: 48px; }
+main { padding: 1.2rem; }
+input { display: block; width: min(90%, 35rem); padding: .6rem; margin: .5rem 0; }
+#windows { display: grid; gap: .5rem; margin: 1rem 0; }
+#windows button { text-align: left; }
+
+#launcher, #stop-panel, nav { flex-shrink: 0; }

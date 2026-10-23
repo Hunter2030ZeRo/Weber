@@ -10,10 +10,13 @@
 #include <stdint.h>
 #include <time.h>
 #include "virtual-keyboard-client.h"
+#include "virtual-pointer-client.h"
+static struct zwlr_virtual_pointer_manager_v1 *pointer_manager;
 static struct wl_seat *seat;
 static struct zwp_virtual_keyboard_manager_v1 *manager;
 static void global(void *data,struct wl_registry *registry,uint32_t name,const char *iface,uint32_t version) {
     (void)data;(void)version;
+    if (!strcmp(iface,"zwlr_virtual_pointer_manager_v1")) pointer_manager=wl_registry_bind(registry,name,&zwlr_virtual_pointer_manager_v1_interface,1);
     if (!strcmp(iface,"wl_seat")) seat=wl_registry_bind(registry,name,&wl_seat_interface,1);
     if (!strcmp(iface,"zwp_virtual_keyboard_manager_v1")) manager=wl_registry_bind(registry,name,&zwp_virtual_keyboard_manager_v1_interface,1);
 }
@@ -33,6 +36,7 @@ int main(void) {
     struct zwp_virtual_keyboard_v1 *keyboard=zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(manager,seat);
     zwp_virtual_keyboard_v1_keymap(keyboard,WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1,fd,(uint32_t)length);
     close(fd);free(text);
+    struct zwlr_virtual_pointer_v1 *pointer=pointer_manager?zwlr_virtual_pointer_manager_v1_create_virtual_pointer(pointer_manager,seat):NULL;
     struct xkb_state *state=xkb_state_new(map);
     if(wl_display_roundtrip(display)<0)return 7;
     puts("{\"ready\":true,\"backend\":\"Hyprland virtual-keyboard-v1; compositor/IME input\"}");fflush(stdout);
@@ -40,16 +44,28 @@ int main(void) {
     while(getline(&line,&cap,stdin)>0) {
         if(strlen(line)>4096)return 8;
         if(strstr(line,"\"stop\":true"))break;
-        char *key=strstr(line,"\"keycode\":");if(!key)return 9;
-        long code=strtol(key+10,NULL,10);if(code<1 || code>767)return 10;
-        int down=strstr(line,"\"pressed\":true")!=NULL;
         struct timespec now;clock_gettime(CLOCK_MONOTONIC,&now);
-        xkb_state_update_key(state,(xkb_keycode_t)code+8,down?XKB_KEY_DOWN:XKB_KEY_UP);
-        zwp_virtual_keyboard_v1_modifiers(keyboard,xkb_state_serialize_mods(state,XKB_STATE_MODS_DEPRESSED),xkb_state_serialize_mods(state,XKB_STATE_MODS_LATCHED),xkb_state_serialize_mods(state,XKB_STATE_MODS_LOCKED),xkb_state_serialize_layout(state,XKB_STATE_LAYOUT_EFFECTIVE));
-        zwp_virtual_keyboard_v1_key(keyboard,(uint32_t)(now.tv_sec*1000+now.tv_nsec/1000000),(uint32_t)code,down?WL_KEYBOARD_KEY_STATE_PRESSED:WL_KEYBOARD_KEY_STATE_RELEASED);
+        uint32_t time=(uint32_t)(now.tv_sec*1000+now.tv_nsec/1000000);
+        char *key=strstr(line,"\"keycode\":");
+        char *point=strstr(line,"\"point\":[");
+        char *button=strstr(line,"\"button\":");
+        int down=strstr(line,"\"pressed\":true")!=NULL;
+        if(key) {
+            long code=strtol(key+10,NULL,10);if(code<1 || code>767)return 10;
+            xkb_state_update_key(state,(xkb_keycode_t)code+8,down?XKB_KEY_DOWN:XKB_KEY_UP);
+            zwp_virtual_keyboard_v1_modifiers(keyboard,xkb_state_serialize_mods(state,XKB_STATE_MODS_DEPRESSED),xkb_state_serialize_mods(state,XKB_STATE_MODS_LATCHED),xkb_state_serialize_mods(state,XKB_STATE_MODS_LOCKED),xkb_state_serialize_layout(state,XKB_STATE_LAYOUT_EFFECTIVE));
+            zwp_virtual_keyboard_v1_key(keyboard,time,(uint32_t)code,down?WL_KEYBOARD_KEY_STATE_PRESSED:WL_KEYBOARD_KEY_STATE_RELEASED);
+        } else if(point && pointer) {
+            unsigned x,y,w,h;
+            if(sscanf(point+9,"%u,%u,%u,%u",&x,&y,&w,&h)!=4 || !w || !h || x>w || y>h || w>16384 || h>16384)return 12;
+            zwlr_virtual_pointer_v1_motion_absolute(pointer,time,x,y,w,h);zwlr_virtual_pointer_v1_frame(pointer);
+        } else if(button && pointer) {
+            long code=strtol(button+9,NULL,10);if(code<272 || code>274)return 13;
+            zwlr_virtual_pointer_v1_button(pointer,time,(uint32_t)code,down?WL_POINTER_BUTTON_STATE_PRESSED:WL_POINTER_BUTTON_STATE_RELEASED);zwlr_virtual_pointer_v1_frame(pointer);
+        } else return 9;
         if(wl_display_roundtrip(display)<0)return 11;
         puts("{\"done\":true}");fflush(stdout);
     }
-    free(line);zwp_virtual_keyboard_v1_destroy(keyboard);wl_display_roundtrip(display);wl_display_disconnect(display);
+    free(line);if(pointer)zwlr_virtual_pointer_v1_destroy(pointer);zwp_virtual_keyboard_v1_destroy(keyboard);wl_display_roundtrip(display);wl_display_disconnect(display);
     xkb_state_unref(state);xkb_keymap_unref(map);xkb_context_unref(context);return 0;
 }
