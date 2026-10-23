@@ -153,6 +153,9 @@ surface was 958×718. The compositor was Hyprland 0.56.2 nested under private
 headless Mutter, not a full Simulacrum or primary DRM session. CPU below is the
 Weber process-tree CPU; 100% means one fully occupied logical CPU. Compositor,
 Fcitx, driver and D-Bus helper costs are excluded. Test telemetry was enabled.
+The fixture also captured DOM/selection state and sent JSON on every editing
+event. This is an instrumented correctness workload, not production typing CPU.
+See [the observer A/B investigation](editing-cpu-analysis.md) for the follow-up.
 
 | State | PSS | RSS | Idle CPU (about 10 seconds) |
 | --- | ---: | ---: | ---: |
