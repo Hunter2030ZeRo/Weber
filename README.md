@@ -228,3 +228,5 @@ Builds pin Servo to `aac43a3f31a259f04a574f5ec4e959c943ad7cc7` (v0.7.0).
 `Cargo.lock` and `app/pnpm-lock.yaml` pin resolved native and UI dependencies;
 tracked patches document Weber's engine extensions. Generated files, engine
 checkouts, local test artifacts and compiled packages are excluded from Git.
+
+Linux layer-shell 패널의 기본 상단 배치와 왼쪽 배치는 [패널 배치 문서](docs/layer-panel-edges.md)에 설명했습니다.

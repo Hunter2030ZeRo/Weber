@@ -47,6 +47,11 @@ fn main() -> Result<()> {
         info["aotAvailable"] = cfg!(feature = "aot").into();
         info["layerShellProbe"] = cfg!(feature = "layer-shell").into();
         info["layerPanelProtocol"] = if cfg!(feature = "layer-shell") { 1 } else { 0 }.into();
+        info["layerPanelEdges"] = if cfg!(feature = "layer-shell") {
+            serde_json::json!(["top", "left"])
+        } else {
+            serde_json::json!([])
+        };
         info["windowProtocol"] = 2.into();
         info["activationProtocol"] = 1.into();
         info["appIntegrationProtocol"] = 1.into();

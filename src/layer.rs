@@ -114,6 +114,8 @@ struct State {
     connection: Connection,
     sender: channel::Sender<Wake>,
     panel: bool,
+    edge: String,
+    thickness: u32,
     pointer: Option<wl_pointer::WlPointer>,
     seat: Option<wl_seat::WlSeat>,
     point: servo::DevicePoint,
@@ -146,8 +148,24 @@ impl Dispatch<layer::ZwlrLayerSurfaceV1, ()> for State {
             } => {
                 layer.ack_configure(serial);
                 state.configured = Some((
-                    if width == 0 { 960 } else { width },
-                    if height == 0 { 48 } else { height },
+                    if width == 0 {
+                        if state.edge == "left" {
+                            state.thickness
+                        } else {
+                            960
+                        }
+                    } else {
+                        width
+                    },
+                    if height == 0 {
+                        if state.edge == "left" {
+                            720
+                        } else {
+                            state.thickness
+                        }
+                    } else {
+                        height
+                    },
                 ));
             }
             layer::Event::Closed => state.closed = true,
@@ -318,7 +336,7 @@ impl State {
             }
             println!(
                 "{}",
-                serde_json::json!({ "stage": "layer-configured", "width": width, "height": height, "exclusiveZone": 48 })
+                serde_json::json!({ "stage": "layer-configured", "width": width, "height": height, "exclusiveZone": self.thickness, "edge": self.edge })
             );
         }
         if let Some(servo) = &self.servo {
@@ -412,9 +430,24 @@ fn run_surface(url: String, panel: bool) -> Result<()> {
         &qh,
         (),
     );
-    layer.set_anchor(layer::Anchor::Top | layer::Anchor::Left | layer::Anchor::Right);
-    layer.set_size(0, 48);
-    layer.set_exclusive_zone(48);
+    let edge = if panel {
+        std::env::var("WEBER_PANEL_EDGE").unwrap_or_else(|_| "top".into())
+    } else {
+        "top".into()
+    };
+    ensure!(
+        matches!(edge.as_str(), "top" | "left"),
+        "WEBER_PANEL_EDGE must be top or left"
+    );
+    let thickness = if edge == "left" { 64 } else { 48 };
+    if edge == "left" {
+        layer.set_anchor(layer::Anchor::Top | layer::Anchor::Bottom | layer::Anchor::Left);
+        layer.set_size(thickness, 0);
+    } else {
+        layer.set_anchor(layer::Anchor::Top | layer::Anchor::Left | layer::Anchor::Right);
+        layer.set_size(0, thickness);
+    }
+    layer.set_exclusive_zone(thickness as i32);
     layer.set_keyboard_interactivity(layer::KeyboardInteractivity::None);
     surface.commit();
     let mut event_loop: EventLoop<State> = EventLoop::try_new()?;
@@ -478,6 +511,8 @@ fn run_surface(url: String, panel: bool) -> Result<()> {
         connection,
         sender,
         panel,
+        edge,
+        thickness,
         pointer: None,
         seat: if panel {
             Some(globals.bind(&qh, 5..=7, ())?)
