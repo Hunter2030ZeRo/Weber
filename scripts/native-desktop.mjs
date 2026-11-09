@@ -27,7 +27,7 @@ export async function waitFor(test, message, timeout = 15000) {
   }
   throw new Error(`Timed out: ${message}`);
 }
-export async function launch({ binary = 'target/debug/weber-servo', engine = 'aot', mode, name, config = {}, benchmark = false, capture = false, application }) {
+export async function launch({ binary = 'target/debug/weber-servo', engine = 'aot', mode, name, config = {}, benchmark = false, capture = false, application, url }) {
   await requireSession();
   await mkdir('artifacts', { recursive: true });
   const path = resolve(`artifacts/${name}.jsonl`);
@@ -37,7 +37,7 @@ export async function launch({ binary = 'target/debug/weber-servo', engine = 'ao
   delete env.DISPLAY;
   if (benchmark) env.WEBER_BENCH = '1'; else delete env.WEBER_BENCH;
   if (capture) env.WEBER_SMOKE_CAPTURE = resolve(`artifacts/${name}.png`); else delete env.WEBER_SMOKE_CAPTURE;
-  const args = application ? ['--app', resolve(application), ...(engine === 'web' ? ['--web'] : [])] : benchmark ? [`weber-app://desktop/bench-${engine}.html`] : engine === 'web' ? ['--web'] : [];
+  const args = application ? ['--app', resolve(application), ...(engine === 'web' ? ['--web'] : [])] : url ? [url] : benchmark ? [`weber-app://desktop/bench-${engine}.html`] : engine === 'web' ? ['--web'] : [];
   const started = performance.now();
   const spawnUnixMs = Date.now();
   const child = spawn(resolve(binary), args, { cwd: '/tmp', env, stdio: ['ignore', log, log] });

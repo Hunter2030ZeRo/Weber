@@ -1,0 +1,26 @@
+{
+  "id": "weber-large-app-primitives-v1",
+  "scope": "Selected browser primitives for future editor/workbench ports; not Monaco, VS Code, Electron or extension compatibility",
+  "timeoutMs": 5000,
+  "required": [
+    "message-channel",
+    "array-buffer-transfer",
+    "transferred-port-close",
+    "classic-worker",
+    "worker-message-port",
+    "module-worker",
+    "dynamic-import",
+    "wasm-instantiate",
+    "wasm-streaming",
+    "indexeddb-binary",
+    "canvas-text",
+    "range-geometry",
+    "resize-observer"
+  ],
+  "sources": {
+    "main.ts": "0605ab8abceee49931c12bf143219c0148dcfd23c64a876c1f8cd2ed28ba1fd9",
+    "public/classic-worker.js": "ab84f6364f7f6064d5130cd21ec925090650ed7e13a8c504e0d1919973c19778",
+    "public/module-worker.js": "abc6ab4e872f8a66ad6fd84f5d9d671089722aeee2ecaf2f5c567b24481d18a9",
+    "public/module-value.mjs": "a2098bd92b10bf8b816d24b7556b1ce8c49a879d130489065ef1051c17e042f6"
+  }
+}

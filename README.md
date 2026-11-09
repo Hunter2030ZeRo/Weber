@@ -28,8 +28,10 @@ Vite handles development and bundling; Servo renders the interface inside native
 windows owned by a Rust host. The runtime has no Electron or Chromium dependency.
 
 The goal is a general-purpose GUI framework for applications of every size,
-including future desktop shells. Development currently focuses on a working
-Linux foundation, web compatibility, responsiveness and resource use.
+including developer tools and large workbenches. Development currently focuses
+on a working Linux foundation, web compatibility, responsiveness and resource use.
+The [large application plan](docs/large-app-porting.md) targets the foundations
+needed for future Code-OSS/VS Code source ports; compatibility is not yet established.
 
 ## What works today
 
@@ -219,6 +221,7 @@ memory or startup advantage over Electron or native GUI frameworks is claimed.
 | Linux preview | [Document and lifecycle foundation](docs/linux-foundation-05.md) · [Initial acceptance](docs/linux-preview-milestone.md) |
 | Optional backend | [Bun integration](docs/bun-backend.md) · [Backend validation](docs/bun-backend-validation.md) |
 | Web compatibility | [Locked test profile](docs/compatibility-target.md) · [Profile validation](docs/profile-validation.md) |
+| Large application ports | [Renderer/workspace/extension-host gaps and acceptance plan](docs/large-app-porting.md) |
 | Window activation | [Wayland tokens, focus and lifetime checks](docs/window-activation.md) |
 | Performance | [Executable residency](docs/executable-residency.md) · [Font lifetimes](docs/font-lifetime-optimization.md) · [Window resource lifetimes](docs/window-resource-optimization.md) · [Document transfers](docs/native-transfer-optimization.md) · [General CPU](docs/jit-cpu-analysis.md) · [Input CPU](docs/editing-cpu-analysis.md) |
 | Shell foundation | [Optional layer panel, Hyprland IPC and native window picker](docs/shell-foundation.md) |

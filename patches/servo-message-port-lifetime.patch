@@ -1,0 +1,17 @@
+diff --git a/components/script/dom/globalscope/messageport.rs b/components/script/dom/globalscope/messageport.rs
+index 7adf9a905..ec4f5fd34 100644
+--- a/components/script/dom/globalscope/messageport.rs
++++ b/components/script/dom/globalscope/messageport.rs
+@@ -338,7 +338,11 @@ impl MessagePortMethods<crate::DomTypeHolder> for MessagePort {
+     /// <https://html.spec.whatwg.org/multipage/#dom-messageport-close>
+     fn Close(&self, cx: &mut JSContext) {
+         // Set this's [[Detached]] internal slot value to true.
+-        self.detached.set(true);
++        // A transferred port is no longer managed by this global. Closing the
++        // detached sender (or closing the same port twice) must be harmless.
++        if self.detached.replace(true) {
++            return;
++        }
+ 
+         let global = self.global();
+         global.close_message_port(self.message_port_id());

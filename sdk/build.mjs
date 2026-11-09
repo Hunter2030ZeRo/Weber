@@ -49,7 +49,7 @@ async function buildInto(project, destination, aot) {
     manifest.engine = { hermesRevision: (await promisify(execFile)('git', ['-C', join(root, 'vendor/hermes'), 'rev-parse', 'HEAD'])).stdout.trim(), abi: await aotAbi() };
     manifest.nativeUnit = { file: 'app.so', sha256: digest(await readFile(join(destination, 'app.so'))) };
   }
-  const types = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
+  const types = { '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.wasm': 'application/wasm', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
   for (const file of await list(destination)) {
     const path = relative(destination, file).split(sep).join('/');
     if (['app.o', 'app.so', 'backend', 'app.json', 'aot.js', 'aot.js.map', 'build.json'].includes(path)) continue;

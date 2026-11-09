@@ -8,7 +8,17 @@ Use the [Linux beta acceptance checklist](linux-beta-checklist.md) to distinguis
 implemented paths from remaining implementation and verification. Previous
 informal percentage estimates were not derived from a fixed weighted checklist.
 
-## Current priority — 2026-10-21
+## Current priority — 2026-11-09
+
+Prioritize the general Weber framework over further Simulacrum feature work.
+Large applications and developer tools are an explicit future porting target.
+Start with native browser primitive failures and a real Monaco editor workload,
+then workspace/binary/process services and a fixed Code-OSS source-port
+experiment. See [large application porting](large-app-porting.md) for the source
+audit, implementation sequence and separate acceptance gates. This does not
+establish arbitrary Electron or VS Code compatibility.
+
+## Retained JIT decision — 2026-10-21
 
 Prioritize Servo/SpiderMonkey JIT for beta compatibility, platform work and CPU /
 startup / memory optimization. Further Static Hermes integration and the

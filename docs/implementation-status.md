@@ -7,6 +7,12 @@ the SolidJS Workbench document app. Application authors do not need to write
 Rust; Rust owns the native framework host. This is not a production beta,
 arbitrary Electron compatibility or a completed desktop shell.
 
+**Direction update — 2026-11-09:** development now prioritizes the general Weber
+framework and the foundations needed by large editors/workbenches. Further
+Simulacrum feature work is deferred. The [large application plan](large-app-porting.md)
+records the current source audit and separate primitive/Monaco/Code-OSS gates;
+this does not turn the historical alpha validation below into VS Code support.
+
 ## Available application foundation
 
 | Area | Implemented path | Evidence and limits |
