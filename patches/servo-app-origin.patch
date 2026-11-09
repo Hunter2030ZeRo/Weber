@@ -1,0 +1,48 @@
+diff --git a/components/script/dom/url/urlhelper.rs b/components/script/dom/url/urlhelper.rs
+--- a/components/script/dom/url/urlhelper.rs
++++ b/components/script/dom/url/urlhelper.rs
+@@ -15,7 +15,7 @@
+ #[expect(non_snake_case)]
+ impl UrlHelper {
+     pub(crate) fn Origin(url: &ServoUrl) -> USVString {
+-        USVString(quirks::origin(url.as_url()))
++        USVString(url.origin().ascii_serialization().into_owned())
+     }
+     pub(crate) fn Href(url: &ServoUrl) -> USVString {
+         USVString(quirks::href(url.as_url()).to_owned())
+diff --git a/components/url/origin.rs b/components/url/origin.rs
+--- a/components/url/origin.rs
++++ b/components/url/origin.rs
+@@ -57,6 +57,23 @@
+ 
+ impl ImmutableOrigin {
+     pub fn new(url: &Url) -> ImmutableOrigin {
++        // Weber's registered local application protocol has a stable app-owned
++        // authority. Keep its origin stable across documents and restarts.
++        if url.scheme() == "weber-app"
++            && let Some(Host::Domain(host)) = url.host()
++        {
++            return ImmutableOrigin::Tuple(
++                "weber-app".to_owned(),
++                Host::Domain(host.to_owned()),
++                url.port().unwrap_or(0),
++            );
++        }
++        if url.scheme() == "blob"
++            && let Ok(inner) = Url::parse(url.path())
++            && inner.scheme() == "weber-app"
++        {
++            return Self::new(&inner);
++        }
+         if url.scheme() == "file" {
+             return Self::new_opaque_for_file();
+         }
+@@ -173,7 +190,7 @@
+ 
+         if let ImmutableOrigin::Tuple(scheme, host, _) = self {
+             // 3. If origin’s scheme is either "https" or "wss", return "Potentially Trustworthy"
+-            if scheme == "https" || scheme == "wss" {
++            if scheme == "https" || scheme == "wss" || scheme == "weber-app" {
+                 return true;
+             }
+ 

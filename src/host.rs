@@ -1084,12 +1084,14 @@ impl ApplicationHandler<Wake> for App {
         let servo = (|| -> Result<Servo> {
             Ok(ServoBuilder::default()
                 .opts(servo::Opts {
+                    config_dir: Some(crate::storage::browser_profile_directory()?),
                     time_profiling: std::env::var("WEBER_TIME_PROFILE")
                         .ok()
                         .map(servo::OutputOptions::FileName),
                     ..servo::Opts::default()
                 })
                 .preferences(servo::Preferences {
+                    dom_indexeddb_enabled: true,
                     dom_composition_event_enabled: true,
                     dom_exec_command_enabled: true,
                     layout_threads: std::env::var("WEBER_LAYOUT_THREADS")

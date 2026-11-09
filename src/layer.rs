@@ -321,6 +321,14 @@ impl State {
                     )
                     .map_err(|error| anyhow!("Panel protocol: {error:?}"))?;
                 let servo = ServoBuilder::default()
+                    .opts(servo::Opts {
+                        config_dir: Some(crate::storage::browser_profile_directory()?),
+                        ..servo::Opts::default()
+                    })
+                    .preferences(servo::Preferences {
+                        dom_indexeddb_enabled: true,
+                        ..servo::Preferences::default()
+                    })
                     .protocol_registry(registry)
                     .event_loop_waker(Box::new(Waker(self.sender.clone())))
                     .build();
@@ -404,7 +412,9 @@ fn run_surface(url: String, panel: bool) -> Result<()> {
     let url = url::Url::parse(&url)?;
     ensure!(
         if panel {
-            url.scheme() == "weber-app" && url.host_str() == Some("application")
+            url.scheme() == "weber-app"
+                && crate::assets::application()
+                    .is_some_and(|app| url.host_str() == Some(app.origin_host()))
         } else {
             matches!(url.scheme(), "file" | "http" | "https")
         },

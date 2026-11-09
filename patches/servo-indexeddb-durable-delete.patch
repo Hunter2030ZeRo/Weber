@@ -1,0 +1,114 @@
+diff --git a/components/storage/indexeddb/mod.rs b/components/storage/indexeddb/mod.rs
+--- a/components/storage/indexeddb/mod.rs
++++ b/components/storage/indexeddb/mod.rs
+@@ -2039,77 +2039,45 @@
+             );
+         };
+ 
+-        // Step 4: Let db be the database named name in storageKey, if one exists. Otherwise, return 0 (zero).
+-        let version = if let Some(db) = self.databases.remove(&key) {
+-            // Step 5: Let openConnections be the set of all connections associated with db.
+-            // Step6: For each entry of openConnections that does not have its close pending flag set to true,
+-            // queue a database task to fire a version change event named versionchange
+-            // at entry with db’s version and null.
+-            // Step 7: Wait for all of the events to be fired.
+-            // Step 8: If any of the connections in openConnections are still not closed,
+-            // queue a database task to fire a version change event
+-            // named blocked at request with db’s version and null.
+-            // Step 9: Wait until all connections in openConnections are closed.
+-            // TODO: implement connections.
+-
+-            // Step 10: Let version be db’s version.
+-            let res = db.version();
+-            let Ok(version) = res else {
+-                *processed = true;
+-                if sender
+-                    .send(BackendResult::Err(BackendError::DbErr(
+-                        res.unwrap_err().to_string(),
+-                    )))
+-                    .is_err()
+-                {
+-                    debug!("Script went away during pending database delete.");
+-                }
+-                return;
+-            };
+-
+-            // Note: ensure db is dropped before deleting directory,
+-            // to get around windows file locks.
++        // The in-memory map is only a cache. After a restart the database can still
++        // exist in client storage even though it has not been opened in this process.
++        let result = (|| -> Result<u64, BackendError> {
++            let db = if let Some(db) = self.databases.remove(&key) {
++                db
++            } else {
++                let (path, created) = proxy_map
++                    .handle
++                    .create_database(proxy_map.bottle_id, db_name.clone())
++                    .recv()
++                    .map_err(|_| BackendError::DbErr("Client storage disconnected".to_string()))?
++                    .map_err(|error| BackendError::DbErr(format!("{error:?}")))?;
++                let engine = SqliteEngine::new(path, created, &key, self.thread_pool.clone())
++                    .map_err(backend_error_from_sqlite_error)?;
++                IndexedDBEnvironment::new(engine, self.manager_sender.clone())
++            };
++
++            // TODO: wait for active connections and dispatch versionchange/blocked.
++            // An absent database has version zero. The client storage API creates a
++            // temporary empty backing store in that case; remove it below as well.
++            let version = db.version().map_err(backend_error_from_sqlite_error)?;
++            // Release SQLite handles before removing files, including on Windows.
+             drop(db);
+-
+-            // Step 11: Delete db.
+-            // If this fails for any reason,
+-            // return an appropriate error (e.g. a QuotaExceededError, or an "UnknownError" DOMException).
+-            let Ok(response) = proxy_map
++            proxy_map
+                 .handle
+                 .delete_database(proxy_map.bottle_id, db_name.clone())
+                 .recv()
+-            else {
+-                if sender
+-                    .send(BackendResult::Err(BackendError::DbErr(
+-                        "Failed to communicate with client storage.".to_string(),
+-                    )))
+-                    .is_err()
+-                {
+-                    debug!("Script went away during pending database delete.");
+-                }
+-                return;
+-            };
+-            if let Err(err) = response {
+-                if sender
+-                    .send(BackendResult::Err(BackendError::DbErr(format!(
+-                        "Client storage error: {err:?}"
+-                    ))))
+-                    .is_err()
+-                {
+-                    debug!("Script went away during pending database delete.");
+-                }
+-                return;
+-            }
+-            version
+-        } else {
+-            0
+-        };
+-
+-        // step 12: Return version.
+-        if sender.send(BackendResult::Ok(version)).is_err() {
++                .map_err(|_| BackendError::DbErr("Client storage disconnected".to_string()))?
++                .map_err(|error| BackendError::DbErr(format!("{error:?}")))?;
++            Ok(version)
++        })();
++
++        let response = match result {
++            Ok(version) => BackendResult::Ok(version),
++            Err(error) => BackendResult::Err(error),
++        };
++        if sender.send(response).is_err() {
+             debug!("Script went away during pending database delete.");
+         }
+-
+         *processed = true;
+     }
+ 

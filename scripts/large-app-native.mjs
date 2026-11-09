@@ -8,15 +8,16 @@ import { launch, execute, waitFor } from './native-desktop.mjs';
 assert.ok(process.env.WEBER_TEST_DISPLAY?.startsWith('isolated GNOME'), 'Run inside scripts/headless-wayland.mjs on its private bus/display');
 assert.ok(!process.env.DBUS_SESSION_BUS_ADDRESS?.includes('/run/user/'), 'Never use the host session bus');
 const baseline = process.argv.slice(2).includes('--record-baseline');
-assert.ok(process.argv.slice(2).every(arg => arg === '--record-baseline'), 'Only --record-baseline is supported');
+const suite = process.argv.includes('--suite=range') ? 'range' : 'large-app';
+assert.ok(process.argv.slice(2).every(arg => ['--record-baseline', '--suite=range'].includes(arg)), 'Supported options: --record-baseline --suite=range');
 const binary = resolve(process.env.WEBER_HOST || 'target/optimized/release/weber-servo');
 const build = JSON.parse((await execute(binary, ['--build-info'])).stdout);
 assert.equal(build.uiEngine, 'spidermonkey'); assert.equal(build.aotAvailable, false);
-const fixture = JSON.parse(await readFile('artifacts/large-app/workflow.json'));
-const profileBytes = await readFile('compatibility/large-app/profile.json'), profile = JSON.parse(profileBytes);
+const fixture = JSON.parse(await readFile(`artifacts/${suite}/workflow.json`));
+const profileBytes = await readFile(`compatibility/${suite}/profile.json`), profile = JSON.parse(profileBytes);
 assert.equal(fixture.profileSha256, createHash('sha256').update(profileBytes).digest('hex')); assert.equal(fixture.passed, true);
-assert.equal(fixture.profileSha256, (await readFile('compatibility/large-app/profile.sha256', 'utf8')).trim());
-for (const [file, expected] of Object.entries(profile.sources)) assert.equal(createHash('sha256').update(await readFile(join('compatibility/large-app', file))).digest('hex'), expected, `Locked workload source changed: ${file}`);
+assert.equal(fixture.profileSha256, (await readFile(`compatibility/${suite}/profile.sha256`, 'utf8')).trim());
+for (const [file, expected] of Object.entries(profile.sources)) assert.equal(createHash('sha256').update(await readFile(join('compatibility', suite, file))).digest('hex'), expected, `Locked workload source changed: ${file}`);
 const manifest = JSON.parse(await readFile(join(fixture.application, 'app.json')));
 const html = '<!doctype html><meta charset="utf-8"><div id="aot-dom-root"></div><script src="/web.js"></script><script>WeberUserApp.mount(document.getElementById("aot-dom-root"));</script>';
 const server = createServer(async (request, response) => {
@@ -33,18 +34,18 @@ const server = createServer(async (request, response) => {
 await new Promise((done, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', done); });
 const url = `http://127.0.0.1:${server.address().port}/`;
 const runs = [];
-const output = 'artifacts/large-app/native.json';
+const output = `artifacts/${suite}/native.json`;
 await writeFile(output, JSON.stringify({ passed: false, profile: profile.id, build, runs }));
 try {
   for (const mode of ['http', 'packaged']) {
     let app;
     try {
-      app = await launch({ binary, engine: 'web', name: `large-app-${mode}`, ...(mode === 'packaged' ? { application: fixture.application } : { url }) });
+      app = await launch({ binary, engine: 'web', name: `${suite}-${mode}`, ...(mode === 'packaged' ? { application: fixture.application } : { url }) });
       const event = await waitFor(async () => {
         const events = await app.events(), result = events.find(event => event.data.stage === 'large-app-result');
         if (result) return result;
-        const log = await readFile(`artifacts/large-app-${mode}.log`, 'utf8');
-        if (/panicked at/.test(log)) throw new Error(`Servo panicked during ${events.filter(event => event.data.stage === 'large-app-case-start').at(-1)?.data.id ?? 'startup'}; see artifacts/large-app-${mode}.log`);
+        const log = await readFile(`artifacts/${suite}-${mode}.log`, 'utf8');
+        if (/panicked at/.test(log)) throw new Error(`Servo panicked during ${events.filter(event => event.data.stage === 'large-app-case-start').at(-1)?.data.id ?? 'startup'}; see artifacts/${suite}-${mode}.log`);
         if (app.child.exitCode !== null) throw new Error(`Native host exited before results: ${app.child.exitCode}`);
         return null;
       }, `${mode} compatibility result`, profile.required.length * profile.timeoutMs + 15000);

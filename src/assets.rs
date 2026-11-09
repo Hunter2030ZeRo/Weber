@@ -56,6 +56,7 @@ pub struct Application {
     pub backend_path: Option<PathBuf>,
     manifest: ApplicationManifest,
     assets: BTreeMap<String, (String, Vec<u8>)>,
+    origin_host: String,
 }
 impl Application {
     pub fn id(&self) -> &str {
@@ -63,6 +64,9 @@ impl Application {
     }
     pub fn name(&self) -> &str {
         &self.manifest.name
+    }
+    pub fn origin_host(&self) -> &str {
+        &self.origin_host
     }
 }
 pub fn checked_backend(path: &Path, hash: &str) -> Result<PathBuf> {
@@ -201,12 +205,15 @@ pub fn configure_application(root: &Path) -> Result<()> {
         assets.contains_key("/web.js"),
         "Application web comparison bundle missing"
     );
+    let identity = format!("{:x}", Sha256::digest(manifest.id.as_bytes()));
+    let origin_host = format!("{}.{}.app", &identity[..32], &identity[32..]);
     APPLICATION
         .set(Application {
             unit_path,
             backend_path,
             manifest,
             assets,
+            origin_host,
         })
         .map_err(|_| anyhow::anyhow!("An application is already configured"))
 }
@@ -253,7 +260,7 @@ impl ProtocolHandler for DesktopAssets {
         let url = request.current_url();
         let mut response =
             Response::new(url.clone(), ResourceFetchTiming::new(request.timing_type()));
-        let asset = if url.host_str() == Some("application") {
+        let asset = if application().is_some_and(|app| url.host_str() == Some(app.origin_host())) {
             application_asset(url.path())
         } else {
             (url.host_str() == Some("desktop"))

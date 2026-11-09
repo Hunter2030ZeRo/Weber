@@ -1,0 +1,404 @@
+diff --git a/components/layout/display_list/stacking_context.rs b/components/layout/display_list/stacking_context.rs
+--- a/components/layout/display_list/stacking_context.rs
++++ b/components/layout/display_list/stacking_context.rs
+@@ -545,7 +545,13 @@
+                     text_decorations,
+                 );
+             },
+-            Fragment::Text(_) | Fragment::Image(_) | Fragment::IFrame(_) => {},
++            Fragment::Text(fragment) => {
++                *fragment.spatial.borrow_mut() = Some((
++                    cumulative_containing_block.origin,
++                    containing_block.scroll_node_id,
++                ));
++            },
++            Fragment::Image(_) | Fragment::IFrame(_) => {},
+         }
+     }
+ }
+diff --git a/components/layout/flow/inline/line.rs b/components/layout/flow/inline/line.rs
+--- a/components/layout/flow/inline/line.rs
++++ b/components/layout/flow/inline/line.rs
+@@ -702,6 +702,8 @@
+             .push(FragmentAndData::new(
+                 Fragment::Text(Arc::new(TextFragment {
+                     base: BaseFragment::new(text_item.base_fragment_info, PhysicalRect::zero()),
++                    spatial: Default::default(),
++                    is_rtl: text_item.info.font_info.bidi_level.is_rtl(),
+                     run_data: text_item.text_fragment_run_data,
+                     font_metrics: font_metrics.clone(),
+                     font_key,
+diff --git a/components/layout/fragment_tree/fragment.rs b/components/layout/fragment_tree/fragment.rs
+--- a/components/layout/fragment_tree/fragment.rs
++++ b/components/layout/fragment_tree/fragment.rs
+@@ -7,13 +7,13 @@
+ use std::sync::atomic::AtomicBool;
+ 
+ use app_units::Au;
+-use atomic_refcell::AtomicRef;
++use atomic_refcell::{AtomicRef, AtomicRefCell};
+ use euclid::{Point2D, Rect, Size2D};
+ use fonts::{FontMetrics, ShapedTextSlice};
+ use layout_api::BoxAreaType;
+ use malloc_size_of_derive::MallocSizeOf;
+ use servo_arc::Arc as ServoArc;
+-use servo_base::id::PipelineId;
++use servo_base::id::{PipelineId, ScrollTreeNodeId};
+ use servo_base::print_tree::PrintTree;
+ use servo_base::text::Utf32CodeUnits;
+ use servo_url::ServoUrl;
+@@ -95,6 +95,11 @@
+ #[derive(MallocSizeOf)]
+ pub(crate) struct TextFragment {
+     pub base: BaseFragment,
++    /// Paint-time containing-block origin and spatial node, shared with queries.
++    /// This is inline metadata, not a second text/layout tree.
++    #[ignore_malloc_size_of = "Inline geometry contains no heap allocations"]
++    pub spatial: AtomicRefCell<Option<(PhysicalPoint<Au>, ScrollTreeNodeId)>>,
++    pub is_rtl: bool,
+     #[conditional_malloc_size_of]
+     pub run_data: Arc<SharedTextRunData>,
+     #[conditional_malloc_size_of]
+@@ -447,6 +452,83 @@
+ }
+ 
+ impl TextFragment {
++    /// Selected advance bounds in this shaped fragment. Offsets are DOM Unicode
++    /// scalar offsets; white-space/text-transform mapping is owned by run_data.
++    pub(crate) fn range_rect(&self, dom_range: Range<Utf32CodeUnits>) -> Option<PhysicalRect<Au>> {
++        let range = self
++            .run_data
++            .map_dom_range_to_transformed_range(dom_range.into());
++        let fragment_range = &self.character_range_in_dom_node;
++        if range.start > fragment_range.end
++            || range.end < fragment_range.start
++            || (!range.is_empty()
++                && (range.end == fragment_range.start || range.start == fragment_range.end))
++        {
++            return None;
++        }
++        let mut character = if self.is_rtl {
++            fragment_range.end
++        } else {
++            fragment_range.start
++        };
++        let mut advance = Au::zero();
++        let mut selected: Option<(Au, Au)> = None;
++        for store in &self.glyphs {
++            for glyph in store.glyphs() {
++                let count = glyph.character_count();
++                let next_character = if self.is_rtl {
++                    character - count
++                } else {
++                    character + count
++                };
++                let low = character.min(next_character);
++                let high = character.max(next_character);
++                let next_advance = advance
++                    + glyph.advance()
++                    + if glyph.char_is_word_separator() {
++                        self.justification_adjustment
++                    } else {
++                        Au::zero()
++                    };
++                let bounds =
++                    if range.is_empty() && range.start >= low && range.start <= high && count.0 > 0
++                    {
++                        if range.start == character {
++                            Some((advance, advance))
++                        } else if range.start == next_character {
++                            Some((next_advance, next_advance))
++                        } else {
++                            Some((advance, next_advance))
++                        }
++                    } else if range.start < high && range.end > low {
++                        Some((advance, next_advance))
++                    } else {
++                        None
++                    };
++                if let Some((start, end)) = bounds {
++                    selected =
++                        Some(selected.map_or((start, end), |(a, b)| (a.min(start), b.max(end))));
++                }
++                character = next_character;
++                advance = next_advance;
++            }
++        }
++        let (start, end) = selected.or_else(|| {
++            (range.is_empty() && self.glyphs.is_empty()).then_some((Au::zero(), Au::zero()))
++        })?;
++        let mut rect = self.base.rect();
++        if self.style().writing_mode.is_vertical() {
++            rect.origin.y += start;
++            rect.size.height = end - start;
++            rect.size.width = self.font_metrics.ascent + self.font_metrics.descent;
++        } else {
++            rect.origin.x += start;
++            rect.size.width = end - start;
++            rect.size.height = self.font_metrics.ascent + self.font_metrics.descent;
++        }
++        Some(rect)
++    }
++
+     pub(crate) fn style<'a>(&'a self) -> AtomicRef<'a, ServoArc<ComputedValues>> {
+         self.run_data.inline_styles.style.borrow()
+     }
+diff --git a/components/layout/layout_impl.rs b/components/layout/layout_impl.rs
+--- a/components/layout/layout_impl.rs
++++ b/components/layout/layout_impl.rs
+@@ -94,7 +96,7 @@
+     process_current_css_zoom_query, process_effective_overflow_query,
+     process_node_scroll_area_request, process_offset_parent_query, process_padding_request,
+     process_resolved_font_style_query, process_resolved_style_request,
+-    process_scroll_container_query,
++    process_scroll_container_query, process_text_range_rects_request,
+ };
+ use crate::traversal::{RecalcStyle, compute_damage_and_rebuild_box_tree};
+ use crate::{BoxTree, FragmentTree};
+@@ -590,6 +592,23 @@
+                 stacking_context_tree,
+                 point_in_viewport,
+             )
++        })
++    }
++
++    fn query_text_range_rects(
++        &self,
++        node: TrustedNodeAddress,
++        range: std::ops::Range<Utf32CodeUnits>,
++    ) -> CSSPixelRectVec {
++        with_layout_state(|| {
++            let node = unsafe { ServoLayoutNode::new(&node) };
++            self.stacking_context_tree
++                .borrow()
++                .as_ref()
++                .map(|tree| {
++                    process_text_range_rects_request(node, &tree.paint_info.scroll_tree, range)
++                })
++                .unwrap_or_default()
+         })
+     }
+ 
+diff --git a/components/layout/query.rs b/components/layout/query.rs
+--- a/components/layout/query.rs
++++ b/components/layout/query.rs
+@@ -70,6 +70,70 @@
+         .and_then(Fragment::retrieve_box_fragment)?;
+     let scroll_tree_node_id = box_fragment.spatial_tree_node()?;
+     Some(scroll_tree.cumulative_node_to_root_transform(scroll_tree_node_id))
++}
++
++#[expect(
++    unsafe_code,
++    reason = "DOM ancestor walk stays within the current layout state"
++)]
++pub(crate) fn process_text_range_rects_request(
++    node: ServoLayoutNode<'_>,
++    scroll_tree: &ScrollTree,
++    range: std::ops::Range<Utf32CodeUnits>,
++) -> CSSPixelRectVec {
++    fn collect(
++        fragment: &Fragment,
++        target: OpaqueNode,
++        scroll_tree: &ScrollTree,
++        range: &std::ops::Range<Utf32CodeUnits>,
++        found: &mut bool,
++        rects: &mut CSSPixelRectVec,
++    ) {
++        if let Fragment::Text(text) = fragment {
++            if text.base.tag.is_none_or(|tag| tag.node != target) {
++                return;
++            }
++            *found = true;
++            if let Some((origin, spatial_node)) = *text.spatial.borrow() {
++                if let Some(rect) = text.range_rect(range.clone()) {
++                    let transform = scroll_tree.cumulative_node_to_root_transform(spatial_node);
++                    if let Some(rect) =
++                        transform_au_rectangle(rect.translate(origin.to_vector()), transform)
++                    {
++                        rects.push(rect);
++                    }
++                }
++            }
++        } else if let Some(children) = fragment.children() {
++            for child in children.iter() {
++                collect(child, target, scroll_tree, range, found, rects);
++            }
++        }
++    }
++    // TextRun has no LayoutBoxBase fragment list. Find its actual shaped
++    // fragments under the nearest rendered ancestor without building a mirror
++    // or retaining another per-node fragment index.
++    let target = node.opaque();
++    let mut ancestor = Some(node);
++    while let Some(node) = ancestor {
++        let mut rects = Vec::new();
++        let mut found = false;
++        for fragment in &node.fragments_for_pseudo(None) {
++            collect(
++                fragment,
++                target,
++                scroll_tree,
++                &range,
++                &mut found,
++                &mut rects,
++            );
++        }
++        if found {
++            return rects;
++        }
++        ancestor = unsafe { node.dangerous_dom_parent() };
++    }
++    Vec::new()
+ }
+ 
+ pub(crate) fn process_padding_request(node: ServoLayoutNode<'_>) -> Option<PhysicalSides> {
+diff --git a/components/script/dom/range/range.rs b/components/script/dom/range/range.rs
+--- a/components/script/dom/range/range.rs
++++ b/components/script/dom/range/range.rs
+@@ -16,6 +16,7 @@
+ use script_bindings::cell::DomRefCell;
+ use script_bindings::dom::{MutDom, UnrootedDom};
+ use script_bindings::reflector::reflect_weak_referenceable_dom_object_with_proto;
++use servo_base::text::{AssumeUnder4GB, Utf16CodeUnits, Utf32CodeUnits};
+ use smallvec::SmallVec;
+ use style_traits::CSSPixel;
+ 
+@@ -370,34 +371,63 @@
+ 
+     /// <https://drafts.csswg.org/cssom-view/#dom-range-getclientrects>
+     fn client_rects(&self, no_gc: &NoGC) -> Vec<Rect<Au, CSSPixel>> {
+-        // FIXME: For text nodes that are only partially selected, this should return the client
+-        // rect of the selected part, not the whole text node.
+         let start = self.start_container();
+         let end = self.end_container();
+-        // > The getClientRects() method, when invoked, must return an empty DOMRectList
+-        // > object if the range is not in the document.
+         if !start.is_connected() || !end.is_connected() {
+             return vec![];
+         }
+-
+-        // Per the spec, only Text nodes contribute rects when the range is collapsed
+-        // (including when the boundary points are identical).
+-        if self.collapsed() {
+-            if start.is::<CharacterData>() {
+-                return start.border_boxes();
+-            } else {
+-                return vec![];
+-            }
+-        }
+-
+-        let document = start.owner_doc();
+-        let unrooted_end = end.as_unrooted(no_gc);
+-        start
+-            .following_nodes_unrooted(no_gc, document.upcast::<Node>(), ShadowIncluding::No)
+-            .take_while(move |node| *node != *end)
+-            .chain(iter::once(unrooted_end))
+-            .flat_map(move |node| node.border_boxes())
+-            .collect()
++        if self.collapsed() && !start.is::<Text>() {
++            return vec![];
++        }
++        let contains = |node: &Node| {
++            node.GetParentNode().is_some_and(|parent| {
++                bp_position(no_gc, &start, self.start_offset(), &parent, node.index())
++                    != Ordering::Greater
++                    && bp_position(no_gc, &end, self.end_offset(), &parent, node.index() + 1)
++                        != Ordering::Less
++            })
++        };
++        let mut rects = Vec::new();
++        for node in self
++            .CommonAncestorContainer()
++            .traverse_preorder(ShadowIncluding::No)
++        {
++            if let Some(text) = node.downcast::<Text>() {
++                let data = text.upcast::<CharacterData>().data();
++                let len = Utf16CodeUnits::length_of(AssumeUnder4GB, &data).0;
++                if bp_position(no_gc, &node, len, &start, self.start_offset()) == Ordering::Less
++                    || bp_position(no_gc, &node, 0, &end, self.end_offset()) == Ordering::Greater
++                {
++                    continue;
++                }
++                let begin = if node == start {
++                    self.start_offset()
++                } else {
++                    0
++                };
++                let finish = if node == end { self.end_offset() } else { len };
++                let begin = Utf16CodeUnits(begin).to_utf32_code_units_in(&data);
++                let mut finish_scalar = Utf16CodeUnits(finish).to_utf32_code_units_in(&data);
++                // A boundary inside a surrogate pair includes the entire scalar.
++                if finish_scalar
++                    .to_utf16_code_units_in(AssumeUnder4GB, &data)
++                    .0
++                    < finish
++                {
++                    finish_scalar += Utf32CodeUnits(1);
++                }
++                rects.extend(
++                    node.owner_window()
++                        .text_range_rects_query(&node, begin..finish_scalar),
++                );
++            } else if node.is::<Element>()
++                && contains(&node)
++                && node.GetParentNode().is_none_or(|parent| !contains(&parent))
++            {
++                rects.extend(node.border_boxes());
++            }
++        }
++        rects
+     }
+ 
+     /// <https://dom.spec.whatwg.org/#concept-range-bp-set>
+@@ -1365,8 +1395,12 @@
+         // Step 4. Otherwise, return a DOMRect object describing the smallest rectangle that includes all
+         // of the rectangles in list of which the height or width is not zero.
+         let bounding_rect = list
+-            .into_iter()
+-            .fold(euclid::Rect::zero(), |acc, rect| acc.union(&rect));
++            .iter()
++            .copied()
++            .filter(|rect| !rect.is_empty())
++            .reduce(|a, b| a.union(&b))
++            .or_else(|| list.first().copied())
++            .unwrap_or_default();
+ 
+         DOMRect::new(
+             cx,
+diff --git a/components/script/dom/window/window.rs b/components/script/dom/window/window.rs
+--- a/components/script/dom/window/window.rs
++++ b/components/script/dom/window/window.rs
+@@ -3167,6 +3167,17 @@
+             .query_box_areas(node.to_trusted_node_address(), area)
+     }
+ 
++    pub(crate) fn text_range_rects_query(
++        &self,
++        node: &Node,
++        range: std::ops::Range<Utf32CodeUnits>,
++    ) -> CSSPixelRectVec {
++        self.layout_reflow(QueryMsg::BoxAreas);
++        self.layout
++            .borrow()
++            .query_text_range_rects(node.to_trusted_node_address(), range)
++    }
++
+     pub(crate) fn client_rect_query(&self, node: &Node) -> Rect<i32, CSSPixel> {
+         self.layout_reflow(QueryMsg::ClientRectQuery);
+         self.layout
+diff --git a/components/shared/layout/lib.rs b/components/shared/layout/lib.rs
+--- a/components/shared/layout/lib.rs
++++ b/components/shared/layout/lib.rs
+@@ -378,6 +378,11 @@
+         exclude_transform_and_inline: bool,
+     ) -> Option<Rect<Au, CSSPixel>>;
+     fn query_box_areas(&self, node: TrustedNodeAddress, area: BoxAreaType) -> CSSPixelRectVec;
++    fn query_text_range_rects(
++        &self,
++        node: TrustedNodeAddress,
++        range: std::ops::Range<Utf32CodeUnits>,
++    ) -> CSSPixelRectVec;
+     fn query_client_rect(&self, node: TrustedNodeAddress) -> Rect<i32, CSSPixel>;
+     fn query_current_css_zoom(&self, node: TrustedNodeAddress) -> f32;
+     fn query_element_inner_outer_text(&self, node: TrustedNodeAddress) -> String;

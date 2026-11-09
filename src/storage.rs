@@ -71,6 +71,21 @@ struct Task {
     request: Value,
     _reservation: Reservation,
 }
+
+/// Servo's durable browser stores share an app scope with, but never the files
+/// of, the SDK JSON store. No new process/IPC boundary is introduced here.
+pub fn browser_profile_directory() -> Result<PathBuf> {
+    let directory = Paths::new()?.data.join("browser-profile");
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(&directory)?;
+    Ok(directory)
+}
 struct Reservation {
     counter: Arc<AtomicUsize>,
     bytes: usize,

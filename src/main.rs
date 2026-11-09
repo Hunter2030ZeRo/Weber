@@ -122,14 +122,15 @@ fn main() -> Result<()> {
         );
     }
     let argument = if application {
-        if args.get(2).is_some_and(|arg| arg == "--web")
+        let app = assets::application().ok_or_else(|| anyhow::anyhow!("Application missing"))?;
+        let entry = if args.get(2).is_some_and(|arg| arg == "--web")
             || assets::application().is_some_and(|app| app.unit_path.is_none())
         {
-            "weber-app://application/web.html"
+            "web"
         } else {
-            "weber-app://application/aot.html"
-        }
-        .to_owned()
+            "aot"
+        };
+        format!("weber-app://{}/{}.html", app.origin_host(), entry)
     } else {
         std::env::args().nth(1).unwrap_or_else(|| {
             if cfg!(feature = "aot") {

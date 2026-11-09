@@ -11,7 +11,7 @@ if [[ "$actual" != "$revision" ]]; then
   exit 1
 fi
 if ! python3 scripts/check-servo-patches.py; then
-for patch_name in servo-transient-observers servo-sync-host servo-time-origin servo-keyboard-click servo-binary-host servo-small-dom-scheduling servo-safe-cut servo-document-envelope servo-font-lifecycle servo-ime-composition servo-native-editing servo-message-port-lifetime; do
+for patch_name in servo-transient-observers servo-sync-host servo-time-origin servo-keyboard-click servo-binary-host servo-small-dom-scheduling servo-safe-cut servo-document-envelope servo-font-lifecycle servo-ime-composition servo-native-editing servo-message-port-lifetime servo-range-geometry servo-app-origin servo-indexeddb-durable-delete; do
   # The envelope extension supersedes contexts in both host-call patches.
   if [[ "$patch_name" == servo-sync-host || "$patch_name" == servo-binary-host ]] && git -C vendor/servo apply --reverse --check "$PWD/patches/servo-document-envelope.patch" 2>/dev/null; then
     continue

@@ -222,6 +222,8 @@ memory or startup advantage over Electron or native GUI frameworks is claimed.
 | Optional backend | [Bun integration](docs/bun-backend.md) · [Backend validation](docs/bun-backend-validation.md) |
 | Web compatibility | [Locked test profile](docs/compatibility-target.md) · [Profile validation](docs/profile-validation.md) |
 | Large application ports | [Renderer/workspace/extension-host gaps and acceptance plan](docs/large-app-porting.md) |
+| Text geometry and browser storage | [Implementation, native results and remaining failure](docs/range-storage-validation.md) |
+| Process and data transport | [Direct calls, shared memory/file mappings and control pipes](docs/transport-policy.md) |
 | Window activation | [Wayland tokens, focus and lifetime checks](docs/window-activation.md) |
 | Performance | [Executable residency](docs/executable-residency.md) · [Font lifetimes](docs/font-lifetime-optimization.md) · [Window resource lifetimes](docs/window-resource-optimization.md) · [Document transfers](docs/native-transfer-optimization.md) · [General CPU](docs/jit-cpu-analysis.md) · [Input CPU](docs/editing-cpu-analysis.md) |
 | Shell foundation | [Optional layer panel, Hyprland IPC and native window picker](docs/shell-foundation.md) |

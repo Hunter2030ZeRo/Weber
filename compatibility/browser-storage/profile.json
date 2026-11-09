@@ -1,0 +1,23 @@
+{
+  "id": "weber-browser-storage-v1",
+  "scope": "App origin, durable IndexedDB isolation and sequential lifetime",
+  "required": [
+    "write-a",
+    "read-a",
+    "empty-b",
+    "write-b",
+    "read-b",
+    "reread-a",
+    "upgrade-a",
+    "older-version-rejected",
+    "delete-a",
+    "delete-missing-a",
+    "empty-a",
+    "reread-b"
+  ],
+  "sources": {
+    "main.ts": "4a558447a142f4feb0a4a95168787d8f587592a99bb7a98886d5569a688d2322",
+    "public/db-worker.js": "b92676409c6c218b9d48c9c9373dd16338ecb5f9a2d892ff0b93abdfac1e1980",
+    "public/scenario.json": "4cd16fc8cf6e236155adb68a3b16953e8643216ca57ca242fe719924454e254f"
+  }
+}

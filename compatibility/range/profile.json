@@ -1,0 +1,23 @@
+{
+  "id": "weber-range-geometry-v1",
+  "scope": "Selected live text Range geometry behavior; not whole CSSOM conformance",
+  "timeoutMs": 5000,
+  "required": [
+    "partial-text",
+    "collapsed-caret",
+    "surrogate-boundaries",
+    "combining-cluster",
+    "normal-wrapped-lines",
+    "wrapped-lines",
+    "rtl-logical-offsets",
+    "nested-text",
+    "element-boundaries",
+    "disconnected-hidden",
+    "transformed-text",
+    "scrolled-text",
+    "collapsed-whitespace"
+  ],
+  "sources": {
+    "main.ts": "4de9c8e54382b859f51dbfee7745fc4e4a2818993ea3930e473b5a50e82c328a"
+  }
+}
