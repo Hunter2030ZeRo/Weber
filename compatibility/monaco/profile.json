@@ -1,0 +1,25 @@
+{
+  "id": "weber-monaco-initial-v1",
+  "scope": "Real pinned editor and TS worker, native ASCII/Hangul input; physical keyboard and performance remain separate",
+  "timeoutMs": 20000,
+  "required": [
+    "native-webcrypto",
+    "actual-editor-render",
+    "edit-undo-redo",
+    "selection-geometry",
+    "find-widget",
+    "scroll-and-resize",
+    "typescript-worker-diagnostics",
+    "dispose-and-recreate"
+  ],
+  "sources": {
+    "package.json": "edc7133590c6b1c2ce6ce8c56422c5b88493d8000242175dae8c1053fe54c17d",
+    "package-lock.json": "b5f43d88cb93bdb82ce06497e0c12744c1a0b82b0d8a5019c5dc79a3f9d11b8b",
+    "weber.json": "a330794820736578055951794416153ddd19e95a28ef5bf991539c94951c3a7c",
+    "tsconfig.json": "eea7378e815d1acf7ee13ffcb4aa108ae496339813db91e0392ed66537f4a4d4",
+    "vite.config.mjs": "e7fa1faf2a6ebd79090f82cde2a6fc9d92e28e3b9f75ca6977383e26f3de4076",
+    "src/main.ts": "e30e1dcfd149a84ea445616b27491638a31815217aa0a6456ddaf9fdd218de67",
+    "src/editor.ts": "af09ccd29924138abf69ddfcabf12081eef3cbea123d864d9fc68c9056f766f7",
+    "index.html": "7cb98a56ca275a154480643d206201157bd2893fbb95f1e48264769a0db71517"
+  }
+}

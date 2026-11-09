@@ -29,7 +29,7 @@ futures-lite = "2"
 http = "1"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 servo-base = { path = "vendor/servo/components/shared/base" }
-servo = { path = "vendor/servo/components/servo", default-features = false, features = ["bundled", "js_jit"] }
+servo = { path = "vendor/servo/components/servo", default-features = false, features = ["bundled", "js_jit", "webcrypto"] }
 url = "2"
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen", "wayland-csd-adwaita"] }
 wayland-protocols = { version = "0.32.13", features = ["client", "unstable"] }

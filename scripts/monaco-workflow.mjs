@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {readFile, writeFile, mkdir, cp, rm} from 'node:fs/promises';
+import {resolve, join} from 'node:path';
+import {createHash} from 'node:crypto';
+import {command} from '../sdk/project.mjs';
+const project=resolve('compatibility/monaco'), output=resolve('artifacts/monaco');
+const bytes=await readFile(join(project,'profile.json')), profile=JSON.parse(bytes);
+const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+assert.equal(digest(bytes),(await readFile(join(project,'profile.sha256'),'utf8')).trim());
+for(const [file, hash] of Object.entries(profile.sources))assert.equal(digest(await readFile(join(project,file))),hash,file);
+for(const [name, version] of [['monaco-editor','0.57.0'],['vite','7.1.12'],['typescript','5.9.3']])assert.equal(JSON.parse(await readFile(join(project,'node_modules',name,'package.json'))).version,version);
+await command('npm',['run','build'],{cwd:project});
+const application=join(output,'relocated/application');await rm(application,{recursive:true,force:true});await mkdir(application,{recursive:true});await cp(join(project,'dist'),application,{recursive:true});
+const manifest=JSON.parse(await readFile(join(application,'app.json')));
+await writeFile(join(output,'workflow.json'),JSON.stringify({passed:true,application,profile:profile.id,profileSha256:digest(bytes),version:'0.57.0',assets:manifest.assets},null,2));
+console.log('Actual Monaco package built and relocated; native acceptance remains separate.');

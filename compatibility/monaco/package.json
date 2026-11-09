@@ -1,0 +1,16 @@
+{
+  "name": "weber-monaco-acceptance",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node ../../sdk/cli.mjs build .",
+    "dev": "node ../../sdk/cli.mjs dev ."
+  },
+  "dependencies": {
+    "monaco-editor": "0.57.0"
+  },
+  "devDependencies": {
+    "vite": "7.1.12",
+    "typescript": "5.9.3"
+  }
+}

@@ -40,7 +40,7 @@ These remain separate framework requirements.
 | --- | --- | --- |
 | Frontend toolchain | Vite, TS and ordinary DOM frameworks; SDK forces one IIFE UI entry and owns Rollup input/output | Explicit ESM/multiple-chunk contract, workers and module resource resolution; test dev and packaged paths separately |
 | Packaged resources | `src/assets.rs` validates and reads every asset during startup; each response clones its bytes; 16 MiB/file, 64 MiB total, 1,024 entries | Measured lazy resource loading with integrity/path guarantees, bounded caching and representative cold-start tests; raising quotas alone is insufficient |
-| Browser primitives | Fixed 13-case native gate passes on HTTP/packaged origins; persistent app storage passes; extended Range gate still fails `overflow-wrap:anywhere` | Complete the extended renderer gate, then test actual Monaco and its workers/input dependencies |
+| Browser primitives | Fixed primitive/Range/wrapping gates pass; native WebCrypto; real Monaco 0.57.0 initial checks and Hangul input pass on HTTP/Vite/packaged paths | Broaden editor/input/accessibility/worker-lifetime coverage and measure the real workload |
 | Backend transport | `sdk/backend.ts` / `src/backend.rs`: named JSON calls, subscriptions, bounded queues; invokes poll only while pending | Versioned binary/streaming transport, backpressure, ownership, cancellation and per-window teardown; browser MessageChannel passing is not native IPC support |
 | Workspace files | Portal-selected UTF-8 files up to 256 KiB, JSON app store | Folder/workspace handles, binary/large files, directory operations, atomic writes, external watching and error/recovery semantics |
 | Developer processes | One packaged Bun backend with named exports; its code can use process APIs | Public app-owned process service, stdin/stdout/stderr streams, cancellation/lifetime; PTY and LSP/debugger integration |
@@ -174,19 +174,36 @@ implementation gap, not evidence of a working rich-editor selection API.
 Monaco, Code-OSS, extension hosts, PTY/workspace services and resource advantages
 have not been implemented or measured by this increment.
 
-## Second increment: app storage and text geometry
+## Second increment: historical storage/geometry state at `9eceea5`
 
 The original locked 13-case workload now completes **13/13 on both HTTP and
 packaged origins**. This does not change the locked workload to remove failures.
 New acceptance fixtures exercise persistent app storage and additional text
-geometry. The extended Range gate remains red on `overflow-wrap:anywhere`;
+geometry. At that increment, the extended Range gate remained red on `overflow-wrap:anywhere`;
 normal word wrapping has real multi-line fragment geometry.
 
 See [Range/storage implementation and validation](range-storage-validation.md)
 for the source fingerprint, exact results, commands and limitations. The
 [transport policy](transport-policy.md) governs subsequent native services.
-Monaco remains the next actual dependency workload; its integration is not
-implied by these primitive results.
+Monaco integration was not implied by those primitive results. The next
+increment below exercises the actual dependency.
+
+## Third increment: real Monaco and resolved emergency wrapping
+
+[Implementation and final native validation](monaco-wrapping-validation.md)
+records the actual pinned Monaco 0.57.0 workload, WebCrypto enablement,
+emergency-wrapping fix and native IME event-order correction. The unchanged
+Range gate now passes 13/13 on both origins, as does the new wrapping profile.
+Monaco's eight API checks and real OS ASCII/Hangul input pass over HTTP, the live
+Vite development server and a relocated packaged application. Existing browser,
+persistent-storage and Hangul/Solid Workbench regression suites also pass on the
+same final source fingerprint.
+
+This is initial editor compatibility. Whole-editor semantics, accessibility,
+pointer/wheel input, HMR, resource measurements and repeated worker reclamation
+remain work. General workspace files/process streams and a future fixed Code-OSS
+port retain the sequence above; there is no workbench or extension-host adapter
+in this increment.
 
 ## Primary references
 

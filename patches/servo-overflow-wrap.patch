@@ -1,0 +1,281 @@
+diff --git a/components/fonts/glyph.rs b/components/fonts/glyph.rs
+index 8ddcd2e57..870e43193 100644
+--- a/components/fonts/glyph.rs
++++ b/components/fonts/glyph.rs
+@@ -619,6 +619,24 @@ impl ShapedTextSlice {
+         }
+     }
+ 
++    /// Split into views of the same shaped glyph buffer. Boundaries inside a
++    /// shaping cluster consume that entire cluster in the preceding view.
++    pub fn slices_at_character_offsets(
++        &self,
++        offsets: impl Iterator<Item = Utf32CodeUnits>,
++    ) -> Vec<Arc<Self>> {
++        let mut slicer =
++            ShapedTextSlicer::for_glyph_range(self.shaped_text.clone(), self.glyph_range.clone());
++        offsets
++            .filter_map(|offset| {
++                slicer.slice_until_character_offset(
++                    offset.min(self.character_count),
++                    self.slice_type.clone(),
++                )
++            })
++            .collect()
++    }
++
+     /// An iterator over the glyphs represented by this [`ShapedTextSlice`].
+     pub fn glyphs(&self) -> impl DoubleEndedIterator<Item = GlyphInfo<'_>> + use<'_> {
+         self.shaped_text.glyph_slice(self.glyph_range.clone())
+@@ -627,6 +645,7 @@ impl ShapedTextSlice {
+ 
+ /// A data structure used to efficiently slice up a [`ShapedText`] into [`ShapedTextSlice`]s.
+ pub struct ShapedTextSlicer {
++    glyph_range: Range<usize>,
+     current_glyph_offset: usize,
+     current_character_offset: Utf32CodeUnits,
+     shaped_text: Arc<ShapedText>,
+@@ -634,13 +653,18 @@ pub struct ShapedTextSlicer {
+ 
+ impl ShapedTextSlicer {
+     pub fn new(shaped_text: Arc<ShapedText>) -> Self {
++        let range = 0..shaped_text.glyph_count();
++        Self::for_glyph_range(shaped_text, range)
++    }
++
++    fn for_glyph_range(shaped_text: Arc<ShapedText>, glyph_range: Range<usize>) -> Self {
+         let current_glyph_offset = if shaped_text.is_rtl {
+-            shaped_text.glyph_count()
++            glyph_range.end
+         } else {
+-            0
++            glyph_range.start
+         };
+-
+         Self {
++            glyph_range,
+             current_glyph_offset,
+             current_character_offset: Utf32CodeUnits(0),
+             shaped_text,
+@@ -672,21 +696,21 @@ impl ShapedTextSlicer {
+         let iterator = if self.shaped_text.is_rtl {
+             Either::Left(
+                 self.shaped_text
+-                    .glyph_slice(0..self.current_glyph_offset)
++                    .glyph_slice(self.glyph_range.start..self.current_glyph_offset)
+                     .rev(),
+             )
+         } else {
+             Either::Right(
+                 self.shaped_text
+-                    .glyph_slice(self.current_glyph_offset..self.shaped_text.glyph_count()),
++                    .glyph_slice(self.current_glyph_offset..self.glyph_range.end),
+             )
+         };
+ 
+         for glyph in iterator {
+             // When glyphs span two character slices, prioritize the first slice and also
+             // ensure that glyphs that span zero characters are also included there.
+-            if self.current_character_offset >= desired_character_offset &&
+-                glyph.character_count().0 > 0
++            if self.current_character_offset >= desired_character_offset
++                && glyph.character_count().0 > 0
+             {
+                 break;
+             }
+diff --git a/components/layout/flow/inline/mod.rs b/components/layout/flow/inline/mod.rs
+index 1eceecb8c..e2c12c149 100644
+--- a/components/layout/flow/inline/mod.rs
++++ b/components/layout/flow/inline/mod.rs
+@@ -102,7 +102,7 @@ use line::{
+ use malloc_size_of_derive::MallocSizeOf;
+ use script::layout_dom::ServoLayoutNode;
+ use servo_arc::Arc as ServoArc;
+-use servo_base::text::{Utf8CodeUnits, Utf32CodeUnits};
++use servo_base::text::{AssumeUnder4GB, Utf8CodeUnits, Utf32CodeUnits};
+ use style::Zero;
+ use style::computed_values::line_break::T as LineBreak;
+ use style::computed_values::text_wrap_mode::T as TextWrapMode;
+@@ -2939,17 +2939,19 @@ impl<'layout_data> ContentSizesComputation<'layout_data> {
+                         TextRunItem::Tab { .. } => {
+                             self.process_preserved_tab(&parent_style, inline_formatting_context)
+                         },
+-                        TextRunItem::TextSegment(segment) => {
+-                            self.process_text_segment(&parent_style, segment)
+-                        },
++                        TextRunItem::TextSegment(segment) => self.process_text_segment(
++                            &parent_style,
++                            segment,
++                            inline_formatting_context.text_content(),
++                        ),
+                     }
+                 }
+             },
+             InlineItem::Atomic(atomic, offset_in_text, _level) => {
+                 let can_wrap = self.text_wrap_mode() == TextWrapMode::Wrap;
+-                if can_wrap &&
+-                    self.had_content_yet_for_min_content &&
+-                    !inline_formatting_context
++                if can_wrap
++                    && self.had_content_yet_for_min_content
++                    && !inline_formatting_context
+                         .previous_character_prevents_soft_wrap_opportunity(*offset_in_text)
+                 {
+                     self.line_break_opportunity();
+@@ -3003,6 +3005,7 @@ impl<'layout_data> ContentSizesComputation<'layout_data> {
+         &mut self,
+         parent_style: &AtomicRef<'_, ServoArc<ComputedValues>>,
+         segment: &TextRunSegment,
++        text: &str,
+     ) {
+         let style_text = parent_style.get_inherited_text();
+         let can_wrap = style_text.text_wrap_mode == TextWrapMode::Wrap;
+@@ -3011,7 +3014,12 @@ impl<'layout_data> ContentSizesComputation<'layout_data> {
+         // linebreaks after atomics as in layout.
+         let break_at_start = segment.break_at_start && self.had_content_yet_for_min_content;
+ 
++        let emergency_intrinsic = can_wrap && style_text.overflow_wrap == style::values::computed::OverflowWrap::Anywhere;
++        let mut remaining_text = if emergency_intrinsic { &text[Utf8CodeUnits::to_usize_range(&segment.byte_range)] } else { "" };
+         for (run_index, run) in segment.runs.iter().enumerate() {
++            let end = run.character_count().to_utf8_code_units_in(AssumeUnder4GB, remaining_text).0 as usize;
++            let (run_text, rest) = remaining_text.split_at(end);
++            remaining_text = rest;
+             // Break before each unbreakable run in this TextRun, except the first unless the
+             // linebreaker was set to break before the first run.
+             if can_wrap && (run_index != 0 || break_at_start) {
+@@ -3045,7 +3053,21 @@ impl<'layout_data> ContentSizesComputation<'layout_data> {
+             }
+ 
+             self.commit_pending_whitespace();
+-            self.add_inline_size(advance);
++            if can_wrap
++                && style_text.overflow_wrap == style::values::computed::OverflowWrap::Anywhere
++                && !run.is_whitespace()
++            {
++                self.current_line.max_content += advance;
++                for (index, slice) in TextRunSegment::grapheme_slices(run, run_text).iter().enumerate() {
++                    if index != 0 {
++                        self.line_break_opportunity();
++                    }
++                    self.current_line.min_content += slice.total_advance();
++                    self.had_content_yet_for_min_content = true;
++                }
++            } else {
++                self.add_inline_size(advance);
++            }
+ 
+             // Typically whitespace glyphs are placed in a separate store,
+             // but for `white-space: break-spaces` we place the first whitespace
+diff --git a/components/layout/flow/inline/text_run.rs b/components/layout/flow/inline/text_run.rs
+index c6c599a25..6da064eca 100644
+--- a/components/layout/flow/inline/text_run.rs
++++ b/components/layout/flow/inline/text_run.rs
+@@ -11,21 +11,23 @@ use atomic_refcell::AtomicRefCell;
+ use fonts::font_feature_values::ResolvedFontVariantAlternates;
+ use fonts::{FontContext, FontRef, ShapedText, ShapedTextSlice, ShapingFlags, ShapingOptions};
+ use icu_locale_core::subtags::Language;
++use icu_segmenter::GraphemeClusterSegmenter;
+ use icu_properties::props::{EnumeratedProperty, LineBreak};
+ use log::warn;
+ use malloc_size_of_derive::MallocSizeOf;
+ use servo_arc::Arc as ServoArc;
+-use servo_base::text::{RangeAny, Utf8CodeUnits, Utf32CodeUnits, is_bidi_control};
++use servo_base::text::{AssumeUnder4GB, RangeAny, Utf8CodeUnits, Utf32CodeUnits, is_bidi_control};
+ use smallvec::SmallVec;
+ use style::Zero;
+ use style::computed_values::font_kerning::T as FontKerning;
+ use style::computed_values::font_variant_position::T as FontVariantPosition;
+ use style::computed_values::text_rendering::T as TextRendering;
++use style::computed_values::text_wrap_mode::T as TextWrapMode;
+ use style::computed_values::white_space_collapse::T as WhiteSpaceCollapse;
+ use style::font_face::FontLanguageOverride;
+ use style::properties::ComputedValues;
+ use style::values::computed::{
+-    FontFeatureSettings, FontVariantEastAsian, FontVariantLigatures, FontVariantNumeric,
++    FontFeatureSettings, FontVariantEastAsian, FontVariantLigatures, FontVariantNumeric, OverflowWrap,
+ };
+ use unicode_bidi::Level;
+ use unicode_script::Script;
+@@ -260,6 +262,22 @@ impl TextRunSegment {
+         self.byte_range.end = next_byte_index;
+     }
+ 
++    /// Emergency wrapping reuses shaping and preserves Unicode grapheme clusters.
++    pub(super) fn grapheme_slices(
++        run: &ShapedTextSlice,
++        text: &str,
++    ) -> Vec<Arc<ShapedTextSlice>> {
++        let offsets = GraphemeClusterSegmenter::new()
++            .segment_str(text)
++            .skip(1)
++            .scan((0, Utf32CodeUnits(0)), |(previous, scalar), byte| {
++                *scalar += Utf32CodeUnits::length_of(AssumeUnder4GB, &text[*previous..byte]);
++                *previous = byte;
++                Some(*scalar)
++            });
++        run.slices_at_character_offsets(offsets)
++    }
++
+     fn layout_into_line_items(
+         &self,
+         text_run: &TextRun,
+@@ -271,9 +289,18 @@ impl TextRunSegment {
+             soft_wrap_policy = SegmentStartSoftWrapPolicy::Force;
+         }
+ 
++        let overflow_wrap = text_run.inline_styles().style.borrow().get_inherited_text().overflow_wrap;
++        let mut remaining_text = if overflow_wrap == OverflowWrap::Normal { "" } else {
++            &ifc.ifc.text_content()[Utf8CodeUnits::to_usize_range(&self.byte_range)]
++        };
+         let mut character_range_start = self.character_range.start;
+         for (run_index, run) in self.runs.iter().enumerate() {
+             let new_character_range_end = character_range_start + run.character_count();
++            // Advance through the text once, rather than rescanning the segment's
++            // prefix for every word when computing intrinsic sizes or wrapping.
++            let end = run.character_count().to_utf8_code_units_in(AssumeUnder4GB, remaining_text).0 as usize;
++            let (run_text, rest) = remaining_text.split_at(end);
++            remaining_text = rest;
+ 
+             // Break before each unbreakable run in this TextRun, except the first unless the
+             // linebreaker was set to break before the first run.
+@@ -282,12 +309,34 @@ impl TextRunSegment {
+             }
+ 
+             let run_start = text_run.run_data.character_range_in_ifc_text.start;
+-            ifc.push_glyph_store_to_unbreakable_segment(
+-                run.clone(),
+-                text_run,
+-                &self.info,
+-                character_range_start - run_start..new_character_range_end - run_start,
+-            );
++            let needs_emergency_breaks = overflow_wrap != OverflowWrap::Normal
++                && ifc.text_wrap_mode == TextWrapMode::Wrap
++                && !run.is_whitespace()
++                && ifc.current_line_segment.inline_size + run.total_advance()
++                    > ifc.containing_block().size.inline;
++            if needs_emergency_breaks {
++                let slices = Self::grapheme_slices(run, run_text);
++                ifc.process_soft_wrap_opportunity();
++                let mut start = character_range_start;
++                for slice in slices {
++                    let end = start + slice.character_count();
++                    ifc.push_glyph_store_to_unbreakable_segment(
++                        slice,
++                        text_run,
++                        &self.info,
++                        start - run_start..end - run_start,
++                    );
++                    ifc.process_soft_wrap_opportunity();
++                    start = end;
++                }
++            } else {
++                ifc.push_glyph_store_to_unbreakable_segment(
++                    run.clone(),
++                    text_run,
++                    &self.info,
++                    character_range_start - run_start..new_character_range_end - run_start,
++                );
++            }
+ 
+             character_range_start = new_character_range_end;
+         }

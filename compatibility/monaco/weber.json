@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "dev.weber.monaco-acceptance",
+  "name": "Weber actual Monaco acceptance",
+  "version": "0.1.0",
+  "entry": "src/main.ts"
+}

@@ -223,6 +223,7 @@ memory or startup advantage over Electron or native GUI frameworks is claimed.
 | Web compatibility | [Locked test profile](docs/compatibility-target.md) · [Profile validation](docs/profile-validation.md) |
 | Large application ports | [Renderer/workspace/extension-host gaps and acceptance plan](docs/large-app-porting.md) |
 | Text geometry and browser storage | [Implementation, native results and remaining failure](docs/range-storage-validation.md) |
+| Actual Monaco and wrapping | [Pinned editor, native Hangul/worker tests and reproduction](docs/monaco-wrapping-validation.md) |
 | Process and data transport | [Direct calls, shared memory/file mappings and control pipes](docs/transport-policy.md) |
 | Window activation | [Wayland tokens, focus and lifetime checks](docs/window-activation.md) |
 | Performance | [Executable residency](docs/executable-residency.md) · [Font lifetimes](docs/font-lifetime-optimization.md) · [Window resource lifetimes](docs/window-resource-optimization.md) · [Document transfers](docs/native-transfer-optimization.md) · [General CPU](docs/jit-cpu-analysis.md) · [Input CPU](docs/editing-cpu-analysis.md) |

@@ -33,7 +33,8 @@ await promisify(execFile)('gsettings', ['set', 'org.gnome.desktop.interface', 'e
 await promisify(execFile)('gsettings', ['set', 'org.gnome.desktop.peripherals.mouse', 'accel-profile', 'flat'], { env });
 const log = openSync(resolve('artifacts/headless-wayland.log'), 'w');
 const compositor = spawn('gnome-shell', ['--headless', '--wayland', '--no-x11', '--wayland-display=weber-test', '--virtual-monitor=960x720@60'], { env, stdio: ['ignore', log, log] }); closeSync(log);
-const exit = new Promise(resolveExit => compositor.once('exit', (code, signal) => resolveExit({ code, signal })));
+let compositorExit;
+const exit = new Promise(resolveExit => compositor.once('exit', (code, signal) => { compositorExit = { code, signal }; resolveExit(compositorExit); }));
 try {
   let ready = false;
   for (let attempt = 0; attempt < 200; attempt++) {
@@ -54,7 +55,12 @@ try {
   await delay(300);
   const child = spawn(process.execPath, process.argv.slice(2), { env, stdio: 'inherit' });
   const code = await new Promise((resolveExit, reject) => { child.once('error', reject); child.once('exit', resolveExit); });
-  if (code !== 0) process.exitCode = code ?? 1;
+  await writeFile(resolve('artifacts/headless-wayland-result.json'), JSON.stringify({
+    command: process.argv.slice(2), childExitCode: code,
+    compositorExitBeforeCleanup: compositorExit ?? null,
+    passed: code === 0 && !compositorExit,
+  }, null, 2));
+  if (code !== 0 || compositorExit) process.exitCode = code || 1;
 } finally {
   if (compositor.exitCode === null) compositor.kill();
   // A private compositor can hang while disposing portal/GPU resources after

@@ -187,10 +187,13 @@ impl Composition {
                 events
             }
             Ime::Commit(text) => {
-                let mut events = Vec::with_capacity(2);
-                if self.clear_pending {
-                    events.push(composition(Update, String::new()));
+                let mut events = Vec::with_capacity(3);
+                if !self.active {
+                    events.push(composition(Start, String::new()));
                 }
+                // Commit the final DOM text as an update. compositionend is a
+                // notification, not another insertion after JS handlers run.
+                events.push(composition(Update, text.clone()));
                 self.active = false;
                 self.clear_pending = false;
                 self.preedit.clear();
@@ -255,11 +258,23 @@ mod tests {
         assert!(ime.handle(Ime::Preedit(String::new(), None)).is_empty());
         let end = ime.handle(Ime::Commit("한".into()));
         assert!(matches!(end[0].state, servo::CompositionState::Update));
-        assert!(end[0].data.is_empty());
+        assert_eq!(end[0].data, "한");
         assert!(matches!(end[1].state, servo::CompositionState::End));
         assert_eq!(end[1].data, "한");
         assert!(ime.finish().is_empty());
         assert!(!ime.active);
+    }
+    #[test]
+    fn direct_commit_updates_text_before_ending_composition() {
+        let mut ime = Composition::default();
+        let events = ime.handle(Ime::Commit("🙂".into()));
+        assert_eq!(events.len(), 3);
+        assert!(matches!(events[0].state, servo::CompositionState::Start));
+        assert!(matches!(events[1].state, servo::CompositionState::Update));
+        assert!(matches!(events[2].state, servo::CompositionState::End));
+        assert_eq!(events[1].data, "🙂");
+        assert_eq!(events[2].data, "🙂");
+        assert!(ime.finish().is_empty());
     }
     #[test]
     fn deleting_final_jamo_finishes_without_leaving_composing_state() {

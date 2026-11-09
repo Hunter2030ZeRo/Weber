@@ -1,0 +1,23 @@
+{
+  "id": "weber-overflow-wrapping-v1",
+  "scope": "Selected emergency wrapping, grapheme preservation and intrinsic sizing behavior",
+  "timeoutMs": 5000,
+  "required": [
+    "anywhere-long-word",
+    "break-word-long-word",
+    "normal-overflows",
+    "nowrap-overflows",
+    "fitting-words-stay-whole",
+    "combining-clusters",
+    "emoji-zwj-clusters",
+    "rtl-long-word",
+    "nested-inline-word",
+    "anywhere-min-content",
+    "break-word-min-content",
+    "zero-width-container",
+    "resize-reflow"
+  ],
+  "sources": {
+    "main.ts": "555b8c982f56f3bb11f445bd3d73766cee21fc6d9162d46af29ac28ed8b531e6"
+  }
+}

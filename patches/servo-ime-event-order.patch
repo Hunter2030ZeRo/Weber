@@ -1,0 +1,149 @@
+diff --git a/components/script/dom/html/form_controls/text_input.rs b/components/script/dom/html/form_controls/text_input.rs
+--- a/components/script/dom/html/form_controls/text_input.rs
++++ b/components/script/dom/html/form_controls/text_input.rs
+@@ -126,6 +126,9 @@
+     rope: Rope,
+     #[no_trace]
+     composition_range: Option<std::ops::Range<usize>>,
++    // Script may rewrite value/selection during composition callbacks. Preserve
++    // the session state independently of the currently valid DOM range.
++    composition_active: bool,
+ 
+     /// The type of [`TextInput`] this is. When in multi-line mode, the [`TextInput`] will
+     /// automatically split all inserted text into lines and incorporate them into
+@@ -219,6 +222,7 @@
+         Self {
+             rope: Rope::new(initial),
+             composition_range: None,
++            composition_active: false,
+             mode: lines,
+             edit_point: Default::default(),
+             selection_origin: None,
+@@ -615,7 +619,7 @@
+     pub(crate) fn handle_compositionend(&mut self, event: &CompositionEvent) -> KeyReaction {
+         let insertion = event.data().str();
+         self.composition_range = None;
+-        if insertion.is_empty() {
++        if std::mem::take(&mut self.composition_active) || insertion.is_empty() {
+             self.clear_selection();
+             return KeyReaction::RedrawSelection;
+         }
+@@ -629,6 +633,7 @@
+     }
+ 
+     pub(crate) fn handle_compositionupdate(&mut self, event: &CompositionEvent) -> KeyReaction {
++        self.composition_active = true;
+         let insertion = event.data().str();
+         // An empty preedit removes the selected composition, e.g. the last
+         // Hangul jamo after Backspace. It is still an editing operation.
+diff --git a/components/script/dom/html/form_controls/text_control.rs b/components/script/dom/html/form_controls/text_control.rs
+--- a/components/script/dom/html/form_controls/text_control.rs
++++ b/components/script/dom/html/form_controls/text_control.rs
+@@ -28,6 +28,24 @@
+ use crate::dom::types::InputEvent;
+ use crate::dom::{Element, Event};
+ 
++fn dispatch_input_event(
++    cx: &mut JSContext,
++    target: &EventTarget,
++    data: Option<String>,
++    is_composing: IsComposing,
++    input_type: InputEventType,
++) {
++    let global = target.global();
++    let window = global.as_window();
++    let event = InputEvent::new(
++        cx, window, None, atom!("input"), true, false, Some(window), 0,
++        data.map(DOMString::from), is_composing.into(), input_type.as_str().into(),
++    );
++    let event = event.upcast::<Event>();
++    event.set_composed(true);
++    event.fire(cx, target);
++}
++
+ pub(crate) trait TextControlElement {
+     fn as_element(&self) -> &Element;
+     fn text_input<'a>(&'a self) -> Ref<'a, TextInput<EmbedderClipboardProvider>>;
+@@ -77,6 +95,19 @@
+         self.handle_key_reaction(cx, key_reaction);
+         self.publish_ime_context(false);
+         true // TODO: Return true if the action can have any effect.
++    }
++
++    /// Finish composition input before a following compositionend can run
++    /// editor callbacks. Ordinary text input keeps its queued path.
++    fn fire_input_event(
++        &self,
++        cx: &mut JSContext,
++        data: Option<String>,
++        is_composing: IsComposing,
++        input_type: InputEventType,
++    ) {
++        self.publish_ime_context(input_type == InputEventType::InsertCompositionText);
++        dispatch_input_event(cx, self.as_element().upcast(), data, is_composing, input_type);
+     }
+ 
+     /// <https://w3c.github.io/uievents/#event-type-input>
+@@ -95,24 +126,7 @@
+             .user_interaction_task_source()
+             .queue(task!(fire_input_event: move |cx| {
+                 let target = target.root();
+-                let global = target.global();
+-                let window = global.as_window();
+-                let event = InputEvent::new(
+-                    cx,
+-                    window,
+-                    None,
+-                    atom!("input"),
+-                    true,
+-                    false,
+-                    Some(window),
+-                    0,
+-                    data.map(DOMString::from),
+-                    is_composing.into(),
+-                    input_type.as_str().into(),
+-                );
+-                let event = event.upcast::<Event>();
+-                event.set_composed(true);
+-                event.fire(cx, &target);
++                dispatch_input_event(cx, &target, data, is_composing, input_type);
+             }));
+     }
+ 
+diff --git a/components/script/dom/html/form_controls/htmlinputelement.rs b/components/script/dom/html/form_controls/htmlinputelement.rs
+--- a/components/script/dom/html/form_controls/htmlinputelement.rs
++++ b/components/script/dom/html/form_controls/htmlinputelement.rs
+@@ -1036,10 +1036,14 @@
+                 self.implicit_submission(cx);
+             },
+             KeyReaction::DispatchInput(text, is_composing, input_type) => {
+-                self.queue_input_event(text, is_composing, input_type);
+                 self.value_dirty.set(true);
+                 self.update_placeholder_shown_state();
+                 self.upcast::<Node>().dirty(cx.no_gc(), NodeDamage::Other);
++                if input_type == crate::dom::text_input::InputEventType::InsertCompositionText {
++                    self.fire_input_event(cx, text, is_composing, input_type);
++                } else {
++                    self.queue_input_event(text, is_composing, input_type);
++                }
+             },
+             KeyReaction::RedrawSelection => {
+                 self.maybe_update_shared_selection();
+diff --git a/components/script/dom/html/form_controls/htmltextareaelement.rs b/components/script/dom/html/form_controls/htmltextareaelement.rs
+--- a/components/script/dom/html/form_controls/htmltextareaelement.rs
++++ b/components/script/dom/html/form_controls/htmltextareaelement.rs
+@@ -342,9 +342,13 @@
+         match action {
+             KeyReaction::TriggerDefaultAction => (),
+             KeyReaction::DispatchInput(text, is_composing, input_type) => {
+-                self.queue_input_event(text, is_composing, input_type);
+                 self.value_dirty.set(true);
+                 self.handle_text_content_changed(cx);
++                if input_type == crate::dom::text_input::InputEventType::InsertCompositionText {
++                    self.fire_input_event(cx, text, is_composing, input_type);
++                } else {
++                    self.queue_input_event(text, is_composing, input_type);
++                }
+             },
+             KeyReaction::RedrawSelection => {
+                 self.maybe_update_shared_selection();
